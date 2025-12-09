@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:festival_rumour/ui/views/homeview/widgets/post_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -24,20 +25,118 @@ class RumorsView extends BaseView<RumorsViewModel> {
   @override
   void onViewModelReady(RumorsViewModel viewModel) {
     super.onViewModelReady(viewModel);
-    viewModel.loadRumors();
   }
 
   @override
   Widget buildView(BuildContext context, RumorsViewModel viewModel) {
+    // Initialize with festival from provider
+    // Check if collection name is already set (indicates initialization started)
+    // This prevents multiple callbacks from being scheduled
+    if (viewModel.festivalCollectionName == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Double-check inside callback to prevent race conditions
+        if (viewModel.festivalCollectionName == null) {
+          viewModel.initialize(context);
+        }
+      });
+    }
+    
+    return _RumorsViewContent(viewModel: viewModel, onBack: onBack);
+  }
+}
+
+/// Stateful widget to manage scroll controller and video visibility
+class _RumorsViewContent extends StatefulWidget {
+  final RumorsViewModel viewModel;
+  final VoidCallback? onBack;
+
+  const _RumorsViewContent({
+    required this.viewModel,
+    this.onBack,
+  });
+
+  @override
+  State<_RumorsViewContent> createState() => _RumorsViewContentState();
+}
+
+class _RumorsViewContentState extends State<_RumorsViewContent> {
+  final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey<State<PostWidget>>> _postKeys = {};
+  Timer? _scrollDebounceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollDebounceTimer?.cancel();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    // Debounce scroll events to avoid checking too frequently
+    _scrollDebounceTimer?.cancel();
+    _scrollDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+      // Check visibility and pause videos for posts not in viewport
+      _checkVisibilityAndPauseVideos();
+    });
+  }
+
+  void _checkVisibilityAndPauseVideos() {
+    if (!_scrollController.hasClients) return;
+
+    final viewportTop = _scrollController.offset;
+    final viewportBottom = viewportTop + MediaQuery.of(context).size.height;
+
+    for (var entry in _postKeys.entries) {
+      final key = entry.value;
+      final renderObject = key.currentContext?.findRenderObject();
+      
+      if (renderObject is RenderBox) {
+        final position = renderObject.localToGlobal(Offset.zero);
+        final size = renderObject.size;
+        final postTop = position.dy;
+        final postBottom = postTop + size.height;
+
+        // Check if post is visible in viewport (with some margin)
+        final isVisible = postBottom > viewportTop - 100 && postTop < viewportBottom + 100;
+
+        if (!isVisible) {
+          // Pause videos for posts not visible using the static method
+          final postState = key.currentState;
+          PostWidget.pauseVideosIfNeeded(postState);
+        }
+      }
+    }
+  }
+
+  GlobalKey<State<PostWidget>> _getOrCreateKey(int index) {
+    if (!_postKeys.containsKey(index)) {
+      _postKeys[index] = GlobalKey<State<PostWidget>>();
+    }
+    return _postKeys[index]!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        if (onBack != null) {
-          onBack!();
+        if (widget.onBack != null) {
+          widget.onBack!();
           return false;
         }
         return true;
       },
-
+      child: GestureDetector(
+        onTap: () {
+          // Dismiss keyboard when tapping outside
+          FocusScope.of(context).unfocus();
+        },
       child: Scaffold(
         extendBodyBehindAppBar: true,
         resizeToAvoidBottomInset: false,
@@ -45,19 +144,25 @@ class RumorsView extends BaseView<RumorsViewModel> {
           children: [
             // Background Image - Full screen coverage
             Positioned.fill(
-              child: Image.asset(AppAssets.bottomsheet, fit: BoxFit.cover),
+                child: Image.asset(
+                  AppAssets.bottomsheet,
+                  fit: BoxFit.cover,
+                ),
             ),
 
             // Main Content
             SafeArea(
               child: Column(
                 children: [
-                  _buildAppBar(context, viewModel),
-                  Expanded(child: _buildRumorsList(context, viewModel)),
+                    _buildAppBar(context, widget.viewModel),
+                    Expanded(
+                      child: _buildFeedList(context, widget.viewModel),
+                    ),
                 ],
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -80,14 +185,11 @@ class RumorsView extends BaseView<RumorsViewModel> {
       child: Row(
         children: [
           CustomBackButton(
-            onTap:
-                onBack ??
+            onTap: widget.onBack ??
                 () {
-                  // Navigate back to discover screen
                   Navigator.pop(context);
                 },
           ),
-          // Logo with responsive sizing
           const SizedBox(width: AppDimensions.spaceM),
           // Title - Flexible to prevent overflow
           Expanded(
@@ -115,139 +217,126 @@ class RumorsView extends BaseView<RumorsViewModel> {
     );
   }
 
-  Widget _buildRumorsList(BuildContext context, RumorsViewModel viewModel) {
-    if (viewModel.isLoading && viewModel.rumors.isEmpty) {
+  Widget _buildFeedList(BuildContext context, RumorsViewModel viewModel) {
+    if (viewModel.isLoading && viewModel.posts.isEmpty) {
       return const LoadingWidget(message: AppStrings.loadingPosts);
     }
 
-    if (viewModel.rumors.isEmpty) {
+    if (viewModel.posts.isEmpty && !viewModel.isLoading) {
       return Center(
         child: ResponsiveTextWidget(
           AppStrings.noPostsAvailable,
           textType: TextType.body,
-          color: AppColors.onPrimary,
+          color: AppColors.primary,
           fontSize: AppDimensions.textM,
         ),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceS),
-      itemCount: viewModel.rumors.length,
+      controller: _scrollController,
+      padding: EdgeInsets.symmetric(vertical: AppDimensions.paddingXS),
+      cacheExtent: 500, // Cache 500px worth of items for smoother scrolling
+      itemCount: viewModel.posts.length + 1, // Always add 1 for load more button or "no more posts" message
       itemBuilder: (context, index) {
-        final rumor = viewModel.rumors[index];
+        // Show load more button or "no more posts" message at the end
+        if (index == viewModel.posts.length) {
+          return _buildLoadMoreButton(context, viewModel);
+        }
+
+        final post = viewModel.posts[index];
+        final postKey = _getOrCreateKey(index);
+        
         return Column(
+          key: ValueKey('post_column_${post.postId}'),
           children: [
-            PostWidget(post: rumor),
-            // Add spacing except after the last post
-            if (index != viewModel.rumors.length - 1)
-              const SizedBox(height: AppDimensions.spaceM),
+            PostWidget(
+              key: postKey,
+              post: post,
+              collectionName: viewModel.festivalCollectionName, // Pass collection name for comments
+              onReactionSelected: (emotion) {
+                // Update reaction in ViewModel
+                if (emotion.isEmpty) {
+                  viewModel.removePostReaction(index);
+                } else {
+                  viewModel.updatePostReaction(index, emotion);
+                }
+              },
+              onCommentsUpdated: () {
+                // Refresh posts to update comment counts
+                viewModel.refreshPostsAfterComment();
+              },
+            ),
+            // Conditional spacing between posts
+            if (index != viewModel.posts.length - 1)
+              SizedBox(height: context.responsiveSpaceS),
           ],
         );
       },
     );
   }
 
-  void _showPostBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.onPrimary.withOpacity(0.4),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
+  Widget _buildLoadMoreButton(BuildContext context, RumorsViewModel viewModel) {
+    // Show "No more posts" message if we've loaded all posts
+    if (!viewModel.hasMorePosts && !viewModel.isLoadingMore) {
         return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: 10),
+        padding: EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: AppDimensions.paddingL,
+        ),
+        child: Center(
                   child: ResponsiveTextWidget(
-                    AppStrings.postJob,
-                    textType: TextType.title,
-                    color: AppColors.yellow,
-                    fontSize: AppDimensions.textL,
-                    fontWeight: FontWeight.bold,
+            'No more posts available',
+            textType: TextType.body,
+            color: AppColors.white,
+            textAlign: TextAlign.center,
                   ),
                 ),
-              ),
-              _buildJobTile(
-                image: AppAssets.job1,
-                title: AppStrings.festivalGizzaJob,
-                onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.festivalsJob);
-                },
-              ),
-              const Divider(color: AppColors.yellow, thickness: 1),
-              const SizedBox(height: AppDimensions.spaceS),
-              _buildJobTile(
-                image: AppAssets.job2,
-                title: AppStrings.festieHerosJob,
-                onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.festivalsJob);
-                },
-              ),
-              const SizedBox(height: AppDimensions.paddingS),
-            ],
+      );
+    }
+
+    // Show loading indicator while loading more
+    if (viewModel.isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: AppDimensions.paddingL,
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: AppColors.accent,
           ),
-        );
-      },
+        ),
     );
   }
 
-  Widget _buildJobTile({
-    required String image,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            /// Left side (Image + Text)
-            Expanded(
-              child: Row(
-                children: [
-                  /// Image
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                    child: Image.asset(
-                      image,
-                      width: AppDimensions.imageM,
-                      height: AppDimensions.imageM,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-
-                  const SizedBox(width: AppDimensions.paddingS),
-
-                  /// Text — flexible and ellipsis
-                  Expanded(
-                    child: ResponsiveTextWidget(
-                      title,
-                      textType: TextType.body,
-                      color: AppColors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: AppDimensions.textL,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
+    // Show "Load More" button if there are more posts
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingM,
+        vertical: AppDimensions.paddingL,
+      ),
+      child: Center(
+        child: ElevatedButton(
+          onPressed: viewModel.loadMorePosts,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: AppColors.black,
+            padding: EdgeInsets.symmetric(
+              horizontal: AppDimensions.paddingXL,
+              vertical: AppDimensions.paddingM,
             ),
-
-            /// Chevron icon (outside Expanded)
-            const Icon(Icons.chevron_right, color: AppColors.yellow),
-          ],
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+            ),
+            elevation: 4,
+          ),
+                    child: ResponsiveTextWidget(
+            'Load More',
+                      textType: TextType.body,
+                      fontWeight: FontWeight.bold,
+            color: AppColors.black,
+          ),
         ),
       ),
     );

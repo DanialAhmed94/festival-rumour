@@ -1,13 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/di/locator.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/services/navigation_service.dart';
+import '../../../../core/services/signup_data_service.dart';
 import '../../../../core/viewmodels/base_view_model.dart';
+import '../../../../core/exceptions/app_exception.dart';
 
 class SignupViewEmailModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final AuthService _authService = AuthService();
+  final SignupDataService _signupDataService = SignupDataService();
 
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
@@ -26,15 +30,12 @@ class SignupViewEmailModel extends BaseViewModel {
   FocusNode get passwordFocus => _passwordFocus;
   FocusNode get confirmPasswordFocus => _confirmPasswordFocus;
 
-  bool _isLoading = false;
-  bool get isLoading => _isLoading;
   bool isPasswordVisible = false;
   bool isConfirmPasswordVisible = false;
-
-  void setLoading(bool value) {
-    _isLoading = value;
-    notifyListeners();
-  }
+  
+  // Store error message for snackbar display
+  String? _snackbarError;
+  String? get snackbarError => _snackbarError;
 
   /// ✅ Validate fields
   bool validateFields() {
@@ -169,38 +170,103 @@ class SignupViewEmailModel extends BaseViewModel {
     }
   }
 
-  /// ✅ Navigate if valid with Firebase Auth
+  /// ✅ Verify email availability and store signup data
+  /// User will be created in Firebase only after all screens are completed
   Future<void> goToOtp() async {
     if (!validateFields()) return;
 
-    setLoading(true);
+    await handleAsync(
+      () async {
+        final email = emailController.text.trim();
+        final password = passwordController.text;
+        
+        // Validate email format before checking
+        if (!RegExp(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$').hasMatch(email)) {
+          throw ValidationException.invalidFormat('email');
+        }
 
-    try {
-      // Create user account with Firebase
-      final userCredential = await _authService.signUpWithEmail(
-        email: emailController.text.trim(),
-        password: passwordController.text,
-      );
-
-      if (userCredential != null) {
-        // User created successfully, navigate to email verification
-        _navigationService.navigateTo(AppRoutes.emailVerification);
-      } else {
-        // Show error message
-        _showErrorSnackBar('Failed to create account');
-      }
-    } catch (e) {
-      _showErrorSnackBar('An unexpected error occurred. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+        // Check if email is already registered in Firebase
+        // This will throw AuthException if email is already taken
+        await _authService.checkEmailAvailability(email);
+        
+        // Email is available - store the credentials temporarily
+        _signupDataService.setEmailAndPassword(email, password);
+        
+        if (kDebugMode) {
+          print('📧 [SIGNUP] Email signup screen completed');
+          print('   Current Route: ${AppRoutes.signupEmail}');
+          print('   Navigating to: ${AppRoutes.name}');
+          print('   Email stored: $email');
+        }
+        
+        // Navigate to name screen
+        // User will be created at the final step after all screens
+        _navigationService.navigateTo(AppRoutes.name);
+      },
+      onException: (exception) {
+        // Handle specific exception types for better UX
+        _handleSignupException(exception);
+      },
+      onError: (errorMessage) {
+        // Store error for snackbar display in view
+        _snackbarError = errorMessage;
+        notifyListeners();
+      },
+    );
   }
 
-  /// Show error message
-  void _showErrorSnackBar(String message) {
-    // This will be handled by the view
-    // For now, we'll store the error message
-    emailError = message;
+  /// Handle signup exceptions with specific field-level error messages
+  void _handleSignupException(AppException exception) {
+    // Clear previous errors
+    emailError = null;
+    passwordError = null;
+    confirmPasswordError = null;
+    _snackbarError = null;
+
+    // Handle specific Firebase Auth exceptions
+    if (exception is AuthException) {
+      switch (exception.code) {
+        case 'email-already-in-use':
+          // Email already exists - show on email field
+          emailError = exception.message;
+          _snackbarError = exception.message;
+          break;
+        case 'weak-password':
+          // Weak password - show on password field
+          passwordError = exception.message;
+          _snackbarError = exception.message;
+          break;
+        case 'invalid-email':
+          // Invalid email format - show on email field
+          emailError = exception.message;
+          _snackbarError = exception.message;
+          break;
+        case 'operation-not-allowed':
+          // Sign-up method not enabled
+          _snackbarError = exception.message;
+          break;
+        case 'too-many-requests':
+          // Too many requests
+          _snackbarError = exception.message;
+          break;
+        default:
+          // Other auth errors - show as snackbar
+          _snackbarError = exception.message;
+      }
+    } else if (exception is NetworkException) {
+      // Network errors - show as snackbar
+      _snackbarError = exception.message;
+    } else {
+      // Unknown errors - show as snackbar
+      _snackbarError = exception.message;
+    }
+
+    notifyListeners();
+  }
+
+  /// Clear snackbar error after it's been displayed
+  void clearSnackbarError() {
+    _snackbarError = null;
     notifyListeners();
   }
 

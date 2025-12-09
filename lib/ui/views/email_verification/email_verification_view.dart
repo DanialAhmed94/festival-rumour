@@ -51,7 +51,7 @@ class EmailVerificationView extends BaseView<EmailVerificationViewModel> {
                       SizedBox(height: context.getConditionalSpacing()),
                       _buildHeader(context),
                       SizedBox(height: context.getConditionalSpacing()),
-                      _buildEmailIcon(),
+                      _buildEmailIcon(context, viewModel),
                       SizedBox(height: context.getConditionalSpacing()),
                       _buildTitle(),
                       SizedBox(height: context.getConditionalSpacing()),
@@ -99,22 +99,26 @@ class EmailVerificationView extends BaseView<EmailVerificationViewModel> {
     );
   }
 
-  Widget _buildEmailIcon() {
+  Widget _buildEmailIcon(BuildContext context, EmailVerificationViewModel viewModel) {
     return Container(
       width: 100,
       height: 100,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.primary.withOpacity(0.1),
+        color: viewModel.isEmailVerified
+            ? Colors.green.withOpacity(0.1)
+            : AppColors.primary.withOpacity(0.1),
         border: Border.all(
-          color: AppColors.primary.withOpacity(0.3),
+          color: viewModel.isEmailVerified
+              ? Colors.green.withOpacity(0.5)
+              : AppColors.primary.withOpacity(0.3),
           width: 2,
         ),
       ),
-      child: const Icon(
-        Icons.email_outlined,
+      child: Icon(
+        viewModel.isEmailVerified ? Icons.check_circle : Icons.email_outlined,
         size: 50,
-        color: AppColors.primary,
+        color: viewModel.isEmailVerified ? Colors.green : AppColors.primary,
       ),
     );
   }
@@ -132,10 +136,12 @@ class EmailVerificationView extends BaseView<EmailVerificationViewModel> {
 
   Widget _buildDescription(BuildContext context, EmailVerificationViewModel viewModel) {
     return ResponsiveTextWidget(
-      'We\'ve sent a verification link to your email address. Please check your inbox and click the link to verify your email.',
+      viewModel.isEmailVerified
+          ? 'Email verified successfully! You can now continue to the next step.'
+          : 'We\'ve sent a verification link to your email address. Please check your inbox and click the link to verify your email.',
       textType: TextType.body,
       fontSize: context.getConditionalFont(),
-      color: AppColors.primary,
+      color: viewModel.isEmailVerified ? Colors.green : AppColors.primary,
       textAlign: TextAlign.center,
     );
   }
@@ -189,27 +195,42 @@ class EmailVerificationView extends BaseView<EmailVerificationViewModel> {
 
 
   Widget _buildContinueButton(BuildContext context, EmailVerificationViewModel viewModel) {
+    final isEnabled = !viewModel.isLoading && viewModel.isEmailVerified;
+    
     return SizedBox(
       width: double.infinity,
       height: context.getConditionalButtonSize(),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.accent,
+          backgroundColor: isEnabled ? AppColors.accent : AppColors.accent.withOpacity(0.5),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusM),
           ),
         ),
-        onPressed: viewModel.isLoading
-            ? null
-            : () => viewModel.checkEmailVerification(),
+        onPressed: isEnabled
+            ? () => viewModel.checkEmailVerification()
+            : null,
         child: viewModel.isLoading
-            ? const CircularProgressIndicator(color: AppColors.accent)
-            : ResponsiveTextWidget(
-                'Continue',
-                textType: TextType.body,
-                fontSize: context.getConditionalMainFont(),
-                color: AppColors.onPrimary,
-                fontWeight: FontWeight.w600,
+            ? const CircularProgressIndicator(color: AppColors.onPrimary)
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ResponsiveTextWidget(
+                    viewModel.isEmailVerified ? 'Continue' : 'Verify Email to Continue',
+                    textType: TextType.body,
+                    fontSize: context.getConditionalMainFont(),
+                    color: AppColors.onPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  if (viewModel.isEmailVerified) ...[
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.check_circle,
+                      color: AppColors.onPrimary,
+                      size: 20,
+                    ),
+                  ],
+                ],
               ),
       ),
     );

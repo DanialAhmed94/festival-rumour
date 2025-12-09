@@ -111,14 +111,18 @@ class ForgotPasswordViewModel extends BaseViewModel {
         if (result.isSuccess) {
           isEmailSent = true;
           _startResendCountdown();
-          if (kDebugMode) {
-            print('Password reset email sent successfully to: $email');
-          }
         } else {
-          _handlePasswordResetError(result.errorMessage ?? AppStrings.resetPasswordFailed);
+          // Error message is already set by handleAsync from the exception
+          // Set email error for form validation
+          if (result.errorMessage != null) {
+            _handlePasswordResetError(result.errorMessage!);
+          }
         }
       },
-      errorMessage: AppStrings.resetPasswordFailed,
+      onError: (error) {
+        // Additional error handling if needed
+        _handlePasswordResetError(error);
+      },
     );
   }
 

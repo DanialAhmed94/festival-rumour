@@ -5,6 +5,7 @@ import 'package:festival_rumour/ui/views/discover/widgets/action_tile.dart';
 import 'package:festival_rumour/ui/views/discover/widgets/event_header_card.dart';
 import 'package:festival_rumour/ui/views/discover/widgets/grid_option.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
@@ -14,6 +15,8 @@ import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../core/utils/snackbar_util.dart';
 import '../../../shared/widgets/responsive_widget.dart';
+import '../../../core/providers/festival_provider.dart';
+import '../festival/festival_model.dart';
 import 'discover_viewmodel.dart';
 
 class DiscoverView extends BaseView<DiscoverViewModel> {
@@ -23,6 +26,13 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
 
   @override
   DiscoverViewModel createViewModel() => DiscoverViewModel();
+
+  @override
+  void onViewModelReady(DiscoverViewModel viewModel) {
+    super.onViewModelReady(viewModel);
+    // Update FestivalProvider when festivals are loaded
+    // We'll do this in the buildView using a listener or Consumer
+  }
 
   @override
   Widget buildView(BuildContext context, DiscoverViewModel viewModel) {
@@ -35,6 +45,11 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
         }
         return true;
       },
+      child: GestureDetector(
+        onTap: () {
+          // Dismiss keyboard when tapping outside
+          viewModel.unfocusSearch();
+        },
       child: Scaffold(
         extendBodyBehindAppBar: true,
         body: Stack(
@@ -56,6 +71,8 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
                       children: [
                         _buildTopBar(context, viewModel),
                         _divider(),
+                        _buildSearchBarWithDropdown(context, viewModel),
+                        SizedBox(height: AppDimensions.spaceS),
                         const EventHeaderCard(),
                         SizedBox(height: AppDimensions.spaceS),
                         _buildGetReadyText(),
@@ -70,6 +87,7 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -174,7 +192,7 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
         GridOption(
           title: AppStrings.chatRooms,
           icon: AppAssets.chaticon,
-          onNavigateToSub: onNavigateToSub,
+          onTap: () => viewModel.goToChatRooms(context),
         ),
         GridOption(
           title: AppStrings.rumors,
@@ -213,6 +231,213 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
         color: AppColors.primary,
         thickness: 1,
         height: 20, // 👈 end at very right
+      ),
+    );
+  }
+
+  /// ---------------- SEARCH BAR WITH DROPDOWN ----------------
+  Widget _buildSearchBarWithDropdown(BuildContext context, DiscoverViewModel viewModel) {
+    return ResponsiveContainer(
+      mobileMaxWidth: double.infinity,
+      tabletMaxWidth: double.infinity,
+      desktopMaxWidth: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Search Bar
+          Container(
+            margin: context.responsiveMargin,
+            padding: context.responsivePadding,
+            height: context.getConditionalButtonSize(),
+            decoration: BoxDecoration(
+              color: AppColors.onPrimary,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
+            ),
+            child: Row(
+              children: [
+                SizedBox(width: context.getConditionalSpacing()),
+                // Search icon
+                Icon(
+                  Icons.search, 
+                  color: AppColors.onSurfaceVariant, 
+                  size: context.getConditionalIconSize(),
+                ),
+                SizedBox(width: context.getConditionalSpacing()),
+                // Search Field
+                Expanded(
+                  child: TextField(
+                    controller: viewModel.searchController,
+                    focusNode: viewModel.searchFocusNode,
+                    textAlignVertical: TextAlignVertical.center,
+                    decoration: InputDecoration(
+                      hintText: AppStrings.searchHint,
+                      hintStyle: TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: context.getConditionalFont(),
+                      ),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      isDense: true,
+                      filled: false,
+                      fillColor: Colors.transparent,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: context.getConditionalFont(),
+                    ),
+                    cursorColor: AppColors.primary,
+                    onChanged: (value) {
+                      viewModel.setSearchQuery(value, context);
+                    },
+                    onSubmitted: (value) {
+                      viewModel.unfocusSearch();
+                    },
+                    textInputAction: TextInputAction.search,
+                  ),
+                ),
+                // Search Clear Button
+                SizedBox(
+                  width: context.getConditionalIconSize(),
+                  child: viewModel.currentSearchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(
+                            Icons.clear, 
+                            color: AppColors.primary, 
+                            size: context.getConditionalIconSize(),
+                          ),
+                          onPressed: () {
+                            viewModel.clearSearch(context);
+                            FocusScope.of(context).unfocus();
+                          },
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                SizedBox(width: context.getConditionalSpacing()),
+              ],
+            ),
+          ),
+          // Dropdown with matching festivals
+          if (viewModel.hasSearchResults)
+            _buildFestivalDropdown(context, viewModel),
+        ],
+      ),
+    );
+  }
+  
+  /// ---------------- FESTIVAL DROPDOWN ----------------
+  Widget _buildFestivalDropdown(BuildContext context, DiscoverViewModel viewModel) {
+    return Container(
+      margin: EdgeInsets.only(
+        left: context.responsiveMargin.left,
+        right: context.responsiveMargin.right,
+        top: AppDimensions.spaceXS,
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.4,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.onPrimary,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: EdgeInsets.symmetric(
+          vertical: AppDimensions.spaceXS,
+        ),
+        itemCount: viewModel.filteredFestivals.length,
+        separatorBuilder: (context, index) => Divider(
+          height: 1,
+          color: AppColors.primary.withOpacity(0.2),
+          indent: AppDimensions.spaceM,
+          endIndent: AppDimensions.spaceM,
+        ),
+        itemBuilder: (context, index) {
+          final festival = viewModel.filteredFestivals[index];
+          return _buildFestivalListItem(context, viewModel, festival);
+        },
+      ),
+    );
+  }
+  
+  /// ---------------- FESTIVAL LIST ITEM ----------------
+  Widget _buildFestivalListItem(
+    BuildContext context,
+    DiscoverViewModel viewModel,
+    FestivalModel festival,
+  ) {
+    return InkWell(
+      onTap: () {
+        viewModel.selectFestival(context, festival);
+      },
+      child: Padding(
+        padding: context.responsivePadding,
+        child: Row(
+          children: [
+            // Festival icon/placeholder
+            Container(
+              width: context.getConditionalIconSize() * 1.5,
+              height: context.getConditionalIconSize() * 1.5,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+              ),
+              child: Icon(
+                Icons.festival,
+                color: AppColors.primary,
+                size: context.getConditionalIconSize(),
+              ),
+            ),
+            SizedBox(width: context.getConditionalSpacing()),
+            // Festival details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ResponsiveTextWidget(
+                    festival.title,
+                    textType: TextType.body,
+                    fontSize: context.getConditionalFont(),
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (festival.location.isNotEmpty) ...[
+                    SizedBox(height: AppDimensions.spaceXS),
+                    ResponsiveTextWidget(
+                      festival.location,
+                      textType: TextType.caption,
+                      fontSize: context.getConditionalFont() * 0.85,
+                      color: AppColors.primary.withOpacity(0.7),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(width: context.getConditionalSpacing()),
+            // Arrow icon
+            Icon(
+              Icons.arrow_forward_ios,
+              color: AppColors.primary.withOpacity(0.5),
+              size: context.getConditionalIconSize() * 0.7,
+            ),
+          ],
+        ),
       ),
     );
   }

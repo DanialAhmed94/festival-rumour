@@ -2,11 +2,14 @@ import 'package:festival_rumour/firebase_options.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'core/constants/app_strings.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'core/di/locator.dart';
 import 'core/services/navigation_service.dart';
+import 'core/services/error_handler_service.dart';
+import 'core/providers/festival_provider.dart';
 
 /// Main entry point of the Festival Rumour application
 void main() async {
@@ -36,9 +39,10 @@ void main() async {
     );
 
     runApp(const FestivalRumourApp());
-  } catch (e) {
+  } catch (e, stackTrace) {
     // Handle Firebase initialization errors
-    print('Firebase initialization error: $e');
+    final errorHandler = ErrorHandlerService();
+    final exception = errorHandler.handleError(e, stackTrace, 'main');
     runApp(
       MaterialApp(
         home: Scaffold(
@@ -53,7 +57,7 @@ void main() async {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                Text('Error: $e'),
+                Text('Error: ${exception.message}'),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () {
@@ -77,7 +81,11 @@ class FestivalRumourApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => FestivalProvider()),
+      ],
+      child: MaterialApp(
       // App Configuration
       title: AppStrings.appName,
       debugShowCheckedModeBanner: false,
@@ -101,6 +109,7 @@ class FestivalRumourApp extends StatelessWidget {
           child: child ?? const SizedBox.shrink(),
         );
       },
+      ),
     );
   }
 }

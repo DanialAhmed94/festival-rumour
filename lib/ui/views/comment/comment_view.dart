@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
@@ -6,20 +8,33 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../shared/extensions/context_extensions.dart';
+import '../../../shared/widgets/loading_widget.dart';
+import '../homeview/post_model.dart';
 import 'comment_viewmodel.dart';
+import 'comment_model.dart';
 
 class CommentView extends BaseView<CommentViewModel> {
-  const CommentView({super.key});
+  final dynamic post; // PostModel passed from navigation
+  final String? collectionName; // Optional collection name (for festival-specific posts)
+  
+  const CommentView({super.key, this.post, this.collectionName});
 
   @override
-  CommentViewModel createViewModel() => CommentViewModel();
+  CommentViewModel createViewModel() {
+    final viewModel = CommentViewModel();
+    viewModel.initialize(
+      post is PostModel ? post : null,
+      collectionName: collectionName,
+    );
+    return viewModel;
+  }
 
   @override
   Widget buildView(BuildContext context, CommentViewModel viewModel) {
     return Scaffold(
       body: Stack(
         children: [
-          /// 🔹 Fullscreen background image
+          /// 🔹 Fullscreen background image (const to prevent rebuilds)
           Positioned.fill(
             child: Image.asset(
               AppAssets.bottomsheet,
@@ -37,153 +52,53 @@ class CommentView extends BaseView<CommentViewModel> {
             child: Column(
               children: [
                 _buildAppBar(context, viewModel),
+                // Comments list
                 Expanded(
-                  child: Column(
-                    children: [
-          // Comment input area
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(AppDimensions.paddingL),
-              decoration: BoxDecoration(
-                color: AppColors.onPrimary.withOpacity(0.3),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              child: TextField(
-                controller: viewModel.commentController,
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                decoration: const InputDecoration(
-                  hintText: AppStrings.commentHint,
-                  hintStyle: TextStyle(color: AppColors.grey600),
-                  border: InputBorder.none,
-                ),
-                style: const TextStyle(
-                  color: AppColors.white,
-                  fontSize: AppDimensions.textL,
-                ),
-              ),
-            ),
-          ),
-          
-          // Emoji bar
-          Container(
-            height: AppDimensions.buttonHeightXL,
-            padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingM, vertical: AppDimensions.spaceS),
-            decoration: BoxDecoration(
-              color: AppColors.onPrimary.withOpacity(0.3),
-              border: Border(
-                top: BorderSide(color: AppColors.grey700, width: AppDimensions.dividerThickness),
-              ),
-            ),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: viewModel.emojis.length,
-              itemBuilder: (context, index) {
-                return GestureDetector(
-                  onTap: () => viewModel.insertEmoji(viewModel.emojis[index]),
-                  child: Container(
-                    margin: EdgeInsets.only(right: AppDimensions.spaceM),
-                    child: ResponsiveTextWidget(
-                      viewModel.emojis[index],
-                      textType: TextType.body,
-                    ),
+                  child: Consumer<CommentViewModel>(
+                    builder: (context, viewModel, child) {
+                      return _buildCommentsList(context, viewModel);
+                    },
                   ),
-                );
-              },
-            ),
-          ),
-          
-          // Keyboard toolbar
-          // Container(
-          //   height: 50,
-          //   padding: const EdgeInsets.symmetric(horizontal: 16),
-          //   decoration: const BoxDecoration(
-          //     color: AppColors.grey800,
-          //     border: Border(
-          //       top: BorderSide(color: AppColors.grey700, width: 0.5),
-          //     ),
-          //   ),
-          //   child: Row(
-          //     children: [
-          //       _buildToolbarIcon(Icons.grid_on, () {}),
-          //       const SizedBox(width: 16),
-          //       _buildToolbarIcon(Icons.attach_file, () {}),
-          //       const SizedBox(width: 16),
-          //       _buildToolbarText("GIF", () {}),
-          //       const SizedBox(width: 16),
-          //       _buildToolbarIcon(Icons.emoji_emotions, () {}),
-          //       const SizedBox(width: 16),
-          //       _buildToolbarIcon(Icons.photo_library, () {}),
-          //       const SizedBox(width: 16),
-          //       _buildToolbarIcon(Icons.mic, () {}),
-          //     ],
-          //   ),
-          // ),
-          
-          // Bottom input bar
-          // Container(
-          //   height: 60,
-          //   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          //   decoration: const BoxDecoration(
-          //     color: AppColors.grey800,
-          //     border: Border(
-          //       top: BorderSide(color: AppColors.grey700, width: 0.5),
-          //     ),
-          //   ),
-          //   child: Row(
-          //     children: [
-          //       _buildBottomButton("!?123", () {}),
-          //       const SizedBox(width: 8),
-          //       _buildBottomButton("😊", () {}),
-          //       const SizedBox(width: 8),
-          //       Expanded(
-          //         child: Container(
-          //           height: 40,
-          //           padding: const EdgeInsets.symmetric(horizontal: 12),
-          //           decoration: BoxDecoration(
-          //             color: AppColors.grey700,
-          //             borderRadius: BorderRadius.circular(20),
-          //           ),
-          //           child: TextField(
-          //             controller: viewModel.commentController,
-          //             decoration: const InputDecoration(
-          //               hintText: "Type a message...",
-          //               hintStyle: TextStyle(color: AppColors.grey600), color: AppColors.grey600),
-          //               border: InputBorder.none,
-          //             ),
-          //             style: const TextStyle(color: AppColors.white),
-          //           ),
-          //         ),
-          //       ),
-          //       const SizedBox(width: 8),
-          //       _buildBottomButton("@", () {}),
-          //       const SizedBox(width: 8),
-          //       _buildBottomButton("-", () {}),
-          //       const SizedBox(width: 8),
-          //       GestureDetector(
-          //         onTap: viewModel.postComment,
-          //         child: Container(
-          //           width: 40,
-          //           height: 40,
-          //           decoration: const BoxDecoration(
-          //             color: AppColors.accent,
-          //             shape: BoxShape.circle,
-          //           ),
-          //           child: const Icon(
-          //             Icons.arrow_forward,
-          //             color: AppColors.black,
-          //             size: 20,
-          //           ),
-          //         ),
-          //       ),
-          //     ],
-          //   ),
-          // ),
+                ),
+                // Comment input area
+                Container(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.3,
+                  ),
+                  margin: EdgeInsets.only(top: AppDimensions.spaceM),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Comment input field
+                      Flexible(
+                        child: Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(AppDimensions.paddingL),
+                          decoration: BoxDecoration(
+                            color: AppColors.onPrimary.withOpacity(0.3),
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(20),
+                              topRight: Radius.circular(20),
+                            ),
+                          ),
+                          child: TextField(
+                            controller: viewModel.commentController,
+                            maxLines: null,
+                            minLines: 1,
+                            textAlignVertical: TextAlignVertical.top,
+                            decoration: const InputDecoration(
+                              hintText: AppStrings.commentHint,
+                              hintStyle: TextStyle(color: AppColors.grey600),
+                              border: InputBorder.none,
+                            ),
+                            style: const TextStyle(
+                              color: AppColors.white,
+                              fontSize: AppDimensions.textL,
+                            ),
+                            // Text change listener in ViewModel handles debounced updates
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -213,24 +128,28 @@ class CommentView extends BaseView<CommentViewModel> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          Container(
-            child: ElevatedButton(
-              onPressed: viewModel.postComment,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
-                foregroundColor: AppColors.black,
-                padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingL, vertical: AppDimensions.spaceS),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+          Selector<CommentViewModel, bool>(
+            selector: (context, viewModel) => viewModel.canPostComment && !viewModel.isLoading,
+            builder: (context, canPost, child) {
+              final viewModel = Provider.of<CommentViewModel>(context, listen: false);
+              return ElevatedButton(
+                onPressed: canPost ? viewModel.postComment : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: AppColors.black,
+                  padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingL, vertical: AppDimensions.spaceS),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
-              ),
-              child: const ResponsiveTextWidget(
-                AppStrings.post,
-                textType: TextType.caption,
-                fontWeight: FontWeight.bold,
-              ),
-              ),
-            ),
+                child: const ResponsiveTextWidget(
+                  AppStrings.post,
+                  textType: TextType.caption,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -273,6 +192,496 @@ class CommentView extends BaseView<CommentViewModel> {
           textType: TextType.body,
           color: AppColors.white,
         ),
+      ),
+    );
+  }
+
+  Widget _buildCommentsList(BuildContext context, CommentViewModel viewModel) {
+    if (viewModel.isLoading && viewModel.comments.isEmpty) {
+      return const LoadingWidget(message: 'Loading comments...');
+    }
+
+    if (viewModel.comments.isEmpty && !viewModel.isLoading) {
+      return Center(
+        child: ResponsiveTextWidget(
+          'No comments yet. Be the first to comment!',
+          textType: TextType.body,
+          color: AppColors.white,
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: viewModel.scrollController, // Add scroll controller
+      padding: EdgeInsets.only(
+        left: AppDimensions.paddingM,
+        right: AppDimensions.paddingM,
+        top: AppDimensions.paddingM,
+        bottom: AppDimensions.paddingXL, // Extra bottom padding to prevent overlap with input area
+      ),
+      itemCount: viewModel.comments.length + 1, // Always add 1 for load more button or "no more comments" message
+      itemBuilder: (context, index) {
+        // Show load more button or "no more comments" message at the end
+        if (index == viewModel.comments.length) {
+          return _buildLoadMoreButton(context, viewModel);
+        }
+
+        final comment = viewModel.comments[index];
+        return _buildCommentItem(context, comment);
+      },
+    );
+  }
+
+  Widget _buildLoadMoreButton(BuildContext context, CommentViewModel viewModel) {
+    // Show "No more comments" message if we've loaded all comments
+    if (!viewModel.hasMoreComments && !viewModel.isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: AppDimensions.paddingL,
+        ),
+        child: Center(
+          child: ResponsiveTextWidget(
+            'No more comments available',
+            textType: TextType.body,
+            color: AppColors.white,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    // Show loading indicator while loading more
+    if (viewModel.isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: AppDimensions.paddingL,
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: AppColors.accent,
+          ),
+        ),
+      );
+    }
+
+    // Show "Load More" button if there are more comments
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingM,
+        vertical: AppDimensions.paddingL,
+      ),
+      child: Center(
+        child: ElevatedButton(
+          onPressed: viewModel.loadMoreComments,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: AppColors.black,
+            padding: EdgeInsets.symmetric(
+              horizontal: AppDimensions.paddingXL,
+              vertical: AppDimensions.paddingM,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+            ),
+            elevation: 4,
+          ),
+          child: ResponsiveTextWidget(
+            'Load More',
+            textType: TextType.body,
+            fontWeight: FontWeight.bold,
+            color: AppColors.black,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentItem(BuildContext context, CommentModel comment, {Key? key}) {
+    // Use RepaintBoundary to isolate repaints and improve performance
+    return RepaintBoundary(
+      key: key, // Use key for better Flutter diffing
+      child: Consumer<CommentViewModel>(
+        builder: (context, viewModel, child) {
+          final replies = viewModel.getReplies(comment.commentId ?? '');
+          final isExpanded = viewModel.areRepliesExpanded(comment.commentId ?? '');
+          final replyCount = viewModel.getReplyCount(comment.commentId ?? '');
+          final isReplying = viewModel.isReplyingTo(comment.commentId);
+          
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Main comment
+              Container(
+                margin: EdgeInsets.only(bottom: AppDimensions.spaceS),
+      padding: EdgeInsets.all(AppDimensions.paddingM),
+      decoration: BoxDecoration(
+        color: AppColors.onPrimary.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Profile picture
+          _buildCommentProfileAvatar(comment),
+          const SizedBox(width: AppDimensions.spaceM),
+          // Comment content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    ResponsiveTextWidget(
+                      comment.username,
+                      textType: TextType.body,
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    const SizedBox(width: AppDimensions.spaceS),
+                    ResponsiveTextWidget(
+                      comment.timeAgo,
+                      textType: TextType.caption,
+                      color: AppColors.grey600,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppDimensions.spaceXS),
+                ResponsiveTextWidget(
+                  comment.content,
+                  textType: TextType.body,
+                  color: AppColors.white,
+                ),
+              ],
+            ),
+          ),
+        ],
+                    ),
+                    const SizedBox(height: AppDimensions.spaceS),
+                    // Reply button and reply count
+                    Row(
+                      children: [
+                        // Reply button
+                        GestureDetector(
+                          onTap: () {
+                            if (isReplying) {
+                              viewModel.cancelReplying();
+                            } else {
+                              viewModel.startReplying(comment.commentId ?? '');
+                            }
+                          },
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: AppDimensions.paddingM,
+                              vertical: AppDimensions.spaceXS,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isReplying 
+                                  ? AppColors.accent.withOpacity(0.3)
+                                  : AppColors.onPrimary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.reply,
+                                  size: 16,
+                                  color: isReplying ? AppColors.accent : AppColors.white,
+                                ),
+                                const SizedBox(width: AppDimensions.spaceXS),
+                                ResponsiveTextWidget(
+                                  isReplying ? 'Cancel' : 'Reply',
+                                  textType: TextType.caption,
+                                  color: isReplying ? AppColors.accent : AppColors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Reply count and toggle
+                        if (replyCount > 0) ...[
+                          const SizedBox(width: AppDimensions.spaceM),
+                          GestureDetector(
+                            onTap: () => viewModel.toggleReplies(comment.commentId ?? ''),
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: AppDimensions.paddingM,
+                                vertical: AppDimensions.spaceXS,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.onPrimary.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ResponsiveTextWidget(
+                                    '$replyCount ${replyCount == 1 ? 'reply' : 'replies'}',
+                                    textType: TextType.caption,
+                                    color: AppColors.white,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  const SizedBox(width: AppDimensions.spaceXS),
+                                  Icon(
+                                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                                    size: 16,
+                                    color: AppColors.white,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Reply input field (when replying)
+              if (isReplying)
+                _buildReplyInput(context, viewModel, comment.commentId ?? ''),
+              
+              // Replies list (nested/threaded view)
+              if (isExpanded && replies.isNotEmpty)
+                _buildRepliesList(context, viewModel, comment.commentId ?? '', replies),
+            ],
+          );
+        },
+      ),
+    );
+  }
+  
+  /// Build reply input field
+  Widget _buildReplyInput(BuildContext context, CommentViewModel viewModel, String parentCommentId) {
+    return Container(
+      margin: EdgeInsets.only(
+        left: AppDimensions.paddingXL, // Indent to show it's a reply
+        bottom: AppDimensions.spaceM,
+      ),
+      padding: EdgeInsets.all(AppDimensions.paddingM),
+      decoration: BoxDecoration(
+        color: AppColors.onPrimary.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+        border: Border.all(
+          color: AppColors.accent.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: viewModel.replyController,
+            maxLines: 3,
+            minLines: 1,
+            textAlignVertical: TextAlignVertical.top,
+            decoration: InputDecoration(
+              hintText: 'Write a reply...',
+              hintStyle: const TextStyle(color: AppColors.grey600),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            style: const TextStyle(
+              color: AppColors.white,
+              fontSize: AppDimensions.textM,
+            ),
+            onChanged: (_) => viewModel.notifyListeners(),
+          ),
+          const SizedBox(height: AppDimensions.spaceS),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => viewModel.cancelReplying(),
+                child: const ResponsiveTextWidget(
+                  'Cancel',
+                  textType: TextType.caption,
+                  color: AppColors.grey600,
+                ),
+              ),
+              const SizedBox(width: AppDimensions.spaceS),
+              Selector<CommentViewModel, bool>(
+                selector: (context, vm) => vm.canPostReply(),
+                builder: (context, canPost, child) {
+                  return ElevatedButton(
+                    onPressed: canPost
+                        ? () => viewModel.postReply(parentCommentId)
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: AppColors.black,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: AppDimensions.paddingM,
+                        vertical: AppDimensions.spaceXS,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                      ),
+                    ),
+                    child: const ResponsiveTextWidget(
+                      'Reply',
+                      textType: TextType.caption,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Build replies list (nested/threaded view like group chat)
+  Widget _buildRepliesList(
+    BuildContext context,
+    CommentViewModel viewModel,
+    String parentCommentId,
+    List<CommentModel> replies,
+  ) {
+    return Container(
+      margin: EdgeInsets.only(
+        left: AppDimensions.paddingXL, // Indent to show nesting
+        bottom: AppDimensions.spaceM,
+      ),
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(
+            color: AppColors.accent.withOpacity(0.3),
+            width: 2,
+          ),
+        ),
+      ),
+      child: Column(
+        children: replies.map((reply) {
+          return Container(
+            margin: EdgeInsets.only(
+              left: AppDimensions.paddingM,
+              bottom: AppDimensions.spaceS,
+            ),
+            padding: EdgeInsets.all(AppDimensions.paddingM),
+            decoration: BoxDecoration(
+              color: AppColors.onPrimary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Smaller avatar for replies
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: AppColors.primary,
+                  child: ClipOval(
+                    child: reply.userPhotoUrl != null && reply.userPhotoUrl!.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: reply.userPhotoUrl!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            placeholder: (context, url) => const Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: AppColors.accent,
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Image.asset(
+                              AppAssets.profile,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                            ),
+                          )
+                        : Image.asset(
+                            AppAssets.profile,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                          ),
+                  ),
+                ),
+                const SizedBox(width: AppDimensions.spaceS),
+                // Reply content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          ResponsiveTextWidget(
+                            reply.username,
+                            textType: TextType.caption,
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          const SizedBox(width: AppDimensions.spaceXS),
+                          ResponsiveTextWidget(
+                            reply.timeAgo,
+                            textType: TextType.caption,
+                            color: AppColors.grey600,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppDimensions.spaceXS / 2),
+                      ResponsiveTextWidget(
+                        reply.content,
+                        textType: TextType.body,
+                        color: AppColors.white,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// Build profile avatar for comment with network image and asset fallback
+  /// Uses CachedNetworkImage for better performance and caching
+  Widget _buildCommentProfileAvatar(CommentModel comment) {
+    return CircleAvatar(
+      radius: 20,
+      backgroundColor: AppColors.primary,
+      child: ClipOval(
+        child: comment.userPhotoUrl != null && comment.userPhotoUrl!.isNotEmpty
+            ? CachedNetworkImage(
+                imageUrl: comment.userPhotoUrl!,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                placeholder: (context, url) => const Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.accent,
+                  ),
+                ),
+                errorWidget: (context, url, error) {
+                  // Fallback to asset image if network image fails
+                  return Image.asset(
+                    AppAssets.profile,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                  );
+                },
+              )
+            : Image.asset(
+                AppAssets.profile,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+              ),
       ),
     );
   }

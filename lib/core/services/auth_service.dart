@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -6,6 +7,9 @@ import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../exceptions/app_exception.dart';
+import '../exceptions/exception_mapper.dart';
+import 'error_handler_service.dart';
 
 /// Auth result class for handling authentication responses
 class AuthResult {
@@ -28,6 +32,7 @@ class AuthService {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final ErrorHandlerService _errorHandler = ErrorHandlerService();
 
   /// Current user stream
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -61,8 +66,9 @@ class AuthService {
 
       // Sign in to Firebase with the Google credential
       return await _auth.signInWithCredential(credential);
-    } catch (e) {
-      print('Google Sign-In Error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithGoogle');
       rethrow;
     }
   }
@@ -89,8 +95,9 @@ class AuthService {
 
       final userCredential = await _auth.signInWithCredential(oauthCredential);
       return userCredential;
-    } catch (e) {
-      print("Apple Sign-In Error: $e");
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithApple');
       return null;
     }
   }
@@ -99,8 +106,9 @@ class AuthService {
   Future<void> signOut() async {
     try {
       await Future.wait([_auth.signOut(), _googleSignIn.signOut()]);
-    } catch (e) {
-      print('Sign out error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.signOut');
       rethrow;
     }
   }
@@ -165,8 +173,9 @@ class AuthService {
       await userCredential.user?.sendEmailVerification();
 
       return userCredential;
-    } catch (e) {
-      print('Email Sign-Up Error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.signUpWithEmail');
       rethrow;
     }
   }
@@ -181,8 +190,9 @@ class AuthService {
         email: email,
         password: password,
       );
-    } catch (e) {
-      print('Email Sign-In Error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithEmail');
       rethrow;
     }
   }
@@ -191,9 +201,54 @@ class AuthService {
   Future<void> sendEmailVerification() async {
     try {
       await currentUser?.sendEmailVerification();
-    } catch (e) {
-      print('Send email verification error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.sendEmailVerification');
       rethrow;
+    }
+  }
+
+  /// Check if email is already registered
+  /// Returns true if email is available
+  /// Throws AppException (mapped by ExceptionMapper) if email is already taken or there's an error
+  /// 
+  /// Note: This method attempts to create a temporary user to check availability.
+  /// If the email is available, the temporary user is immediately deleted.
+  /// If the email is already taken, it throws an exception that will be handled by the global error handler.
+  Future<bool> checkEmailAvailability(String email) async {
+    // Try to create a temporary user with a random password to check if email exists
+    // We'll delete the user immediately if creation succeeds
+    final tempPassword = 'TempCheck${DateTime.now().millisecondsSinceEpoch}';
+    
+    try {
+      final userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: tempPassword,
+      );
+      
+      // If we get here, email is available - delete the temporary user
+      if (userCredential.user != null) {
+        await userCredential.user!.delete();
+      }
+      
+      // Email is available
+      return true;
+    } on FirebaseAuthException catch (e) {
+      // If email is already in use, map it to AuthException using ExceptionMapper
+      if (e.code == 'email-already-in-use') {
+        // Use ExceptionMapper to get the proper exception type
+        final exception = ExceptionMapper.mapToAppException(e);
+        throw exception;
+      }
+      
+      // For other Firebase errors, let ExceptionMapper handle them
+      final exception = ExceptionMapper.mapToAppException(e);
+      throw exception;
+    } catch (e, stackTrace) {
+      // Let ExceptionMapper handle all other exceptions (network, timeout, etc.)
+      // This will be caught by handleAsync in the ViewModel and handled centrally
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      throw exception;
     }
   }
 
@@ -201,8 +256,9 @@ class AuthService {
   Future<void> reloadUser() async {
     try {
       await currentUser?.reload();
-    } catch (e) {
-      print('Reload user error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.reloadUser');
       rethrow;
     }
   }
@@ -212,29 +268,11 @@ class AuthService {
     try {
       await _auth.sendPasswordResetEmail(email: email);
       return AuthResult.success();
-    } catch (e) {
-      print('Password reset email error: $e');
-      return AuthResult.failure(_getPasswordResetErrorMessage(e));
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.sendPasswordResetEmail');
+      return AuthResult.failure(exception.message);
     }
-  }
-
-  /// Get user-friendly error message for password reset
-  String _getPasswordResetErrorMessage(dynamic error) {
-    if (error is FirebaseAuthException) {
-      switch (error.code) {
-        case 'user-not-found':
-          return 'No account found with this email address.';
-        case 'invalid-email':
-          return 'Please enter a valid email address.';
-        case 'too-many-requests':
-          return 'Too many requests. Please try again later.';
-        case 'network-request-failed':
-          return 'Network error. Please check your connection.';
-        default:
-          return 'Failed to send password reset email. Please try again.';
-      }
-    }
-    return 'An unexpected error occurred. Please try again.';
   }
 
   /// Sign in with phone number
@@ -255,9 +293,10 @@ class AuthService {
         timeout: const Duration(seconds: 60),
       );
       return AuthResult.success();
-    } catch (e) {
-      print('Phone Sign-In Error: $e');
-      return AuthResult.failure(e.toString());
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithPhone');
+      return AuthResult.failure(exception.message);
     }
   }
 
@@ -274,9 +313,10 @@ class AuthService {
 
       await _auth.signInWithCredential(credential);
       return AuthResult.success();
-    } catch (e) {
-      print('Phone Verification Error: $e');
-      return AuthResult.failure(e.toString());
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.verifyPhoneNumber');
+      return AuthResult.failure(exception.message);
     }
   }
 
@@ -285,8 +325,9 @@ class AuthService {
     try {
       await currentUser?.updateDisplayName(displayName);
       await reloadUser();
-    } catch (e) {
-      print('Update display name error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.updateDisplayName');
       rethrow;
     }
   }
@@ -307,8 +348,9 @@ class AuthService {
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
       return downloadUrl;
-    } catch (e) {
-      print('Upload profile photo error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.uploadProfilePhoto');
       rethrow;
     }
   }
@@ -318,8 +360,9 @@ class AuthService {
     try {
       await currentUser?.updatePhotoURL(photoUrl);
       await reloadUser();
-    } catch (e) {
-      print('Update profile photo error: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.updateProfilePhoto');
       rethrow;
     }
   }

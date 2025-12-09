@@ -130,7 +130,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
               iconColor: AppColors.red,
               title: AppStrings.logout,
               titleColor: AppColors.red,
-              onTap: viewModel.logout,
+              onTap: () => _showLogoutConfirmation(context, viewModel),
             ),
 
             const SizedBox(height: AppDimensions.paddingL),
@@ -363,5 +363,59 @@ class SettingsView extends BaseView<SettingsViewModel> {
     );
   }
 
+  /// Show logout confirmation dialog
+  void _showLogoutConfirmation(BuildContext context, SettingsViewModel viewModel) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.4),
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          ),
+          backgroundColor: AppColors.primary,
+          title: const ResponsiveTextWidget(
+            'Confirm Logout',
+            textType: TextType.heading,
+            fontWeight: FontWeight.bold,
+            fontSize: AppDimensions.textL,
+            color: AppColors.onPrimary,
+          ),
+          content: const ResponsiveTextWidget(
+            'Are you sure you want to logout?',
+            textType: TextType.body,
+            fontSize: AppDimensions.textM,
+            color: AppColors.grey600,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const ResponsiveTextWidget(
+                'Cancel',
+                textType: TextType.body,
+                fontSize: AppDimensions.textM,
+                fontWeight: FontWeight.w600,
+                color: AppColors.grey600,
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                viewModel.logout();
+              },
+              child: const ResponsiveTextWidget(
+                AppStrings.confirm,
+                textType: TextType.body,
+                fontSize: AppDimensions.textM,
+                fontWeight: FontWeight.bold,
+                color: AppColors.red,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
 }

@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 class SmoothPageRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
 
-  SmoothPageRoute({required this.page})
-      : super(
+  SmoothPageRoute({
+    required this.page,
+    RouteSettings? settings,
+  }) : super(
     pageBuilder: (context, animation, secondaryAnimation) => page,
+    settings: settings,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       // Use a smooth curve
       var curve = Curves.easeInOut;

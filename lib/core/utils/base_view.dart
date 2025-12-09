@@ -42,6 +42,8 @@ abstract class BaseView<T extends BaseViewModel> extends StatefulWidget {
 
 class _BaseViewState<T extends BaseViewModel> extends State<BaseView<T>> {
   late T _viewModel;
+  bool _isHandlingError = false; // Prevent infinite loop
+  String? _lastHandledError; // Track last handled error to prevent duplicates
 
   @override
   void initState() {
@@ -59,12 +61,36 @@ class _BaseViewState<T extends BaseViewModel> extends State<BaseView<T>> {
   }
 
   void _onViewModelChanged() {
+    // Prevent infinite loop - if we're already handling an error, don't process again
+    if (_isHandlingError) return;
+
     // Handle errors
     if (_viewModel.errorMessage != null && mounted) {
-      widget.onError(context, _viewModel.errorMessage!);
+      final errorMessage = _viewModel.errorMessage!;
+      
+      // Prevent handling the same error multiple times
+      if (errorMessage == _lastHandledError) return;
+      
+      _isHandlingError = true; // Set flag to prevent recursion
+      _lastHandledError = errorMessage;
+      
+      widget.onError(context, errorMessage);
 
-      // 🔹 clear the error after handling so it doesn’t repeat
-      _viewModel.clearError();
+      // Clear the error after handling - use microtask to break synchronous call chain
+      // This prevents the infinite loop by deferring clearError() to next event loop
+      Future.microtask(() {
+        if (mounted && !_viewModel.isDisposed) {
+          // Temporarily remove listener to prevent recursion
+          _viewModel.removeListener(_onViewModelChanged);
+          // Clear error silently without triggering listeners
+          _viewModel.clearErrorSilently();
+          // Re-add listener after clearing
+          _viewModel.addListener(_onViewModelChanged);
+        }
+        _isHandlingError = false; // Reset flag
+        _lastHandledError = null; // Reset last handled error
+      });
+      return; // Exit early to prevent further processing
     }
 
     // 🔹 listen for busy state (loading spinner support)

@@ -181,10 +181,8 @@ class SignupView extends BaseView<SignupViewModel> {
             onChanged: (value) {
               viewModel.validatePhone();
               // Clear error when user starts typing
-              if (viewModel.phoneNumberError != null) {
-                viewModel.phoneNumberError = null;
-                viewModel.notifyListeners();
-              }
+              // Note: validatePhone() already calls notifyListeners() if needed
+              // No need to call notifyListeners() again here
             },
             onSubmitted: (_) => viewModel.goToOtp(),
           ),

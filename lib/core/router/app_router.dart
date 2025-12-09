@@ -37,8 +37,8 @@ import '../../ui/views/posts/posts_view.dart';
 import '../../ui/views/chat/create_chat_room_view.dart';
 import '../../ui/views/rumors/rumors_view.dart';
 import '../../ui/views/test/firebase_test_view.dart';
-import '../../ui/views/email_verification/email_verification_view.dart';
 import '../../ui/views/create_post/create_post_view.dart';
+import '../../ui/views/homeview/post_model.dart';
 import '../utils/transition.dart';
 
 class AppRoutes {
@@ -77,7 +77,6 @@ class AppRoutes {
   static const String rumors = '/rumors';
   static const String jobpost = '/jobpost';
   static const String firebaseTest = '/firebase_test';
-  static const String emailVerification = '/email_verification';
   static const String photoUpload = '/photo_upload';
   static const String viewAll = '/view_all';
   static const String forgotpassword = '/forgot_password';
@@ -109,7 +108,7 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const FestivalView());
 
     case AppRoutes.otp:
-      return SmoothPageRoute(page: const OtpView());
+      return SmoothPageRoute(page:  OtpView());
 
     case AppRoutes.interest:
       return SmoothPageRoute(page: const InterestsView());
@@ -142,7 +141,25 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const LeaderboardView());
 
     case AppRoutes.comments:
-      return SmoothPageRoute(page: const CommentView());
+      // Arguments can be PostModel or Map with 'post' and 'collectionName'
+      dynamic args = settings.arguments;
+      PostModel? post;
+      String? collectionName;
+      
+      if (args is Map) {
+        post = args['post'] as PostModel?;
+        collectionName = args['collectionName'] as String?;
+      } else {
+        post = args as PostModel?;
+      }
+      
+      return SmoothPageRoute(
+        page: CommentView(post: post, collectionName: collectionName),
+        settings: RouteSettings(
+          name: AppRoutes.comments,
+          arguments: collectionName, // Pass collection name for CommentViewModel
+        ),
+      );
 
     case AppRoutes.discover:
       return SmoothPageRoute(page: const DiscoverView());
@@ -172,7 +189,15 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const DetailView());
 
     case AppRoutes.chatRoom:
-      return SmoothPageRoute(page: const ChatView());
+      // Arguments can be chat room ID (String)
+      final chatRoomId = settings.arguments as String?;
+      return SmoothPageRoute(
+        page: const ChatView(),
+        settings: RouteSettings(
+          name: AppRoutes.chatRoom,
+          arguments: chatRoomId, // Pass chat room ID to ChatView
+        ),
+      );
 
     case AppRoutes.createChatRoom:
       return SmoothPageRoute(page: const CreateChatRoomView());
@@ -195,9 +220,6 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
     case AppRoutes.firebaseTest:
       return SmoothPageRoute(page: const FirebaseTestView());
 
-    case AppRoutes.emailVerification:
-      return SmoothPageRoute(page: const EmailVerificationView());
-
     case AppRoutes.photoUpload:
       return SmoothPageRoute(page: const UploadPhotosViews());
 
@@ -209,7 +231,21 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: ViewAllView(initialTab: initialTab));
 
     case AppRoutes.createPost:
-      return SmoothPageRoute(page: const CreatePostView());
+      // Arguments can be collection name (String) when called from rumors context
+      final collectionName = settings.arguments as String?;
+      final view = CreatePostView();
+      // Initialize viewModel with collection name if provided
+      if (collectionName != null) {
+        // The viewModel will be initialized in the view's onViewModelReady
+        // We'll pass it through a custom route or handle it in the view
+      }
+      return SmoothPageRoute(
+        page: view,
+        settings: RouteSettings(
+          name: AppRoutes.createPost,
+          arguments: collectionName, // Pass collection name as arguments
+        ),
+      );
 
     default:
       return MaterialPageRoute(

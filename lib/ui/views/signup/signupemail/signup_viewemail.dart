@@ -19,25 +19,48 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
   @override
   SignupViewEmailModel createViewModel() => SignupViewEmailModel();
 
+  /// Override onError to prevent automatic snackbar (we handle errors manually)
+  @override
+  void onError(BuildContext context, String error) {
+    // Don't show automatic snackbar - we handle errors manually in buildView
+    // This prevents duplicate snackbars
+  }
+
   @override
   Widget buildView(BuildContext context, SignupViewEmailModel viewModel) {
+    // Show snackbar for Firebase exceptions and other errors
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final error = viewModel.emailError;
-      if (error != null &&
-          (error.contains('Failed to create account') ||
-              error.contains('An unexpected error'))) {
+      final snackbarError = viewModel.snackbarError;
+      if (snackbarError != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error),
-            backgroundColor: AppColors.accent,
-            duration: const Duration(seconds: 3),
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    snackbarError,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
             action: SnackBarAction(
               label: 'Dismiss',
-              textColor: AppColors.onPrimary,
-              onPressed: ScaffoldMessenger.of(context).hideCurrentSnackBar,
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                viewModel.clearSnackbarError();
+              },
             ),
           ),
         );
+        // Clear the error after showing
+        viewModel.clearSnackbarError();
       }
     });
 

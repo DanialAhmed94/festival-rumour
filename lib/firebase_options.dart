@@ -35,21 +35,21 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCESPbEY1pO4RLAyegbU-Ni6VXCzxp4pQU',
-    appId: '1:932830993877:android:7675c9053f9f315604315c',
-    messagingSenderId: '932830993877',
-    projectId: 'festivalrumour',
-    storageBucket: 'festivalrumour.firebasestorage.app',
+    apiKey: 'AIzaSyBTR8ZK1TfP5OPSJnJf6l-pDs9AVeiJGLA',
+    appId: '1:7789770188:android:bbce140cd9a8cc1011d969',
+    messagingSenderId: '7789770188',
+    projectId: 'crapapps-65472',
+    storageBucket: 'crapapps-65472.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyD8njqRuhAa_nOVvBvKDkjFGk8NBK5EJU0',
-    appId: '1:932830993877:ios:305435e5f88179e504315c',
-    messagingSenderId: '932830993877',
-    projectId: 'festivalrumour',
-    storageBucket: 'festivalrumour.firebasestorage.app',
-    androidClientId: '932830993877-dm1lc8rlrsrtvoh9q40jmfj0eoogmjca.apps.googleusercontent.com',
-    iosClientId: '932830993877-tfusqfrjp61dges3a1mhg9k618l0n20m.apps.googleusercontent.com',
+    apiKey: 'AIzaSyAZUt1KgBm_OX5apwmO9zK3he4yaXQ7EHA',
+    appId: '1:7789770188:ios:77b629d9d170379111d969',
+    messagingSenderId: '7789770188',
+    projectId: 'crapapps-65472',
+    storageBucket: 'crapapps-65472.firebasestorage.app',
+    androidClientId: '7789770188-han56qlb8qebe48f75kdircbin698ulb.apps.googleusercontent.com',
+    iosClientId: '7789770188-8taofl6kk6vouqqga3icvstrm81g8354.apps.googleusercontent.com',
     iosBundleId: 'com.festival.rumour',
   );
 

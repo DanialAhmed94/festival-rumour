@@ -5,12 +5,14 @@ import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/signup_data_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/constants/app_strings.dart';
 
 class NameViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final AuthService _authService = AuthService();
+  final SignupDataService _signupDataService = SignupDataService();
 
   String _firstName = "";
   String get firstName => _firstName;
@@ -81,18 +83,22 @@ class NameViewModel extends BaseViewModel {
     unfocusName();
 
     await handleAsync(() async {
-      // Save name to Firebase user profile
-      await _authService.updateDisplayName(_firstName.trim());
+      // Store name in signup data service (don't create Firebase user yet)
+      _signupDataService.setDisplayName(_firstName.trim());
+      
+      if (kDebugMode) {
+        print('👤 [SIGNUP] Name screen completed');
+        print('   Current Route: ${AppRoutes.name}');
+        print('   Display Name: ${_firstName.trim()}');
+        print('   Next Route: ${AppRoutes.uploadphotos}');
+      }
       
       await Future.delayed(AppDurations.buttonLoadingDuration);
+      
+      // Show welcome dialog - navigation will happen from dialog
       _showWelcome = true;
       notifyListeners();
-
-              await Future.delayed(AppDurations.buttonLoadingDuration);
-              
-              // Navigate to photo upload after name is saved
-              _navigationService.navigateTo(AppRoutes.photoUpload);
-            }, errorMessage: AppStrings.saveNameError);
+    }, errorMessage: AppStrings.saveNameError);
   }
 
   void onEditName() {
@@ -102,7 +108,14 @@ class NameViewModel extends BaseViewModel {
 
   Future<void> continueToNext() async {
     await handleAsync(() async {
-      _navigationService.navigateTo(AppRoutes.uploadphotos);
+      if (kDebugMode) {
+        print('👤 [SIGNUP] Name screen - continuing to next');
+        print('   Current Route: ${AppRoutes.name}');
+        print('   Navigating to: ${AppRoutes.photoUpload}');
+      }
+      
+      // Navigate to profile image upload screen
+      _navigationService.navigateTo(AppRoutes.photoUpload);
     }, errorMessage: AppStrings.continueError);
   }
 

@@ -21,7 +21,18 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
   CreatePostViewModel createViewModel() => CreatePostViewModel();
 
   @override
+  void onViewModelReady(CreatePostViewModel viewModel) {
+    super.onViewModelReady(viewModel);
+  }
+
+  @override
   Widget buildView(BuildContext context, CreatePostViewModel viewModel) {
+    // Get collection name from navigation arguments if provided (from rumors context)
+    final route = ModalRoute.of(context);
+    final collectionName = route?.settings.arguments as String?;
+    if (collectionName != null && viewModel.collectionName == null) {
+      viewModel.initialize(collectionName);
+    }
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,

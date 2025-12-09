@@ -1,6 +1,10 @@
+import 'package:flutter/foundation.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/navigation_service.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/storage_service.dart';
+import '../../../core/constants/app_strings.dart';
 import '../../../core/di/locator.dart';
 
 class SettingsViewModel extends BaseViewModel {
@@ -8,8 +12,10 @@ class SettingsViewModel extends BaseViewModel {
   bool notifications = true;
   bool privacy = false;
 
-  /// 🔹 Navigation service
+  /// 🔹 Services
   final NavigationService _navigationService = locator<NavigationService>();
+  final AuthService _authService = locator<AuthService>();
+  final StorageService _storageService = locator<StorageService>();
 
   /// 🔹 Toggle methods
   void toggleNotifications(bool value) {
@@ -56,15 +62,45 @@ class SettingsViewModel extends BaseViewModel {
     // TODO: Navigate to Terms & Conditions page
   }
 
-  void logout() {
-    _navigationService.navigateTo(
-      AppRoutes.welcome,
-      arguments: null,
-      // Replace all routes before navigating
-    );
+  /// Logout user with proper error handling
+  Future<void> logout() async {
+    await handleAsync(() async {
+      if (kDebugMode) {
+        print('🚪 [Settings] Starting logout process...');
+      }
 
-    // Ensure all previous routes are removed
-    _navigationService.popUntil((route) => route.isFirst);
+      try {
+        // Sign out from Firebase (handles both Firebase Auth and Google Sign In)
+        await _authService.signOut();
+        
+        if (kDebugMode) {
+          print('✅ [Settings] Firebase sign out successful');
+        }
+
+        // Clear local storage (logged in state, user ID, etc.)
+        await _storageService.clearAll();
+        
+        if (kDebugMode) {
+          print('✅ [Settings] Storage cleared successfully');
+        }
+
+        // Navigate to welcome screen and clear navigation stack
+        // This removes all previous routes from the stack
+        await _navigationService.navigateToLogin();
+
+        if (kDebugMode) {
+          print('✅ [Settings] Logout completed successfully');
+        }
+      } catch (e, stackTrace) {
+        // Error is already handled by AuthService.signOut() using global error handler
+        // But we still need to handle navigation failure separately
+        if (kDebugMode) {
+          print('❌ [Settings] Error during logout: $e');
+        }
+        // Re-throw to let handleAsync show error message to user
+        rethrow;
+      }
+    }, errorMessage: 'Failed to logout. Please try again.');
   }
 
   void goToSubscription() {

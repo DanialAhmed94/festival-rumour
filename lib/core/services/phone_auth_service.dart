@@ -13,10 +13,19 @@ class PhoneAuthService {
 
   void setPhoneData(String phoneNumber, String verificationId) {
     _phoneNumber = phoneNumber;
-    _verificationId = verificationId;
+    // Store verification ID - empty string is allowed initially (before code is sent)
+    // but should be replaced with actual ID when codeSent callback fires
+    _verificationId = verificationId.isEmpty ? null : verificationId;
     
     if (kDebugMode) {
-      print('Phone data stored: $phoneNumber, $verificationId');
+      print('📞 [PhoneAuthService] Phone data stored');
+      print('   Phone Number: $phoneNumber');
+      if (verificationId.isEmpty) {
+        print('   Verification ID: EMPTY (will be set when code is sent)');
+      } else {
+        print('   Verification ID: ${verificationId.length > 20 ? "${verificationId.substring(0, 20)}..." : verificationId}');
+      }
+      print('   Has valid data: ${hasPhoneData}');
     }
   }
 

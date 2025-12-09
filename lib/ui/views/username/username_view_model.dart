@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/constants/app_strings.dart';
@@ -6,6 +7,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_durations.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/services/firebase_auth_service.dart';
+import '../../../core/services/storage_service.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
 
@@ -13,6 +15,7 @@ class UsernameViewModel extends BaseViewModel {
   /// Services
   final FirebaseAuthService _authService = FirebaseAuthService();
   final NavigationService _navigationService = locator<NavigationService>();
+  final StorageService _storageService = locator<StorageService>();
 
   /// Controllers
   final TextEditingController emailController = TextEditingController();
@@ -208,37 +211,55 @@ class UsernameViewModel extends BaseViewModel {
       await Future.delayed(AppDurations.loginLoadingDuration);
 
       // Firebase login validation
-      if (await _performLogin(email, password)) {
-        _showSuccessSnackBar(context, AppStrings.loginSuccess);
-        // Navigate to Home Screen using navigation service
-        _navigationService.navigateTo(AppRoutes.navbaar);
-      } else {
-        _showErrorSnackBar(context, AppStrings.loginFailed);
+      if (kDebugMode) {
+        print('🔐 [LOGIN] Attempting email/password login...');
+        print('   Email: $email');
+        print('   Route: ${AppRoutes.username}');
       }
-    }, 
-    errorMessage: 'Login failed. Please try again.',
-    minimumLoadingDuration: AppDurations.loginLoadingDuration);
-  }
-
-  Future<bool> _performLogin(String email, String password) async {
-    try {
-      // Use Firebase Auth to sign in
+      
       final result = await _authService.signInWithEmail(
         email: email,
         password: password,
       );
 
       if (result.isSuccess) {
-        // User successfully signed in
-        return true;
+        final user = _authService.currentUser;
+        if (kDebugMode) {
+          print('✅ [LOGIN] Email/Password login successful!');
+          print('   User ID: ${user?.uid}');
+          print('   Email: ${user?.email}');
+          print('   Display Name: ${user?.displayName ?? 'N/A'}');
+          print('   Navigating to: ${AppRoutes.festivals}');
+        }
+        
+        // Save login state to storage
+        if (user != null) {
+          await _storageService.setLoggedIn(true, userId: user.uid);
+          if (kDebugMode) {
+            print('✅ [LOGIN] Login state saved to storage');
+          }
+        }
+        
+        _showSuccessSnackBar(context, AppStrings.loginSuccess);
+        // Navigate to Festival Screen using navigation service
+        _navigationService.navigateTo(AppRoutes.festivals);
       } else {
-        // Return false and let the calling method handle the error display
-        return false;
+        if (kDebugMode) {
+          print('❌ [LOGIN] Email/Password login failed!');
+          print('   Error: ${result.errorMessage}');
+        }
+        // Error message is already set by handleAsync from the exception
+        // The error will be displayed via BaseView's onError handler
+        if (result.errorMessage != null) {
+          _showErrorSnackBar(context, result.errorMessage!);
+        }
       }
-    } catch (e) {
-      // Handle unexpected errors
-      return false;
-    }
+    }, 
+    minimumLoadingDuration: AppDurations.loginLoadingDuration,
+    onError: (error) {
+      // Additional error handling if needed
+      _showErrorSnackBar(context, error);
+    });
   }
 
   void _showSuccessSnackBar(BuildContext context, String message) {
@@ -248,7 +269,13 @@ class UsernameViewModel extends BaseViewModel {
           children: [
             const Icon(Icons.check_circle, color: AppColors.success),
             const SizedBox(width: AppDimensions.spaceS),
-            Text(message),
+            Expanded(
+              child: Text(
+                message,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         backgroundColor: AppColors.success.withOpacity(0.1),
@@ -258,19 +285,69 @@ class UsernameViewModel extends BaseViewModel {
   }
 
   void _showErrorSnackBar(BuildContext context, String message) {
+    // Make error message more user-friendly
+    String userFriendlyMessage = _getUserFriendlyErrorMessage(message);
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             const Icon(Icons.error, color: AppColors.error),
             const SizedBox(width: AppDimensions.spaceS),
-            Text(message),
+            Expanded(
+              child: Text(
+                userFriendlyMessage,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         backgroundColor: AppColors.error.withOpacity(0.1),
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  /// Convert technical error messages to user-friendly messages
+  String _getUserFriendlyErrorMessage(String errorMessage) {
+    final lowerMessage = errorMessage.toLowerCase();
+    
+    // Handle invalid credentials
+    if (lowerMessage.contains('invalid-credential') || 
+        lowerMessage.contains('incorrect, malformed or has expired') ||
+        lowerMessage.contains('wrong-password') ||
+        lowerMessage.contains('invalid password')) {
+      return 'Invalid email or password. Please check your credentials and try again.';
+    }
+    
+    // Handle user not found
+    if (lowerMessage.contains('user-not-found') || 
+        lowerMessage.contains('there is no user record')) {
+      return 'No account found with this email. Please sign up first.';
+    }
+    
+    // Handle network errors
+    if (lowerMessage.contains('network') || 
+        lowerMessage.contains('connection') ||
+        lowerMessage.contains('timeout')) {
+      return 'Network error. Please check your internet connection and try again.';
+    }
+    
+    // Handle too many requests
+    if (lowerMessage.contains('too-many-requests') || 
+        lowerMessage.contains('too many attempts')) {
+      return 'Too many login attempts. Please try again later.';
+    }
+    
+    // Handle email not verified
+    if (lowerMessage.contains('email-not-verified') || 
+        lowerMessage.contains('email is not verified')) {
+      return 'Please verify your email address before logging in.';
+    }
+    
+    // Default: return original message if no specific match
+    return errorMessage;
   }
 
   /// ---------------------------

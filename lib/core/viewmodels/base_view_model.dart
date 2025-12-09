@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import '../exceptions/app_exception.dart';
+import '../services/error_handler_service.dart';
 
 /// Base ViewModel class that provides common functionality for all ViewModels
 /// Implements ChangeNotifier for state management
@@ -6,14 +8,20 @@ abstract class BaseViewModel extends ChangeNotifier {
   bool _isLoading = false;
   bool _isDisposed = false;
   String? _errorMessage;
+  AppException? _appException;
   bool _busy = false;
   bool get busy => _busy;
+
+  final ErrorHandlerService _errorHandler = ErrorHandlerService();
 
   /// Current loading state
   bool get isLoading => _isLoading;
 
-  /// Current error message
+  /// Current error message (user-friendly)
   String? get errorMessage => _errorMessage;
+
+  /// Current app exception (for detailed error handling)
+  AppException? get appException => _appException;
 
   /// Check if the ViewModel has been disposed
   bool get isDisposed => _isDisposed;
@@ -31,6 +39,16 @@ abstract class BaseViewModel extends ChangeNotifier {
     if (_isDisposed) return;
     
     _errorMessage = error;
+    _appException = null;
+    notifyListeners();
+  }
+
+  /// Set error from AppException
+  void setErrorFromException(AppException exception) {
+    if (_isDisposed) return;
+    
+    _appException = exception;
+    _errorMessage = exception.message;
     notifyListeners();
   }
 
@@ -39,7 +57,18 @@ abstract class BaseViewModel extends ChangeNotifier {
     if (_isDisposed) return;
     
     _errorMessage = null;
+    _appException = null;
     notifyListeners();
+  }
+
+  /// Clear error message silently without notifying listeners
+  /// Use this to prevent infinite loops when clearing errors from listeners
+  void clearErrorSilently() {
+    if (_isDisposed) return;
+    
+    _errorMessage = null;
+    _appException = null;
+    // Don't call notifyListeners() to prevent recursion
   }
 
   /// Set both loading and error states
@@ -55,13 +84,15 @@ abstract class BaseViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Handle async operations with automatic loading state management
+  /// Handle async operations with automatic loading state management and error handling
   Future<T?> handleAsync<T>(
     Future<T> Function() operation, {
     bool showLoading = true,
     String? errorMessage,
     void Function(String error)? onError,
+    void Function(AppException exception)? onException,
     Duration? minimumLoadingDuration,
+    bool useGlobalErrorHandler = true,
   }) async {
     // Check if ViewModel is disposed before proceeding
     if (_isDisposed) return null;
@@ -88,7 +119,7 @@ abstract class BaseViewModel extends ChangeNotifier {
       
       if (showLoading && !_isDisposed) setLoading(false);
       return result;
-    } catch (e) {
+    } catch (e, stackTrace) {
       // Check if disposed before error handling
       if (_isDisposed) return null;
       
@@ -102,18 +133,34 @@ abstract class BaseViewModel extends ChangeNotifier {
       
       if (showLoading && !_isDisposed) setLoading(false);
       
-      final error = errorMessage ?? e.toString();
-      if (!_isDisposed) {
-        setError(error);
-        
-        if (onError != null) {
-          onError(error);
-        }
+      // Handle error using global error handler
+      AppException appException;
+      if (useGlobalErrorHandler) {
+        appException = _errorHandler.handleError(
+          e,
+          stackTrace,
+          runtimeType.toString(),
+        );
+      } else {
+        // Use custom error message if provided
+        appException = UnknownException(
+          message: errorMessage ?? e.toString(),
+          originalError: e,
+          stackTrace: stackTrace,
+        );
       }
       
-      // Log error in debug mode
-      if (kDebugMode) {
-        print('Error in ${runtimeType}: $error');
+      if (!_isDisposed) {
+        setErrorFromException(appException);
+        
+        // Call custom error handlers
+        if (onException != null) {
+          onException(appException);
+        }
+        
+        if (onError != null) {
+          onError(appException.message);
+        }
       }
       
       return null;

@@ -1,5 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import '../exceptions/app_exception.dart';
+import '../exceptions/exception_mapper.dart';
+import 'error_handler_service.dart';
 
 class FirebaseAuthService {
   static final FirebaseAuthService _instance = FirebaseAuthService._internal();
@@ -7,6 +10,7 @@ class FirebaseAuthService {
   FirebaseAuthService._internal();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final ErrorHandlerService _errorHandler = ErrorHandlerService();
 
   // Check if Firebase is initialized
   bool get isFirebaseInitialized {
@@ -50,11 +54,10 @@ class FirebaseAuthService {
       }
 
       return AuthResult.success(userCredential.user!);
-    } on FirebaseAuthException catch (e) {
-      return AuthResult.failure(_getErrorMessage(e));
-    } catch (e) {
-      if (kDebugMode) print('Unexpected error during sign up: $e');
-      return AuthResult.failure('An unexpected error occurred. Please try again.');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirebaseAuthService.signUpWithEmail');
+      return AuthResult.failure(exception.message);
     }
   }
 
@@ -70,11 +73,10 @@ class FirebaseAuthService {
       );
 
       return AuthResult.success(userCredential.user!);
-    } on FirebaseAuthException catch (e) {
-      return AuthResult.failure(_getErrorMessage(e));
-    } catch (e) {
-      if (kDebugMode) print('Unexpected error during sign in: $e');
-      return AuthResult.failure('An unexpected error occurred. Please try again.');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirebaseAuthService.signInWithEmail');
+      return AuthResult.failure(exception.message);
     }
   }
 
@@ -101,9 +103,10 @@ class FirebaseAuthService {
       );
 
       return AuthResult.success(null); // Phone verification initiated
-    } catch (e) {
-      if (kDebugMode) print('Error during phone verification: $e');
-      return AuthResult.failure('Failed to send verification code. Please try again.');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirebaseAuthService.signInWithPhone');
+      return AuthResult.failure(exception.message);
     }
   }
 
@@ -120,11 +123,10 @@ class FirebaseAuthService {
 
       final UserCredential userCredential = await _auth.signInWithCredential(credential);
       return AuthResult.success(userCredential.user!);
-    } on FirebaseAuthException catch (e) {
-      return AuthResult.failure(_getErrorMessage(e));
-    } catch (e) {
-      if (kDebugMode) print('Unexpected error during phone verification: $e');
-      return AuthResult.failure('An unexpected error occurred. Please try again.');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirebaseAuthService.verifyPhoneNumber');
+      return AuthResult.failure(exception.message);
     }
   }
 
@@ -133,11 +135,10 @@ class FirebaseAuthService {
     try {
       await _auth.sendPasswordResetEmail(email: email);
       return AuthResult.success(null);
-    } on FirebaseAuthException catch (e) {
-      return AuthResult.failure(_getErrorMessage(e));
-    } catch (e) {
-      if (kDebugMode) print('Unexpected error during password reset: $e');
-      return AuthResult.failure('An unexpected error occurred. Please try again.');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirebaseAuthService.sendPasswordResetEmail');
+      return AuthResult.failure(exception.message);
     }
   }
 
@@ -159,11 +160,10 @@ class FirebaseAuthService {
       await user.reload();
 
       return AuthResult.success(user);
-    } on FirebaseAuthException catch (e) {
-      return AuthResult.failure(_getErrorMessage(e));
-    } catch (e) {
-      if (kDebugMode) print('Unexpected error during profile update: $e');
-      return AuthResult.failure('An unexpected error occurred. Please try again.');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirebaseAuthService.updateUserProfile');
+      return AuthResult.failure(exception.message);
     }
   }
 
@@ -171,8 +171,9 @@ class FirebaseAuthService {
   Future<void> signOut() async {
     try {
       await _auth.signOut();
-    } catch (e) {
-      if (kDebugMode) print('Error during sign out: $e');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirebaseAuthService.signOut');
     }
   }
 
@@ -186,45 +187,13 @@ class FirebaseAuthService {
 
       await user.delete();
       return AuthResult.success(null);
-    } on FirebaseAuthException catch (e) {
-      return AuthResult.failure(_getErrorMessage(e));
-    } catch (e) {
-      if (kDebugMode) print('Unexpected error during account deletion: $e');
-      return AuthResult.failure('An unexpected error occurred. Please try again.');
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirebaseAuthService.deleteAccount');
+      return AuthResult.failure(exception.message);
     }
   }
 
-  // Get error message from Firebase Auth Exception
-  String _getErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'user-not-found':
-        return 'No user found with this email address.';
-      case 'wrong-password':
-        return 'Incorrect password. Please try again.';
-      case 'email-already-in-use':
-        return 'An account already exists with this email address.';
-      case 'weak-password':
-        return 'Password is too weak. Please choose a stronger password.';
-      case 'invalid-email':
-        return 'Invalid email address. Please enter a valid email.';
-      case 'user-disabled':
-        return 'This account has been disabled. Please contact support.';
-      case 'too-many-requests':
-        return 'Too many failed attempts. Please try again later.';
-      case 'operation-not-allowed':
-        return 'This sign-in method is not enabled. Please contact support.';
-      case 'invalid-verification-code':
-        return 'Invalid verification code. Please try again.';
-      case 'invalid-verification-id':
-        return 'Invalid verification ID. Please try again.';
-      case 'credential-already-in-use':
-        return 'This credential is already associated with a different account.';
-      case 'requires-recent-login':
-        return 'This operation requires recent authentication. Please sign in again.';
-      default:
-        return e.message ?? 'An authentication error occurred. Please try again.';
-    }
-  }
 }
 
 // Auth result class

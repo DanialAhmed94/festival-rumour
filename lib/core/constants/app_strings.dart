@@ -820,4 +820,7 @@ class AppStrings {
   
   // Apple Login Messages
   static const String appleLoginDevelopment = '🍎 Apple login is under development';
+  
+  // Comment related strings
+  static const String failedToPostComment = 'Failed to post comment. Please try again.';
 }

@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../core/services/auth_service.dart';
 import 'package:share_plus/share_plus.dart';
 
 
 class CreateChatRoomViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
+  final FirestoreService _firestoreService = locator<FirestoreService>();
+  final AuthService _authService = locator<AuthService>();
   final TextEditingController titleController = TextEditingController();
 
   List<Contact> _allContacts = [];
@@ -21,14 +26,9 @@ class CreateChatRoomViewModel extends BaseViewModel {
   // Contact data for UI
   List<Map<String, dynamic>> _festivalContactData = [];
   List<Map<String, dynamic>> _nonFestivalContactData = [];
-
-  // Mock data for festival participants (normally from backend)
-  final Set<String> _festivalParticipants = {
-    AppStrings.robertFox,
-    AppStrings.darrellSteward,
-    AppStrings.ronaldRichards,
-    AppStrings.marvinMcKinney
-  };
+  
+  // Map to store contact phone -> userId mapping
+  Map<String, String> _phoneToUserIdMap = {};
 
   // Mock contacts for fallback/demo mode
   final List<Map<String, dynamic>> _mockContacts = [
@@ -82,12 +82,89 @@ class CreateChatRoomViewModel extends BaseViewModel {
         }
 
         _filterContacts();
+        // Match contacts with Firestore users
+        await _matchContactsWithUsers();
         notifyListeners();
       } else {
         print("❌ Contacts permission denied");
         setError(AppStrings.contactsPermissionDenied);
       }
     }, errorMessage: AppStrings.failedToLoadContacts);
+  }
+
+  /// Match contacts with users in Firestore by phone number
+  Future<void> _matchContactsWithUsers() async {
+    try {
+      // Collect all phone numbers from contacts
+      final phoneNumbers = <String>[];
+      for (final contact in _allContacts) {
+        if (contact.phones.isNotEmpty) {
+          phoneNumbers.add(contact.phones.first.number);
+        }
+      }
+
+      if (phoneNumbers.isEmpty) {
+        if (kDebugMode) {
+          print('⚠️ No phone numbers found in contacts');
+        }
+        // Still update contact data even if no phone numbers
+        _updateContactDataWithUserInfo();
+        return;
+      }
+
+      // Get users by phone numbers from Firestore
+      _phoneToUserIdMap = await _firestoreService.getUsersByPhoneNumbers(phoneNumbers);
+
+      // Update contact data to mark which contacts are app users
+      _updateContactDataWithUserInfo();
+      
+      if (kDebugMode) {
+        print('✅ Matched ${_phoneToUserIdMap.length} contacts with app users');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error matching contacts with users: $e');
+      }
+      // Still update contact data even on error
+      _updateContactDataWithUserInfo();
+    }
+  }
+
+  /// Update contact data to include user info
+  void _updateContactDataWithUserInfo() {
+    // Rebuild contact data with user matching info
+    _festivalContactData.clear();
+    _nonFestivalContactData.clear();
+
+    for (final contact in _allContacts) {
+      final displayName = contact.displayName ?? '';
+      final phoneNumber = contact.phones.isNotEmpty ? contact.phones.first.number : '';
+      
+      // The _phoneToUserIdMap uses original phone numbers as keys
+      // So we can directly look up using the original phone number
+      final userId = _phoneToUserIdMap[phoneNumber];
+      
+      final contactData = {
+        'id': contact.id,
+        'name': displayName,
+        'phone': phoneNumber,
+        'isFestival': userId != null, // Mark as festival user if found in Firestore
+        'userId': userId, // Store userId if matched
+      };
+
+      if (userId != null) {
+        // User is in the app - add to festival contacts
+        _festivalContactData.add(contactData);
+      } else {
+        // User is not in the app - add to non-festival contacts
+        _nonFestivalContactData.add(contactData);
+      }
+    }
+
+    if (kDebugMode) {
+      print('📱 Festival Contacts (app users): ${_festivalContactData.length}');
+      print('📱 Non-Festival Contacts (not in app): ${_nonFestivalContactData.length}');
+    }
   }
 
   /// Create mock contacts if no real contacts available
@@ -105,36 +182,11 @@ class CreateChatRoomViewModel extends BaseViewModel {
   }
 
   /// Separate festival and non-festival contacts
+  /// This is now called before matching with users
   void _filterContacts() {
     _festivalContacts.clear();
     _nonFestivalContacts.clear();
-    _festivalContactData.clear();
-    _nonFestivalContactData.clear();
-
-    for (final contact in _allContacts) {
-      final displayName = contact.displayName ?? '';
-
-      final isFestival = _festivalParticipants.contains(displayName);
-
-      final contactData = {
-        'id': contact.id,
-        'name': displayName,
-        'phone': contact.phones.isNotEmpty ? contact.phones.first.number : '',
-        'isFestival': isFestival,
-      };
-
-      if (isFestival) {
-        _festivalContacts.add(contact);
-        _festivalContactData.add(contactData);
-      } else {
-        _nonFestivalContacts.add(contact);
-        _nonFestivalContactData.add(contactData);
-      }
-    }
-
-    print(
-      "🎉 Festival Contacts: ${_festivalContacts.length}, Non-Festival: ${_nonFestivalContacts.length}",
-    );
+    // Note: Contact data will be updated in _updateContactDataWithUserInfo after matching
   }
 
   void toggleContactSelection(String contactId) {
@@ -150,7 +202,7 @@ class CreateChatRoomViewModel extends BaseViewModel {
     return _selectedContacts.contains(contactId);
   }
 
-  void createChatRoom() {
+  Future<void> createChatRoom() async {
     if (titleController.text.trim().isEmpty) {
       setError(AppStrings.pleaseEnterChatRoomTitle);
       return;
@@ -161,11 +213,65 @@ class CreateChatRoomViewModel extends BaseViewModel {
       return;
     }
 
-    print('${AppStrings.creatingChatRoom}${titleController.text}');
-    print('${AppStrings.selectedContacts}$_selectedContacts');
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) {
+      setError('User not authenticated');
+      return;
+    }
 
-    setError(null);
-    _navigationService.navigateTo(AppRoutes.chatRoom);
+    await handleAsync(() async {
+      final chatRoomName = titleController.text.trim();
+      
+      // Check if a private chat room with the same name already exists
+      final nameExists = await _firestoreService.privateChatRoomNameExists(
+        chatRoomName,
+        currentUser.uid,
+      );
+
+      if (nameExists) {
+        setError('A private chat room with this name already exists. Please choose a different name.');
+        return;
+      }
+
+      // Get selected contact IDs and find their user IDs
+      final selectedMemberIds = <String>[];
+      
+      for (final contactId in _selectedContacts) {
+        // Find contact data
+        final contactData = _festivalContactData.firstWhere(
+          (data) => data['id'] == contactId,
+          orElse: () => {},
+        );
+        
+        final userId = contactData['userId'] as String?;
+        if (userId != null && userId.isNotEmpty) {
+          selectedMemberIds.add(userId);
+        }
+      }
+
+      if (selectedMemberIds.isEmpty) {
+        setError('No app users selected. Please select contacts who are using the app.');
+        return;
+      }
+
+      // Create private chat room in Firestore
+      final chatRoomId = await _firestoreService.createPrivateChatRoom(
+        chatRoomName: chatRoomName,
+        creatorId: currentUser.uid,
+        memberIds: selectedMemberIds,
+      );
+
+      if (kDebugMode) {
+        print('✅ Created private chat room: $chatRoomId');
+        print('   Name: ${titleController.text.trim()}');
+        print('   Members: ${selectedMemberIds.length}');
+      }
+
+      setError(null);
+      
+      // Navigate back to chat room list
+      _navigationService.pop();
+    }, errorMessage: 'Failed to create chat room');
   }
 
   void refreshContacts() {
@@ -176,10 +282,9 @@ class CreateChatRoomViewModel extends BaseViewModel {
       final inviteMessage = '''
 Hey $contactName 👋,
 
-I'm using LunaFest to chat and connect during festivals! 🎉  
+I'm using Festival Rumour to chat and connect during festivals! 🎉  
 Join me here 👉 [https://festivalrumour.com]
 
-See you on LunaFest!
 ''';
 
       await Share.share(

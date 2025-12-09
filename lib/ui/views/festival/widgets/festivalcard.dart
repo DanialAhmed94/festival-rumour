@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_strings.dart';
+import '../../../../core/constants/app_assets.dart';
 import '../festival_model.dart';
 
 
@@ -27,14 +28,54 @@ class FestivalCard extends StatelessWidget {
         aspectRatio: AppDimensions.eventCardAspectRatio,
         child: Stack(
           children: [
-            // Main Event Card
+            // Background Image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
+              child: festival.imagepath.isNotEmpty
+                  ? Image.network(
+                      festival.imagepath,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorBuilder: (context, error, stackTrace) {
+                        // Fallback to asset image if network image fails
+                        return Image.asset(
+                          AppAssets.festivalimage,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) {
+                          return child;
+                        }
+                        // Show loading indicator while image loads
+                        return Container(
+                          color: AppColors.onSurfaceVariant.withOpacity(0.3),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : Image.asset(
+                      AppAssets.festivalimage,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
+            ),
+            // Overlay and Content
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
-                image: DecorationImage(
-                  image: AssetImage(festival.imagepath),
-                  fit: BoxFit.cover,
-                ),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
@@ -47,30 +88,29 @@ class FestivalCard extends StatelessWidget {
                       ),
                     ),
 
-                    // NOW badge
-                    if (festival.isLive)
-                      Positioned(
-                        top: AppDimensions.paddingS,
-                        left: AppDimensions.paddingS,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: AppDimensions.paddingM,
-                              vertical: AppDimensions.paddingXS),
-                          decoration: BoxDecoration(
-                            color: AppColors.nowBadge,
-                            borderRadius:
-                            BorderRadius.circular(AppDimensions.radiusS),
-                          ),
-                          child: const Text(
-                            AppStrings.nowBadgeText,
-                            style: TextStyle(
-                              color: AppColors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: AppDimensions.textXL,
-                            ),
+                    // Status badge (Past, Live, or Upcoming)
+                    Positioned(
+                      top: AppDimensions.paddingS,
+                      left: AppDimensions.paddingS,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: AppDimensions.paddingM,
+                            vertical: AppDimensions.paddingXS),
+                        decoration: BoxDecoration(
+                          color: AppColors.nowBadge,
+                          borderRadius:
+                          BorderRadius.circular(AppDimensions.radiusS),
+                        ),
+                        child: Text(
+                          _getStatusText(festival.status),
+                          style: const TextStyle(
+                            color: AppColors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: AppDimensions.textXL,
                           ),
                         ),
                       ),
+                    ),
 
                     // Back icon
                     Positioned(
@@ -142,5 +182,17 @@ class FestivalCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Get status text based on festival status
+  String _getStatusText(FestivalStatus status) {
+    switch (status) {
+      case FestivalStatus.past:
+        return AppStrings.past;
+      case FestivalStatus.live:
+        return AppStrings.live;
+      case FestivalStatus.upcoming:
+        return AppStrings.upcoming;
+    }
   }
 }

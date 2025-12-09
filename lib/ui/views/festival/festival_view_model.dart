@@ -1,25 +1,31 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:provider/provider.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
+import '../../../core/services/geocoding_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_durations.dart';
+import '../../../core/api/festival_api_service.dart';
+import '../../../core/providers/festival_provider.dart';
 import 'festival_model.dart';
 
 class FestivalViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
+  final FestivalApiService _festivalApiService = locator<FestivalApiService>();
+  final GeocodingService _geocodingService = locator<GeocodingService>();
 
   final List<FestivalModel> festivals = [];
   final List<FestivalModel> allFestivals = []; // Store all festivals
   List<FestivalModel> filteredFestivals = []; // Filtered festivals for search
   int currentPage = 0;
   String searchQuery = ''; // Search query
-  String currentFilter = 'live'; // Current filter (default to live)
+  String currentFilter = 'all'; // Current filter (default to all)
   late FocusNode searchFocusNode; // Search field focus node
   TextEditingController searchController = TextEditingController(); // Search field controller
 
@@ -32,55 +38,43 @@ class FestivalViewModel extends BaseViewModel {
 
   Future<void> loadFestivals() async {
     await handleAsync(() async {
-      await Future.delayed(AppDurations.loadFestivalDelay);
-
-      allFestivals.addAll([
-        FestivalModel(
-          title: AppStrings.mockFestival1,
-          location: AppStrings.mockLocation1,
-          date: AppStrings.mockDate1,
-          imagepath: AppAssets.festivalimage,
-          isLive: true,
-        ),
-        FestivalModel(
-          title: AppStrings.mockFestival2,
-          location: AppStrings.mockLocation2,
-          date: AppStrings.mockDate2,
-          imagepath: AppAssets.festivalimage,
-          isLive: false,
-        ),
-        FestivalModel(
-          title: AppStrings.mockFestival3,
-          location: AppStrings.mockLocation3,
-          date: AppStrings.mockDate3,
-          imagepath: AppAssets.festivalimage,
-          isLive: false,
-        ),
-        FestivalModel(
-          title: AppStrings.mockFestival4,
-          location: AppStrings.mockLocation4,
-          date: AppStrings.mockDate4,
-          imagepath: AppAssets.festivalimage,
-          isLive: false,
-        ),
-        FestivalModel(
-          title: AppStrings.mockFestival5,
-          location: AppStrings.mockLocation1,
-          date: AppStrings.mockDate5,
-          imagepath: AppAssets.festivalimage,
-          isLive: true,
-        ),
-        FestivalModel(
-          title: AppStrings.mockFestival6,
-          location: AppStrings.mockLocation5,
-          date: AppStrings.mockDate6,
-          imagepath: AppAssets.festivalimage,
-          isLive: false,
-        ),
-      ]);
+      // Fetch festivals from API
+      final response = await _festivalApiService.getFestivals();
       
-      // Apply default filter (live festivals)
-      _applyFilter();
+      if (response.success && response.data != null) {
+        // Clear existing festivals
+        allFestivals.clear();
+        
+        // Convert API response to FestivalModel
+        final apiFestivals = response.data!;
+        for (var festivalData in apiFestivals) {
+          try {
+            final festival = FestivalModel.fromApiJson(festivalData);
+            allFestivals.add(festival);
+          } catch (e, stackTrace) {
+            if (kDebugMode) {
+              print('Error parsing festival: $e');
+              print('Stack trace: $stackTrace');
+            }
+            // Continue with next festival if one fails to parse
+          }
+        }
+        
+        // Convert coordinates to city and country names
+        await _convertCoordinatesToLocation();
+        
+        if (kDebugMode) {
+          print('Loaded ${allFestivals.length} festivals from API');
+        }
+      } else {
+        // If API call failed, throw exception to trigger error handling
+        throw Exception(response.message ?? 'Failed to load festivals');
+      }
+      
+      // Show all festivals (no filtering)
+      festivals.clear();
+      festivals.addAll(allFestivals);
+      _applySearchFilter();
     }, 
     errorMessage: AppStrings.failedToLoadFestivals,
     minimumLoadingDuration: AppDurations.minimumLoadingDuration);
@@ -128,7 +122,18 @@ class FestivalViewModel extends BaseViewModel {
     });
   }
 
-  void navigateToHome() {
+  /// Navigate to home and save selected festival to provider
+  void navigateToHome(BuildContext context, FestivalModel festival) {
+    // Save selected festival and festivals list to provider for global access
+    final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+    festivalProvider.setSelectedFestival(festival);
+    festivalProvider.setAllFestivals(allFestivals);
+    
+    if (kDebugMode) {
+      print('🎪 Saved festival to provider: ${festival.title}');
+      print('🎪 Saved ${allFestivals.length} festivals to provider');
+    }
+    
     _navigationService.navigateTo(AppRoutes.navbaar);
   }
 
@@ -216,6 +221,8 @@ class FestivalViewModel extends BaseViewModel {
   }
 
   void _applyFilter() {
+    final now = DateTime.now();
+    
     switch (currentFilter) {
       case 'live':
         festivals.clear();
@@ -223,11 +230,27 @@ class FestivalViewModel extends BaseViewModel {
         break;
       case 'upcoming':
         festivals.clear();
-        festivals.addAll(allFestivals.where((festival) => !festival.isLive).toList());
+        festivals.addAll(allFestivals.where((festival) {
+          if (festival.startingDate == null) return false;
+          try {
+            final startDate = DateTime.parse(festival.startingDate!);
+            return startDate.isAfter(now) && !festival.isLive;
+          } catch (e) {
+            return false;
+          }
+        }).toList());
         break;
       case 'past':
         festivals.clear();
-        festivals.addAll(allFestivals.where((festival) => !festival.isLive).toList());
+        festivals.addAll(allFestivals.where((festival) {
+          if (festival.endingDate == null) return false;
+          try {
+            final endDate = DateTime.parse(festival.endingDate!);
+            return endDate.isBefore(now) && !festival.isLive;
+          } catch (e) {
+            return false;
+          }
+        }).toList());
         break;
       default:
         festivals.clear();
@@ -237,6 +260,47 @@ class FestivalViewModel extends BaseViewModel {
   }
 
   String get currentSearchQuery => searchQuery;
+
+  /// Convert latitude/longitude to city and country for all festivals
+  Future<void> _convertCoordinatesToLocation() async {
+    final updatedFestivals = <FestivalModel>[];
+    
+    for (var festival in allFestivals) {
+      if (festival.latitude != null && festival.longitude != null) {
+        try {
+          final location = await _geocodingService.getLocationFromCoordinates(
+            festival.latitude,
+            festival.longitude,
+          );
+          
+          // Update the location using copyWith
+          updatedFestivals.add(festival.copyWith(location: location));
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error converting coordinates for festival ${festival.id}: $e');
+          }
+          // Keep the original festival if conversion fails
+          updatedFestivals.add(festival);
+        }
+      } else {
+        // Keep festivals without coordinates as is
+        updatedFestivals.add(festival);
+      }
+    }
+    
+    // Replace all festivals with updated ones
+    allFestivals.clear();
+    allFestivals.addAll(updatedFestivals);
+    
+    // Update filtered festivals if needed
+    if (festivals.isNotEmpty) {
+      festivals.clear();
+      festivals.addAll(allFestivals);
+      _applySearchFilter();
+    }
+    
+    notifyListeners();
+  }
 
   @override
   void onDispose() {

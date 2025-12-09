@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_strings.dart';
@@ -12,11 +14,27 @@ import '../post_model.dart';
 
 class PostWidget extends StatefulWidget {
   final PostModel post;
+  final Function(String)? onReactionSelected; // Callback when user selects a reaction
+  final VoidCallback? onCommentsUpdated; // Callback when comments are updated
+  final String? collectionName; // Optional collection name (for festival-specific posts)
 
-  const PostWidget({super.key, required this.post});
+  const PostWidget({
+    super.key, 
+    required this.post,
+    this.onReactionSelected,
+    this.onCommentsUpdated,
+    this.collectionName,
+  });
 
   @override
   State<PostWidget> createState() => _PostWidgetState();
+  
+  /// Static method to pause videos in a PostWidget state
+  static void pauseVideosIfNeeded(State<PostWidget>? state) {
+    if (state is _PostWidgetState) {
+      state.pauseAllVideos();
+    }
+  }
 }
 
 class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMixin {
@@ -33,7 +51,11 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
   Map<int, bool> _isInitializingVideo = {};
 
   @override
-  bool get wantKeepAlive => true; // Keep state alive when scrolled
+  bool get wantKeepAlive {
+    // Only keep alive if there are initialized videos to preserve playback state
+    // This prevents memory leaks when scrolling through many posts
+    return _isVideoInitialized.values.any((initialized) => initialized);
+  }
 
   @override
   void initState() {
@@ -41,6 +63,26 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     final mediaCount = widget.post.allMediaPaths.length;
     if (mediaCount > 1) {
       _pageController = PageController();
+    }
+    
+    // Initialize selected reaction from post model
+    _selectedReaction = widget.post.userReaction;
+    _reactionColor = (_selectedReaction == AppStrings.emojiLike) 
+        ? AppColors.reactionLike 
+        : AppColors.black;
+  }
+
+  @override
+  void didUpdateWidget(PostWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Update reaction if post model changed
+    if (widget.post.userReaction != oldWidget.post.userReaction) {
+      setState(() {
+        _selectedReaction = widget.post.userReaction;
+        _reactionColor = (_selectedReaction == AppStrings.emojiLike) 
+            ? AppColors.reactionLike 
+            : AppColors.black;
+      });
     }
   }
 
@@ -56,7 +98,16 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
       if (index >= mediaPaths.length) return;
       
       final videoPath = mediaPaths[index];
-      _videoControllers[index] = VideoPlayerController.file(File(videoPath));
+      
+      // Check if it's a network URL or local file
+      if (_isNetworkUrl(videoPath)) {
+        // Network video URL from Firebase Storage
+        _videoControllers[index] = VideoPlayerController.network(videoPath);
+      } else {
+        // Local file path
+        _videoControllers[index] = VideoPlayerController.file(File(videoPath));
+      }
+      
       await _videoControllers[index]!.initialize();
       
       if (mounted) {
@@ -92,10 +143,41 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     setState(() {
       _currentPage = index;
     });
+    
+    // Pause videos that are not on the current page
+    for (int i = 0; i < widget.post.allMediaPaths.length; i++) {
+      if (i != index) {
+        // Pause videos on other pages
+        if (_chewieControllers[i] != null && 
+            _chewieControllers[i]!.videoPlayerController.value.isPlaying) {
+          _chewieControllers[i]!.pause();
+        }
+      }
+    }
+    
+    // Dispose videos that are not currently visible (not current or adjacent pages)
+    // This prevents memory buildup when swiping through carousel
+    for (int i = 0; i < widget.post.allMediaPaths.length; i++) {
+      if (i != index && i != index - 1 && i != index + 1) {
+        // Dispose video controllers for pages far from current
+        _disposeVideoAtIndex(i);
+      }
+    }
+    
     // Initialize video if current page is a video
     if (widget.post.isVideoAtIndex(index)) {
       _initializeVideo(index);
     }
+  }
+
+  /// Dispose video controllers at a specific index to free memory
+  void _disposeVideoAtIndex(int index) {
+    _chewieControllers[index]?.dispose();
+    _videoControllers[index]?.dispose();
+    _chewieControllers.remove(index);
+    _videoControllers.remove(index);
+    _isVideoInitialized[index] = false;
+    _isInitializingVideo[index] = false;
   }
 
   void _toggleReactions() {
@@ -107,16 +189,37 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
   @override
   void dispose() {
     _pageController?.dispose();
-    // Dispose all video controllers
-    for (var controller in _chewieControllers.values) {
-      controller?.dispose();
+    // Dispose all video controllers to prevent memory leaks
+    for (var entry in _chewieControllers.entries) {
+      entry.value?.dispose();
     }
-    for (var controller in _videoControllers.values) {
-      controller?.dispose();
+    for (var entry in _videoControllers.entries) {
+      entry.value?.dispose();
     }
     _chewieControllers.clear();
     _videoControllers.clear();
+    _isVideoInitialized.clear();
+    _isInitializingVideo.clear();
     super.dispose();
+  }
+
+  /// Pause all videos in this post widget
+  void pauseAllVideos() {
+    for (var entry in _chewieControllers.entries) {
+      if (entry.value != null && entry.value!.videoPlayerController.value.isPlaying) {
+        entry.value!.pause();
+        if (kDebugMode) {
+          print('⏸️ Paused video at index ${entry.key} for post ${widget.post.postId}');
+        }
+      }
+    }
+  }
+
+  /// Check if any video is currently playing
+  bool get hasPlayingVideo {
+    return _chewieControllers.values.any((controller) => 
+      controller != null && controller!.videoPlayerController.value.isPlaying
+    );
   }
 
   @override
@@ -146,9 +249,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
         children: [
 //          Header
           ListTile(
-            leading: CircleAvatar(
-              backgroundImage: const AssetImage(AppAssets.profile),
-            ),
+            leading: _buildProfileAvatar(post),
             title: Text(
               post.username,
               style: const TextStyle(fontWeight: FontWeight.bold,color: AppColors.accent),
@@ -191,7 +292,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
 
                   // Floating Likes/Comments
                   Positioned(
-                    bottom: 12,
+                    bottom: 100, // Moved up from 60 to 100
                     right: 12,
                     child: Column(
                       children: [
@@ -217,7 +318,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                                   ),
                                 ),
                                 const SizedBox(width: AppDimensions.spaceXS),
-                                Text("${post.likes}",
+                                Text("${post.totalReactions > 0 ? post.totalReactions : post.likes}",
                                     style: const TextStyle(color: AppColors.white)),
                               ],
                             ),
@@ -232,13 +333,21 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                           ),
                           child:
                           InkWell(
-                            onTap: () {
+                            onTap: () async {
                               // Navigate to comment screen using your app router
-                              Navigator.pushNamed(
+                              // Pass both post and collection name if available
+                              final arguments = widget.collectionName != null
+                                  ? {'post': post, 'collectionName': widget.collectionName}
+                                  : post;
+                              final result = await Navigator.pushNamed(
                                 context,
-                                AppRoutes.comments, // 👈 Define this route
-                                arguments: post,    // optional: pass the post if needed
+                                AppRoutes.comments,
+                                arguments: arguments,
                               );
+                              // If comments were updated, refresh posts
+                              if (result == true && widget.onCommentsUpdated != null) {
+                                widget.onCommentsUpdated!();
+                              }
                             },
                           child: Row(
                             children: [
@@ -259,7 +368,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                   // Reactions Popup
                   if (_showReactions)
                     Positioned(
-                      bottom: 88,
+                      bottom: 176, // Moved up from 136 to 176 to align with new button position
                       right: 0,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -305,7 +414,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                   color: AppColors.reactionLove,
                   size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
               const SizedBox(width: AppDimensions.reactionIconSpacing),
-              Text("${post.likes}",style: TextStyle(color: AppColors.white),),
+              Text("${post.totalReactions > 0 ? post.totalReactions : post.likes}",style: TextStyle(color: AppColors.white),),
 
                SizedBox(width: context.isLargeScreen 
                  ? context.screenWidth * 0.4
@@ -334,8 +443,18 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     return GestureDetector(
       onTap: () {
         setState(() {
-          _selectedReaction = emoji;
-          _reactionColor = (emoji == AppStrings.emojiLike) ? AppColors.reactionLike : AppColors.black;
+          // If user taps the same reaction, remove it (toggle off)
+          if (_selectedReaction == emoji) {
+            _selectedReaction = null;
+            _reactionColor = AppColors.white;
+            // Notify parent to remove reaction
+            widget.onReactionSelected?.call('');
+          } else {
+            _selectedReaction = emoji;
+            _reactionColor = (emoji == AppStrings.emojiLike) ? AppColors.reactionLike : AppColors.black;
+            // Notify parent to save reaction
+            widget.onReactionSelected?.call(emoji);
+          }
           _showReactions = false;
         });
         debugPrint("User reacted with $label");
@@ -350,9 +469,65 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     );
   }
 
-  /// Check if the path is an asset path (starts with 'assets/') or a file path
+  /// Check if the path is an asset path (starts with 'assets/')
   bool _isAssetPath(String path) {
     return path.startsWith('assets/');
+  }
+
+  /// Check if the path is a network URL (starts with 'http://' or 'https://')
+  bool _isNetworkUrl(String path) {
+    return path.startsWith('http://') || path.startsWith('https://');
+  }
+
+  /// Build image widget based on path type (asset, network, or local file)
+  /// Uses CachedNetworkImage for network images to improve performance
+  Widget _buildImageWidget(String mediaPath) {
+    if (_isAssetPath(mediaPath)) {
+      return Image.asset(
+        mediaPath,
+        fit: BoxFit.cover,
+        width: double.infinity,
+      );
+    } else if (_isNetworkUrl(mediaPath)) {
+      // Network URL from Firebase Storage - use CachedNetworkImage for better performance
+      return CachedNetworkImage(
+        imageUrl: mediaPath,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        placeholder: (context, url) => Container(
+          color: AppColors.onSurfaceVariant.withOpacity(0.3),
+          child: const Center(
+            child: CircularProgressIndicator(
+              color: AppColors.accent,
+            ),
+          ),
+        ),
+        errorWidget: (context, url, error) {
+          // Fallback to default image if network image fails
+          return Image.asset(
+            AppAssets.post,
+            fit: BoxFit.cover,
+            width: double.infinity,
+          );
+        },
+      );
+    } else {
+      // Local file path (for backward compatibility with old posts)
+      return Image.file(
+        File(mediaPath),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to default image if local file doesn't exist
+          // This handles the case where posts have local paths from other users
+          return Image.asset(
+            AppAssets.post,
+            fit: BoxFit.cover,
+            width: double.infinity,
+          );
+        },
+      );
+    }
   }
 
   /// Build media carousel for multiple items
@@ -393,17 +568,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
       final mediaPaths = widget.post.allMediaPaths;
       final mediaPath = mediaPaths.isNotEmpty ? mediaPaths[0] : widget.post.imagePath;
       
-      return _isAssetPath(mediaPath)
-          ? Image.asset(
-              mediaPath,
-              fit: BoxFit.cover,
-              width: double.infinity,
-            )
-          : Image.file(
-              File(mediaPath),
-              fit: BoxFit.cover,
-              width: double.infinity,
-            );
+      return _buildImageWidget(mediaPath);
     }
   }
 
@@ -416,17 +581,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     if (isVideo) {
       return _buildVideoThumbnailOrPlayer(index);
     } else {
-      return _isAssetPath(mediaPath)
-          ? Image.asset(
-              mediaPath,
-              fit: BoxFit.cover,
-              width: double.infinity,
-            )
-          : Image.file(
-              File(mediaPath),
-              fit: BoxFit.cover,
-              width: double.infinity,
-            );
+      return _buildImageWidget(mediaPath);
     }
   }
 
@@ -489,20 +644,38 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
 
   /// Build video thumbnail from first frame (if available)
   Widget _buildVideoThumbnail(int index) {
-    // Try to get thumbnail from video file
     try {
       final mediaPaths = widget.post.allMediaPaths;
       if (index >= mediaPaths.length) {
         return Container(color: AppColors.black);
       }
       
-      final videoFile = File(mediaPaths[index]);
-      if (videoFile.existsSync()) {
-        // Use a placeholder image for now
+      final videoPath = mediaPaths[index];
+      
+      // Check if it's a network URL
+      if (_isNetworkUrl(videoPath)) {
+        // For network videos, show a placeholder with play icon
         // In production, you could use video_thumbnail package to extract first frame
         return Container(
           color: AppColors.black,
+          child: const Center(
+            child: Icon(
+              Icons.play_circle_filled,
+              color: AppColors.white,
+              size: 64,
+            ),
+          ),
         );
+      } else {
+        // Local file path
+        final videoFile = File(videoPath);
+        if (videoFile.existsSync()) {
+          // Use a placeholder image for now
+          // In production, you could use video_thumbnail package to extract first frame
+          return Container(
+            color: AppColors.black,
+          );
+        }
       }
     } catch (e) {
       debugPrint('Error checking video file: $e');
@@ -674,3 +847,106 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
 //     );
 //   }
 // }
+
+  /// Build profile avatar with network image and asset fallback
+  Widget _buildProfileAvatar(PostModel post) {
+    if (kDebugMode) {
+      print('🖼️ Building profile avatar for post: ${post.postId}');
+      print('   - userPhotoUrl: ${post.userPhotoUrl}');
+      print('   - userId: ${post.userId}');
+      print('   - username: ${post.username}');
+    }
+
+    // If we have a valid userPhotoUrl, use it with a custom widget that handles errors
+    if (post.userPhotoUrl != null && post.userPhotoUrl!.isNotEmpty) {
+      return _NetworkImageAvatar(
+        imageUrl: post.userPhotoUrl!,
+        fallbackAsset: AppAssets.profile,
+      );
+    }
+
+    // Fallback to asset image if no userPhotoUrl
+    return CircleAvatar(
+      backgroundColor: AppColors.primary,
+      backgroundImage: const AssetImage(AppAssets.profile),
+    );
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/// Custom widget to handle network image with proper error fallback
+class _NetworkImageAvatar extends StatelessWidget {
+  final String imageUrl;
+  final String fallbackAsset;
+
+  const _NetworkImageAvatar({
+    required this.imageUrl,
+    required this.fallbackAsset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      backgroundColor: AppColors.primary,
+      child: ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          placeholder: (context, url) =>
+              Container(
+                color: AppColors.primary,
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+          errorWidget: (context, url, error) {
+            // Fallback to asset image if network image fails
+            if (kDebugMode) {
+              print('❌ Error loading network image: $error');
+              print('   - URL: $imageUrl');
+            }
+            return Image.asset(
+              fallbackAsset,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}

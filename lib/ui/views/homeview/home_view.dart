@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:festival_rumour/ui/views/homeview/widgets/post_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -22,22 +23,102 @@ class HomeView extends BaseView<HomeViewModel> {
   @override
   void onViewModelReady(HomeViewModel viewModel) {
     super.onViewModelReady(viewModel);
-    viewModel.loadPosts();
+    // Start real-time posts listener
+    viewModel.initialize();
   }
 
   @override
   Widget buildView(BuildContext context, HomeViewModel viewModel) {
+    return _HomeViewContent(viewModel: viewModel);
+  }
+}
+
+/// Stateful widget to manage scroll controller and video visibility
+class _HomeViewContent extends StatefulWidget {
+  final HomeViewModel viewModel;
+
+  const _HomeViewContent({required this.viewModel});
+
+  @override
+  State<_HomeViewContent> createState() => _HomeViewContentState();
+}
+
+class _HomeViewContentState extends State<_HomeViewContent> {
+  final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey<State<PostWidget>>> _postKeys = {};
+  Timer? _scrollDebounceTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollDebounceTimer?.cancel();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    // Debounce scroll events to avoid checking too frequently
+    _scrollDebounceTimer?.cancel();
+    _scrollDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+      // Check visibility and pause videos for posts not in viewport
+      _checkVisibilityAndPauseVideos();
+    });
+  }
+
+  void _checkVisibilityAndPauseVideos() {
+    if (!_scrollController.hasClients) return;
+
+    final viewportTop = _scrollController.offset;
+    final viewportBottom = viewportTop + MediaQuery.of(context).size.height;
+
+    for (var entry in _postKeys.entries) {
+      final key = entry.value;
+      final renderObject = key.currentContext?.findRenderObject();
+      
+      if (renderObject is RenderBox) {
+        final position = renderObject.localToGlobal(Offset.zero);
+        final size = renderObject.size;
+        final postTop = position.dy;
+        final postBottom = postTop + size.height;
+
+        // Check if post is visible in viewport (with some margin)
+        final isVisible = postBottom > viewportTop - 100 && postTop < viewportBottom + 100;
+
+        if (!isVisible) {
+          // Pause videos for posts not visible using the static method
+          final postState = key.currentState;
+          PostWidget.pauseVideosIfNeeded(postState);
+        }
+      }
+    }
+  }
+
+  GlobalKey<State<PostWidget>> _getOrCreateKey(int index) {
+    if (!_postKeys.containsKey(index)) {
+      _postKeys[index] = GlobalKey<State<PostWidget>>();
+    }
+    return _postKeys[index]!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
         // Dismiss keyboard when tapping outside
-        viewModel.unfocusSearch();
+        FocusScope.of(context).unfocus();
       },
       child: Scaffold(
         extendBodyBehindAppBar: true,
         resizeToAvoidBottomInset: false,
         body: Stack(
         children: [
-          // Background Image - Full screen coverage
+          // Background Image - Full screen coverage (const to prevent rebuilds)
           Positioned.fill(
             child: Image.asset(
               AppAssets.bottomsheet,
@@ -49,12 +130,11 @@ class HomeView extends BaseView<HomeViewModel> {
           SafeArea(
             child: Column(
               children: [
-                _buildAppBar(context, viewModel),
-                _buildSearchBar(context, viewModel),
+                _buildAppBar(context, widget.viewModel),
                 // Conditional spacing based on screen size
 
                 Expanded(
-                  child: _buildFeedList(context, viewModel),
+                  child: _buildFeedList(context, widget.viewModel),
                 ),
               ],
             ),
@@ -64,6 +144,7 @@ class HomeView extends BaseView<HomeViewModel> {
       ),
     );
   }
+
   Widget _buildFloatingButton(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10, right: 5), // Fine-tuned position
@@ -162,314 +243,12 @@ class HomeView extends BaseView<HomeViewModel> {
     );
   }
 
-
-  Widget _buildSearchBar(BuildContext context, HomeViewModel viewModel) {
-    return ResponsiveContainer(
-      mobileMaxWidth: double.infinity,
-      tabletMaxWidth: double.infinity,
-      desktopMaxWidth: double.infinity,
-      child: Container(
-        margin:  context.responsiveMargin,
-        padding:  context.responsivePadding,
-        height: context.getConditionalButtonSize(),
-        decoration: BoxDecoration(
-          color: AppColors.onPrimary,
-          borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
-        ),
-        child: Row(
-          children: [
-            SizedBox(width: context.getConditionalSpacing()),
-            // Conditional spacing for search icon - smaller on small screens
-            Icon(
-              Icons.search, 
-              color: AppColors.onSurfaceVariant, 
-              size: context.getConditionalIconSize(),
-            ),
-            // Conditional spacing after search icon - adaptive sizing
-            SizedBox(width: context.getConditionalSpacing()),
-            /// 🔹 Search Field
-            Expanded(
-              child: TextField(
-                controller: viewModel.searchController,
-                focusNode: viewModel.searchFocusNode,
-                textAlignVertical: TextAlignVertical.center,
-                decoration: InputDecoration(
-                  hintText: AppStrings.searchHint,
-                  hintStyle: TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: context.getConditionalFont(),
-                  ),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  isDense: true,
-                  filled: false,
-                  fillColor: Colors.transparent,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: context.getConditionalFont(),
-                //  height: context.getConditionalButtonSize(),
-                ),
-                cursorColor: AppColors.primary,
-                onChanged: (value) {
-                  viewModel.setSearchQuery(value);
-                },
-                onSubmitted: (value) {
-                  viewModel.unfocusSearch();
-                },
-               textInputAction: TextInputAction.search,
-              ),
-            ),
-
-            /// 🔹 Search Clear Button - Always reserve space
-            SizedBox(
-              width: context.getConditionalIconSize(),
-              child: viewModel.currentSearchQuery.isNotEmpty
-                  ? IconButton(
-                icon:  Icon(Icons.clear, color: AppColors.primary, size: context.getConditionalIconSize()),
-                onPressed: () {
-                  // ✅ Clear search and hide keyboard
-                  viewModel.clearSearch();
-                  FocusScope.of(context).unfocus();
-                },
-              )
-                  : const SizedBox.shrink(),
-            ),
-
-            /// 🔹 Filter Dropdown Menu (No Text Display)
-            SizedBox(
-              width: AppDimensions.iconL, // Fixed width to prevent layout issues
-              height: AppDimensions.iconL, // Fixed height to match search bar
-              child: DropdownMenu<String>(
-                initialSelection: viewModel.currentFilter,
-                onSelected: (value) {
-                  if (value != null) {
-                    viewModel.setFilter(value);
-                    debugPrint("${AppDimensions.debugSelectedFilter}$value");
-                  }
-                },
-                // Hide the text input completely
-                textStyle: const TextStyle(color: Colors.transparent, fontSize: 0),
-                inputDecorationTheme: InputDecorationTheme(
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                  floatingLabelBehavior: FloatingLabelBehavior.never,
-                ),
-                // Make the dropdown invisible but functional
-                expandedInsets: EdgeInsets.zero,
-                width: double.infinity,
-                  menuStyle: MenuStyle(
-                    backgroundColor: WidgetStateProperty.all(AppColors.onPrimary),
-                    elevation: WidgetStateProperty.all(8),
-                    shape: WidgetStateProperty.all(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-                      ),
-                    ),
-                    minimumSize: WidgetStateProperty.all(Size(double.infinity, 0)),
-                    maximumSize: WidgetStateProperty.all(Size(double.infinity, double.infinity)),
-                  ),
-              trailingIcon: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                ),
-                child: const Icon(
-                  Icons.arrow_drop_down_outlined,
-                  color: AppColors.onPrimary,
-                  size: AppDimensions.searchBarDropdownIconSize,
-                ),
-              ),
-              dropdownMenuEntries: [
-                DropdownMenuEntry<String>(
-                  value: AppStrings.live,
-                  label: AppStrings.live,
-                  labelWidget: Container(
-                      width: double.infinity,
-                      padding: context.responsivePadding,
-                     margin: context.responsiveMargin,  // vertical: context.responsivePadding,
-
-                      decoration: BoxDecoration(
-                        color: viewModel.currentFilter == AppStrings.live
-                            ? AppColors.primary.withOpacity(0.1)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                      ),
-                      child: Row(
-                            mainAxisSize: MainAxisSize.max,
-                        children: [
-                          Container(
-                            width: AppDimensions.searchBarDropdownEntryIconContainerSize,
-                            height: AppDimensions.searchBarDropdownEntryIconContainerHeight,
-                            decoration: BoxDecoration(
-                              color: viewModel.currentFilter == AppStrings.live
-                                  ? AppColors.accent
-                                  : AppColors.primary,
-                              borderRadius: BorderRadius.circular(AppDimensions.radiusXS),
-                              boxShadow: viewModel.currentFilter == AppStrings.live
-                                  ? [
-                                      BoxShadow(
-                                        color: AppColors.primary.withOpacity(0.3),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: Icon(
-                              Icons.live_tv,
-                              color: AppColors.onPrimary,
-                              size: AppDimensions.searchBarDropdownEntryIconSize,
-                            ),
-                          ),
-                          SizedBox(width: context.responsiveSpaceM),
-                          ResponsiveTextWidget(
-                            AppStrings.live,
-                            textType: TextType.body,
-                            color: viewModel.currentFilter == AppStrings.live
-                                ? AppColors.accent
-                                : AppColors.primary,
-                            fontSize: context.responsiveTextM,
-                            fontWeight: viewModel.currentFilter == AppStrings.live
-                                ? FontWeight.w600
-                                : FontWeight.w500,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                DropdownMenuEntry<String>(
-                  value: AppStrings.upcoming,
-                  label: AppStrings.upcoming,
-                  labelWidget: Container(
-                      width: double.infinity,
-                    padding: context.responsivePadding,
-                    margin: context.responsiveMargin,
-                      child: Row(
-                            mainAxisSize: MainAxisSize.max,
-                        children: [
-                          Container(
-                            width: AppDimensions.searchBarDropdownEntryIconContainerSize,
-                            height: AppDimensions.searchBarDropdownEntryIconContainerHeight,
-                            decoration: BoxDecoration(
-                              color: viewModel.currentFilter == AppStrings.upcoming
-                                  ? AppColors.accent
-                                  : AppColors.primary,
-                              borderRadius: BorderRadius.circular(AppDimensions.radiusXS),
-                              boxShadow: viewModel.currentFilter == AppStrings.upcoming
-                                  ? [
-                                      BoxShadow(
-                                        color: AppColors.primary.withOpacity(0.3),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: Icon(
-                              Icons.schedule,
-                              color: AppColors.onPrimary,
-                              size: AppDimensions.searchBarDropdownEntryIconSize,
-                            ),
-                          ),
-                          SizedBox(width: context.responsiveSpaceM),
-                          ResponsiveTextWidget(
-                            AppStrings.upcoming,
-                            textType: TextType.body,
-                            color: viewModel.currentFilter == AppStrings.upcoming
-                                ? AppColors.accent
-                                : AppColors.primary,
-                            fontSize: context.responsiveTextM,
-                            fontWeight: viewModel.currentFilter == AppStrings.upcoming
-                                ? FontWeight.w600
-                                : FontWeight.w500,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                DropdownMenuEntry<String>(
-                  value: AppStrings.past,
-                  label: AppStrings.past,
-                  labelWidget: Container(
-                      width: double.infinity,
-                    padding: context.responsivePadding,
-                    margin: context.responsiveMargin,
-                      decoration: BoxDecoration(
-                        color: viewModel.currentFilter == AppStrings.past
-                            ? AppColors.primary.withOpacity(0.1)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(AppDimensions.radiusS),
-                      ),
-                      child: Row(
-                            mainAxisSize: MainAxisSize.max,
-                        children: [
-                          Container(
-                            width: AppDimensions.searchBarDropdownEntryIconContainerSize,
-                            height: AppDimensions.searchBarDropdownEntryIconContainerHeight,
-                            decoration: BoxDecoration(
-                              color: viewModel.currentFilter == AppStrings.past
-                                  ? AppColors.accent
-                                  : AppColors.primary,
-                              borderRadius: BorderRadius.circular(AppDimensions.radiusXS),
-                              boxShadow: viewModel.currentFilter == AppStrings.past
-                                  ? [
-                                      BoxShadow(
-                                        color: AppColors.primary.withOpacity(0.3),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: Icon(
-                              Icons.history,
-                              color: AppColors.onPrimary,
-                              size: AppDimensions.searchBarDropdownEntryIconSize,
-                            ),
-                          ),
-                          SizedBox(width: context.responsiveSpaceM),
-                          ResponsiveTextWidget(
-                            AppStrings.past,
-                            textType: TextType.body,
-                            color: viewModel.currentFilter == AppStrings.past
-                                ? AppColors.accent
-                                : AppColors.primary,
-                            fontSize: context.responsiveTextM,
-                            fontWeight: viewModel.currentFilter == AppStrings.past
-                                ? FontWeight.w600
-                                : FontWeight.w500,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-              ),
-            ),
-            // Conditional spacing at end of search bar
-
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildFeedList(BuildContext context, HomeViewModel viewModel) {
     if (viewModel.isLoading && viewModel.posts.isEmpty) {
       return const LoadingWidget(message: AppStrings.loadingPosts);
     }
 
-    if (viewModel.posts.isEmpty) {
+    if (viewModel.posts.isEmpty && !viewModel.isLoading) {
       return Center(
         child: ResponsiveTextWidget(
           AppStrings.noPostsAvailable,
@@ -481,13 +260,38 @@ class HomeView extends BaseView<HomeViewModel> {
     }
 
     return ListView.builder(
+      controller: _scrollController,
       padding: EdgeInsets.symmetric(vertical: AppDimensions.paddingXS),
-      itemCount: viewModel.posts.length,
+      cacheExtent: 500, // Cache 500px worth of items for smoother scrolling
+      itemCount: viewModel.posts.length + 1, // Always add 1 for load more button or "no more posts" message
       itemBuilder: (context, index) {
+        // Show load more button or "no more posts" message at the end
+        if (index == viewModel.posts.length) {
+          return _buildLoadMoreButton(context, viewModel);
+        }
+
         final post = viewModel.posts[index];
+        final postKey = _getOrCreateKey(index);
+        
         return Column(
+          key: ValueKey('post_column_${post.postId}'),
           children: [
-            PostWidget(post: post),
+            PostWidget(
+              key: postKey,
+              post: post,
+              onReactionSelected: (emotion) {
+                // Update reaction in ViewModel
+                if (emotion.isEmpty) {
+                  viewModel.removePostReaction(index);
+                } else {
+                  viewModel.updatePostReaction(index, emotion);
+                }
+              },
+              onCommentsUpdated: () {
+                // Refresh posts to update comment counts
+                viewModel.refreshPostsAfterComment();
+              },
+            ),
             // Conditional spacing between posts
             if (index != viewModel.posts.length - 1)
               SizedBox(height: context.responsiveSpaceS),
@@ -497,6 +301,71 @@ class HomeView extends BaseView<HomeViewModel> {
     );
   }
 
+  Widget _buildLoadMoreButton(BuildContext context, HomeViewModel viewModel) {
+    // Show "No more posts" message if we've loaded all posts
+    if (!viewModel.hasMorePosts && !viewModel.isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: AppDimensions.paddingL,
+        ),
+        child: Center(
+          child: ResponsiveTextWidget(
+            'No more posts available',
+            textType: TextType.body,
+            color: AppColors.white,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    // Show loading indicator while loading more
+    if (viewModel.isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: AppDimensions.paddingL,
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: AppColors.accent,
+          ),
+        ),
+      );
+    }
+
+    // Show "Load More" button if there are more posts
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingM,
+        vertical: AppDimensions.paddingL,
+      ),
+      child: Center(
+        child: ElevatedButton(
+          onPressed: viewModel.loadMorePosts,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: AppColors.black,
+            padding: EdgeInsets.symmetric(
+              horizontal: AppDimensions.paddingXL,
+              vertical: AppDimensions.paddingM,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+            ),
+            elevation: 4,
+          ),
+          child: ResponsiveTextWidget(
+            'Load More',
+            textType: TextType.body,
+            fontWeight: FontWeight.bold,
+            color: AppColors.black,
+          ),
+        ),
+      ),
+    );
+  }
 
   void _showPostBottomSheet(BuildContext context) {
     showModalBottomSheet(
