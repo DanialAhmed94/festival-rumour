@@ -2,6 +2,7 @@ import 'package:festival_rumour/firebase_options.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'core/constants/app_strings.dart';
 import 'core/theme/app_theme.dart';
@@ -81,35 +82,45 @@ class FestivalRumourApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => FestivalProvider()),
-      ],
-      child: MaterialApp(
-      // App Configuration
-      title: AppStrings.appName,
-      debugShowCheckedModeBanner: false,
+    return ScreenUtilInit(
+      designSize: const Size(390, 844),
+      minTextAdapt: true,
+      splitScreenMode: true,
 
-      // Routing Configuration
-      initialRoute: AppRoutes.splash,
-      onGenerateRoute: onGenerateRoute,
-
-      // Navigation Configuration
-      navigatorKey: locator<NavigationService>().navigatorKey,
-
-      // Builder for additional configuration
       builder: (context, child) {
-        return MediaQuery(
-          // Prevent text scaling beyond reasonable limits
-          data: MediaQuery.of(context).copyWith(
-            textScaleFactor: MediaQuery.of(
-              context,
-            ).textScaleFactor.clamp(0.8, 1.2),
+        return MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => FestivalProvider()),
+          ],
+          child: MaterialApp(
+            title: AppStrings.appName,
+            debugShowCheckedModeBanner: false,
+
+            // Routing
+            initialRoute: AppRoutes.splash,
+            onGenerateRoute: onGenerateRoute,
+
+            // Navigation
+            navigatorKey: locator<NavigationService>().navigatorKey,
+
+            // TextScale limit
+            builder: (context, widget) {
+              return MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaleFactor: MediaQuery.of(
+                    context,
+                  ).textScaleFactor.clamp(0.8, 1.2),
+                ),
+                child: widget ?? const SizedBox.shrink(),
+              );
+            },
+
+            theme: AppTheme.lightTheme,
           ),
-          child: child ?? const SizedBox.shrink(),
         );
       },
-      ),
+
+      child: const SizedBox.shrink(), // required by ScreenUtilInit
     );
   }
 }

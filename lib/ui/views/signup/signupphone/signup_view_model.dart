@@ -42,7 +42,7 @@ class SignupViewModel extends BaseViewModel {
 
   /// Focus node getter
   FocusNode get phoneFocus => _phoneFocus;
-  
+
   /// Country code getter
   CountryCode get selectedCountryCode => _selectedCountryCode;
 
@@ -54,7 +54,7 @@ class SignupViewModel extends BaseViewModel {
   /// Focus management methods
   void focusPhone() {
     if (isDisposed) return;
-    
+
     try {
       _phoneFocus.requestFocus();
     } catch (e) {
@@ -64,7 +64,7 @@ class SignupViewModel extends BaseViewModel {
 
   void unfocusPhone() {
     if (isDisposed) return;
-    
+
     try {
       _phoneFocus.unfocus();
     } catch (e) {
@@ -110,80 +110,42 @@ class SignupViewModel extends BaseViewModel {
 
   /// 🔹 Continue to OTP screen with Firebase Auth
   Future<void> goToOtp() async {
-    if (!validatePhone()) return; // Stop if invalid
+    if (!validatePhone()) return;
 
-    // Dismiss keyboard when continue is clicked
     unfocusPhone();
-
     setLoading(true);
     _errorMessage = null;
 
     try {
-      // Format phone number with selected country code
       String phoneText = phoneNumberController.text.trim();
-      
-      // Remove any existing + or country code
-      if (phoneText.startsWith('+')) {
-        phoneText = phoneText.substring(1);
-      }
-      
-      // Use selected country code
+
+      if (phoneText.startsWith('+')) phoneText = phoneText.substring(1);
+
       String countryCode = _selectedCountryCode.dialCode!;
       String phoneNumber;
-      
-      // Handle different input formats
+
       if (phoneText.startsWith(countryCode.substring(1))) {
-        // Already has country code
         phoneNumber = '+$phoneText';
       } else if (phoneText.startsWith('0')) {
-        // Local number starting with 0 (remove 0 and add country code)
         phoneNumber = '$countryCode${phoneText.substring(1)}';
       } else {
-        // Direct number (add country code)
         phoneNumber = '$countryCode$phoneText';
       }
-      
-      _phoneNumber = phoneNumber;
-      
-      // Store phone number in shared service (verification ID will be added in callbacks)
-      // We set verification ID to empty string initially - it will be updated when code is sent
-      _phoneAuthService.setPhoneData(phoneNumber, '');
-      
-      if (kDebugMode) {
-        print('📱 [SIGNUP] Initiating phone verification');
-        print('   Formatted phone number: $phoneNumber');
-        print('   Original input: ${phoneNumberController.text.trim()}');
-        print('   Phone number stored in PhoneAuthService');
-        print('   Waiting for verification ID from Firebase...');
-      }
 
-      // Send verification code
-      final result = await _authService.signInWithPhone(
+      _phoneNumber = phoneNumber;
+
+      // Store number but DO NOT navigate yet
+      _phoneAuthService.setPhoneData(phoneNumber, "");
+
+      await _authService.signInWithPhone(
         phoneNumber: phoneNumber,
         verificationCompleted: _onVerificationCompleted,
         verificationFailed: _onVerificationFailed,
-        codeSent: _onCodeSent,
+        codeSent: _onCodeSent, // ❗ ONLY this should navigate
         codeAutoRetrievalTimeout: _onCodeAutoRetrievalTimeout,
       );
-
-      if (result.isSuccess) {
-        if (kDebugMode) {
-          print('📱 [SIGNUP] Phone signup screen completed');
-          print('   Current Route: ${AppRoutes.signup}');
-          print('   Phone Number: $phoneNumber');
-          print('   Navigating to: ${AppRoutes.otp}');
-        }
-        
-        // Navigate to OTP screen with verification ID
-        _navigationService.navigateTo(AppRoutes.otp);
-      } else {
-        _errorMessage = result.errorMessage;
-        _showErrorSnackBar();
-      }
     } catch (e) {
-      if (kDebugMode) print('Error sending verification code: $e');
-      _errorMessage = 'Failed to send verification code. Please try again.';
-      _showErrorSnackBar();
+      _errorMessage = 'Failed to send verification code.';
     } finally {
       setLoading(false);
     }
@@ -202,7 +164,7 @@ class SignupViewModel extends BaseViewModel {
   void _onVerificationFailed(FirebaseAuthException e) {
     // Use centralized exception handling to map the error
     final exception = ExceptionMapper.mapToAppException(e);
-    
+
     // Handle specific error codes
     if (exception is AuthException) {
       switch (exception.code) {
@@ -226,47 +188,38 @@ class SignupViewModel extends BaseViewModel {
     } else {
       _errorMessage = exception.message;
     }
-    
+
     _showErrorSnackBar();
   }
 
   void _onCodeSent(String verificationId, int? resendToken) {
     _verificationId = verificationId;
-    
-    // CRITICAL: Update verification ID in shared service
-    // This ensures OTP screen can retrieve it
+
     if (_phoneNumber != null) {
       _phoneAuthService.setPhoneData(_phoneNumber!, verificationId);
-      
-      if (kDebugMode) {
-        print('✅ [SIGNUP] Verification code sent');
-        print('   Phone Number: $_phoneNumber');
-        print('   Verification ID: ${verificationId.substring(0, 20)}...');
-        print('   Verification ID stored in PhoneAuthService');
-        print('   Resend Token: ${resendToken != null ? "Available" : "Not available"}');
-      }
-    } else {
-      if (kDebugMode) {
-        print('⚠️ [SIGNUP] Warning: Phone number is null when code sent');
-        print('   Verification ID: ${verificationId.substring(0, 20)}...');
-        print('   Verification ID NOT stored in PhoneAuthService');
-      }
     }
+
+    setLoading(false);
+
+    // 🚀 Only navigate HERE, nowhere else
+    _navigationService.navigateTo(AppRoutes.otp);
   }
 
   void _onCodeAutoRetrievalTimeout(String verificationId) {
     _verificationId = verificationId;
-    
+
     // CRITICAL: Also store verification ID from timeout callback
     // This is a fallback in case codeSent callback doesn't fire
     if (_phoneNumber != null) {
       _phoneAuthService.setPhoneData(_phoneNumber!, verificationId);
-      
+
       if (kDebugMode) {
         print('⏱️ [SIGNUP] Code auto-retrieval timeout');
         print('   Phone Number: $_phoneNumber');
         print('   Verification ID: ${verificationId.substring(0, 20)}...');
-        print('   Verification ID stored in PhoneAuthService (from timeout callback)');
+        print(
+          '   Verification ID stored in PhoneAuthService (from timeout callback)',
+        );
       }
     } else {
       if (kDebugMode) {

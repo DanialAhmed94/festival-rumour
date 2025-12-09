@@ -108,7 +108,7 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const FestivalView());
 
     case AppRoutes.otp:
-      return SmoothPageRoute(page:  OtpView());
+      return SmoothPageRoute(page: OtpView());
 
     case AppRoutes.interest:
       return SmoothPageRoute(page: const InterestsView());
@@ -145,19 +145,20 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       dynamic args = settings.arguments;
       PostModel? post;
       String? collectionName;
-      
+
       if (args is Map) {
         post = args['post'] as PostModel?;
         collectionName = args['collectionName'] as String?;
       } else {
         post = args as PostModel?;
       }
-      
+
       return SmoothPageRoute(
         page: CommentView(post: post, collectionName: collectionName),
         settings: RouteSettings(
           name: AppRoutes.comments,
-          arguments: collectionName, // Pass collection name for CommentViewModel
+          arguments:
+              collectionName, // Pass collection name for CommentViewModel
         ),
       );
 
@@ -248,9 +249,61 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       );
 
     default:
-      return MaterialPageRoute(
-        builder: (_) =>
-            const Scaffold(body: Center(child: Text(AppStrings.pageNotFound))),
-      );
+      final name = settings.name?.toLowerCase() ?? "";
+
+      // Ignore Firebase Phone Auth internal routes safely
+      if (name.contains("auth") ||
+          name.contains("firebase") ||
+          name.contains("recaptcha") ||
+          name.contains("callback") ||
+          name.contains("handler") ||
+          name.contains("complete") ||
+          name.contains("apple-app-site-association") ||
+          name.contains("favicon") ||
+          name.isEmpty ||
+          name == "/" ||
+          name == "null") {
+        // Return invisible route – keeps current UI visible
+        return EmptyRoute();
+      }
+
+      // Unknown routes → also ignore
+      return EmptyRoute();
+  }
+}
+
+class EmptyRoute extends PageRoute<void> {
+  EmptyRoute() {
+    // pop this route immediately after pushing it
+    Future.microtask(() {
+      navigator?.pop();
+    });
+  }
+
+  @override
+  bool get opaque => false; // fully transparent
+
+  @override
+  bool get barrierDismissible => false;
+
+  @override
+  Color? get barrierColor => null;
+
+  @override
+  String? get barrierLabel => null;
+
+  @override
+  bool get maintainState => false;
+
+  @override
+  Duration get transitionDuration => Duration(milliseconds: 1);
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    return const SizedBox.shrink(); // shown for <1ms
   }
 }

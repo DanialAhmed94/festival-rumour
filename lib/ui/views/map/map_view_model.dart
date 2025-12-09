@@ -6,12 +6,16 @@ import '../../../core/viewmodels/base_view_model.dart';
 
 class MapViewModel extends BaseViewModel {
   GoogleMapController? _mapController;
+
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
+
   bool _isLocationPermissionGranted = false;
   LatLng? _currentLocation;
   LatLng? _festivalLocation;
   String? _festivalTitle;
+
+  bool _isAnimatingCamera = false; // 🔥 Prevent animation loop
 
   GoogleMapController? get mapController => _mapController;
   Set<Polyline> get polylines => _polylines;
@@ -27,34 +31,33 @@ class MapViewModel extends BaseViewModel {
   }
 
   void animateToLocation(LatLng location) {
-    if (_mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLng(location),
-      );
-    }
+    _mapController?.animateCamera(CameraUpdate.newLatLng(location));
   }
 
   void animateToLocationWithZoom(LatLng location, double zoom) {
-    if (_mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLngZoom(location, zoom),
-      );
-    }
+    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(location, zoom));
   }
 
-  Future<void> showDirections(LatLng userLocation, LatLng festivalLocation) async {
-    // Create a polyline between user location and festival location
+  // 🚀 SAFE DIRECTIONS METHOD — NO MEMORY LEAK
+  Future<void> showDirections(
+    LatLng userLocation,
+    LatLng festivalLocation,
+  ) async {
+    if (_isAnimatingCamera) return;
+    _isAnimatingCamera = true;
+
+    // Polylines
     _polylines = {
       Polyline(
         polylineId: const PolylineId('directions'),
         points: [userLocation, festivalLocation],
-        color: const Color(0xFF8B5CF6), // Purple color for directions
+        color: const Color(0xFF8B5CF6),
         width: 5,
         patterns: [PatternItem.dash(20), PatternItem.gap(10)],
       ),
     };
 
-    // Add user location marker
+    // Markers
     _markers = {
       Marker(
         markerId: const MarkerId('user_location'),
@@ -70,28 +73,44 @@ class MapViewModel extends BaseViewModel {
       ),
     };
 
-    // Animate camera to show both locations
-    if (_mapController != null) {
-      final bounds = _calculateBounds([userLocation, festivalLocation]);
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLngBounds(bounds, 100.0),
+    // Bounds
+    final bounds = _calculateBounds([userLocation, festivalLocation]);
+
+    try {
+      await _mapController?.animateCamera(
+        CameraUpdate.newLatLngBounds(bounds, 80),
+      );
+    } catch (e) {
+      // Fallback zoom if bounds crash
+      await _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(festivalLocation, 14),
       );
     }
 
-    notifyListeners();
+    _isAnimatingCamera = false;
+    notifyListeners(); // OK here, after animation done
   }
 
+  // SAFE BOUNDS (prevents crash when both points same)
   LatLngBounds _calculateBounds(List<LatLng> points) {
     double minLat = points.first.latitude;
     double maxLat = points.first.latitude;
     double minLng = points.first.longitude;
     double maxLng = points.first.longitude;
 
-    for (final point in points) {
-      minLat = minLat < point.latitude ? minLat : point.latitude;
-      maxLat = maxLat > point.latitude ? maxLat : point.latitude;
-      minLng = minLng < point.longitude ? minLng : point.longitude;
-      maxLng = maxLng > point.longitude ? maxLng : point.longitude;
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+
+    // If both points nearly same → add small padding to avoid crash
+    if ((maxLat - minLat).abs() < 0.0001 && (maxLng - minLng).abs() < 0.0001) {
+      return LatLngBounds(
+        southwest: LatLng(minLat - 0.001, minLng - 0.001),
+        northeast: LatLng(maxLat + 0.001, maxLng + 0.001),
+      );
     }
 
     return LatLngBounds(
@@ -106,26 +125,20 @@ class MapViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  /// Request location permission and get current location
+  // LOCATION PERMISSION
   Future<bool> requestLocationPermission() async {
     try {
       final permission = await Permission.location.request();
-      
+
       if (permission.isGranted) {
         _isLocationPermissionGranted = true;
         await _getCurrentLocation();
-        notifyListeners();
-        return true;
-      } else if (permission.isPermanentlyDenied) {
-        // User permanently denied permission, show dialog to open settings
-        _isLocationPermissionGranted = false;
-        notifyListeners();
-        return false;
       } else {
         _isLocationPermissionGranted = false;
-        notifyListeners();
-        return false;
       }
+
+      notifyListeners();
+      return _isLocationPermissionGranted;
     } catch (e) {
       _isLocationPermissionGranted = false;
       notifyListeners();
@@ -133,94 +146,79 @@ class MapViewModel extends BaseViewModel {
     }
   }
 
-  /// Get current user location
+  // GET CURRENT LOCATION
   Future<void> _getCurrentLocation() async {
     try {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
       _currentLocation = LatLng(position.latitude, position.longitude);
-      
-      // Center map on user location
-      if (_mapController != null && _currentLocation != null) {
-        await _mapController!.animateCamera(
-          CameraUpdate.newLatLngZoom(_currentLocation!, 15.0),
-        );
-      }
-      
+
+      // ❌ REMOVE THIS → it breaks your logic
+      // if (_mapController != null) {
+      //   await _mapController!.animateCamera(
+      //     CameraUpdate.newLatLngZoom(_currentLocation!, 15),
+      //   );
+      // }
+
       notifyListeners();
     } catch (e) {
-      // Handle location error
       _currentLocation = null;
       notifyListeners();
     }
   }
 
-  /// Check if location services are enabled
   Future<bool> isLocationServiceEnabled() async {
     return await Geolocator.isLocationServiceEnabled();
   }
 
-  /// Center map on current location
   Future<void> centerOnCurrentLocation() async {
     if (_currentLocation != null && _mapController != null) {
       await _mapController!.animateCamera(
-        CameraUpdate.newLatLngZoom(_currentLocation!, 15.0),
+        CameraUpdate.newLatLngZoom(_currentLocation!, 15),
       );
     } else if (_isLocationPermissionGranted) {
       await _getCurrentLocation();
     }
   }
 
-  /// Set festival location and show marker
+  // SET FESTIVAL LOCATION
   void setFestivalLocation(String? latitude, String? longitude, String? title) {
-    if (latitude != null && longitude != null) {
-      try {
-        final lat = double.tryParse(latitude);
-        final lng = double.tryParse(longitude);
-        
-        if (lat != null && lng != null) {
-          _festivalLocation = LatLng(lat, lng);
-          _festivalTitle = title;
-          
-          // Add festival marker with tap handler
-          _markers = {
-            Marker(
-              markerId: const MarkerId('festival_location'),
-              position: _festivalLocation!,
-              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-              infoWindow: InfoWindow(
-                title: _festivalTitle ?? 'Festival Location',
-                snippet: 'Tap marker to navigate',
-              ),
-              onTap: () {
-                // Marker tap handled in view layer
-              },
-            ),
-          };
-          
-          // Center map on festival location
-          if (_mapController != null) {
-            _mapController!.animateCamera(
-              CameraUpdate.newLatLngZoom(_festivalLocation!, 15.0),
-            );
-          }
-          
-          notifyListeners();
-        }
-      } catch (e) {
-        // Handle parsing error
-        _festivalLocation = null;
-        _festivalTitle = null;
-      }
+    if (latitude == null || longitude == null) return;
+
+    final lat = double.tryParse(latitude);
+    final lng = double.tryParse(longitude);
+
+    if (lat == null || lng == null) return;
+
+    _festivalLocation = LatLng(lat, lng);
+    _festivalTitle = title;
+
+    _markers = {
+      Marker(
+        markerId: const MarkerId('festival_location'),
+        position: _festivalLocation!,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(
+          title: _festivalTitle ?? 'Festival Location',
+          snippet: 'Tap marker to navigate',
+        ),
+      ),
+    };
+
+    if (_mapController != null) {
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngZoom(_festivalLocation!, 15),
+      );
     }
+
+    notifyListeners();
   }
 
-  /// Center map on festival location
   Future<void> centerOnFestivalLocation() async {
     if (_festivalLocation != null && _mapController != null) {
       await _mapController!.animateCamera(
-        CameraUpdate.newLatLngZoom(_festivalLocation!, 15.0),
+        CameraUpdate.newLatLngZoom(_festivalLocation!, 15),
       );
     }
   }

@@ -12,7 +12,7 @@ import GoogleMaps
         if let apiKey = ProcessInfo.processInfo.environment["GOOGLE_MAPS_API_KEY"] {
             GMSServices.provideAPIKey(apiKey)
         } else {
-            print("⚠️ Missing Google Maps API Key")
+            print("Missing Google Maps API Key")
         }
         GeneratedPluginRegistrant.register(with: self)
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
