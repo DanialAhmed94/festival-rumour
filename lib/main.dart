@@ -103,8 +103,21 @@ class FestivalRumourApp extends StatelessWidget {
             // Navigation
             navigatorKey: locator<NavigationService>().navigatorKey,
 
-            // TextScale limit
+            // Global error widget builder to suppress 404 exceptions from deleted images
             builder: (context, widget) {
+              // Set up error widget builder to handle 404 exceptions silently
+              ErrorWidget.builder = (FlutterErrorDetails details) {
+                // Suppress 404 errors for deleted images (prevents app crashes)
+                if (details.exception.toString().contains('404') ||
+                    details.exception.toString().contains('HttpException') ||
+                    (details.exception.toString().contains('Invalid statusCode: 404'))) {
+                  // Return empty widget to suppress the error
+                  return const SizedBox.shrink();
+                }
+                // For other errors, use default error widget
+                return ErrorWidget(details.exception);
+              };
+
               return MediaQuery(
                 data: MediaQuery.of(context).copyWith(
                   textScaleFactor: MediaQuery.of(

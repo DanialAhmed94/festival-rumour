@@ -107,7 +107,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
               title: AppStrings.privacySettingsPro,
               subtitle: AppStrings.includingAnonymousToggle,
               value: viewModel.privacy,
-              onChanged: viewModel.togglePrivacy,
+              onChanged: (value) => _showPrivacyUpgradeDialog(context, viewModel),
             ),
             _buildTile(
               icon: Icons.military_tech_outlined,
@@ -131,6 +131,13 @@ class SettingsView extends BaseView<SettingsViewModel> {
               title: AppStrings.logout,
               titleColor: AppColors.red,
               onTap: () => _showLogoutConfirmation(context, viewModel),
+            ),
+            _buildTile(
+              icon: Icons.delete_forever,
+              iconColor: AppColors.red,
+              title: AppStrings.deleteAccount,
+              titleColor: AppColors.red,
+              onTap: () => _showDeleteAccountConfirmation(context, viewModel),
             ),
 
             const SizedBox(height: AppDimensions.paddingL),
@@ -410,6 +417,116 @@ class SettingsView extends BaseView<SettingsViewModel> {
                 fontSize: AppDimensions.textM,
                 fontWeight: FontWeight.bold,
                 color: AppColors.red,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Show delete account confirmation dialog
+  void _showDeleteAccountConfirmation(BuildContext context, SettingsViewModel viewModel) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.4),
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          ),
+          backgroundColor: AppColors.primary,
+          title: const ResponsiveTextWidget(
+            AppStrings.deleteAccount,
+            textType: TextType.heading,
+            fontWeight: FontWeight.bold,
+            fontSize: AppDimensions.textL,
+            color: AppColors.red,
+          ),
+          content: const ResponsiveTextWidget(
+            AppStrings.deleteAccountWarning,
+            textType: TextType.body,
+            fontSize: AppDimensions.textM,
+            color: AppColors.grey600,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const ResponsiveTextWidget(
+                AppStrings.cancel,
+                textType: TextType.body,
+                fontSize: AppDimensions.textM,
+                fontWeight: FontWeight.w600,
+                color: AppColors.grey600,
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                viewModel.deleteAccount();
+              },
+              child: const ResponsiveTextWidget(
+                AppStrings.confirm,
+                textType: TextType.body,
+                fontSize: AppDimensions.textM,
+                fontWeight: FontWeight.bold,
+                color: AppColors.red,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Show privacy upgrade dialog (paid feature)
+  void _showPrivacyUpgradeDialog(BuildContext context, SettingsViewModel viewModel) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.4),
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          ),
+          backgroundColor: AppColors.primary,
+          title: const ResponsiveTextWidget(
+            'Premium Feature',
+            textType: TextType.heading,
+            fontWeight: FontWeight.bold,
+            fontSize: AppDimensions.textL,
+            color: AppColors.onPrimary,
+          ),
+          content: const ResponsiveTextWidget(
+            'Privacy Settings Pro is a paid feature. Please upgrade your plan to access this feature.',
+            textType: TextType.body,
+            fontSize: AppDimensions.textM,
+            color: AppColors.grey600,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const ResponsiveTextWidget(
+                AppStrings.cancel,
+                textType: TextType.body,
+                fontSize: AppDimensions.textM,
+                fontWeight: FontWeight.w600,
+                color: AppColors.grey600,
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                viewModel.goToSubscription();
+              },
+              child: const ResponsiveTextWidget(
+                'Upgrade Plan',
+                textType: TextType.body,
+                fontSize: AppDimensions.textM,
+                fontWeight: FontWeight.bold,
+                color: AppColors.accent,
               ),
             ),
           ],

@@ -27,6 +27,17 @@ class CreatePostViewModel extends BaseViewModel {
 
   String? _collectionName; // Festival collection name (if creating post in rumors context)
   
+  // Upload progress tracking
+  double _uploadProgress = 0.0;
+  int _currentUploadIndex = 0;
+  int _totalUploadItems = 0;
+  String _uploadStatus = '';
+  
+  double get uploadProgress => _uploadProgress;
+  int get currentUploadIndex => _currentUploadIndex;
+  int get totalUploadItems => _totalUploadItems;
+  String get uploadStatus => _uploadStatus;
+  
   String? get collectionName => _collectionName;
   
   /// Initialize with collection name (called when navigating from rumors)
@@ -97,9 +108,13 @@ class CreatePostViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  /// Upload post media (image or video) to Firebase Storage
+  /// Upload post media (image or video) to Firebase Storage with progress tracking
   /// Returns the download URL, or null if upload fails
-  Future<String?> _uploadPostMedia(File mediaFile, bool isVideo) async {
+  /// [mediaFile] - The file to upload
+  /// [isVideo] - Whether the file is a video
+  /// [itemIndex] - Current item index (for progress tracking)
+  /// [totalItems] - Total number of items (for progress tracking)
+  Future<String?> _uploadPostMedia(File mediaFile, bool isVideo, int itemIndex, int totalItems) async {
     try {
       final currentUser = _authService.currentUser;
       if (currentUser == null) {
@@ -132,12 +147,34 @@ class CreatePostViewModel extends BaseViewModel {
         },
       );
 
+      // Update status
+      _currentUploadIndex = itemIndex + 1;
+      _uploadStatus = 'Uploading ${isVideo ? 'video' : 'image'} $_currentUploadIndex of $totalItems...';
+      notifyListeners();
+
+      // Upload file with progress tracking
       final uploadTask = ref.putFile(mediaFile, metadata);
+      
+      // Listen to upload progress
+      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+        // Calculate overall progress
+        final itemProgress = progress / totalItems;
+        final previousItemsProgress = itemIndex / totalItems;
+        _uploadProgress = previousItemsProgress + itemProgress;
+        
+        if (kDebugMode) {
+          print('📤 Upload progress: ${(_uploadProgress * 100).toStringAsFixed(1)}% (Item ${itemIndex + 1}/$totalItems: ${(progress * 100).toStringAsFixed(1)}%)');
+        }
+        notifyListeners();
+      });
+
+      // Wait for upload to complete
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
       if (kDebugMode) {
-        print('📤 Media uploaded to Firebase Storage: $downloadUrl');
+        print('✅ Media uploaded to Firebase Storage: $downloadUrl');
       }
 
       return downloadUrl;
@@ -228,6 +265,17 @@ class CreatePostViewModel extends BaseViewModel {
         mediaPaths = [];
         isVideoList = List<bool>.from(isVideo);
         
+        // Initialize progress tracking
+        _totalUploadItems = selectedMedia.length;
+        _uploadProgress = 0.0;
+        _currentUploadIndex = 0;
+        _uploadStatus = 'Preparing upload...';
+        notifyListeners();
+        
+        if (kDebugMode) {
+          print('📤 Starting upload of ${selectedMedia.length} media items');
+        }
+        
         for (int i = 0; i < selectedMedia.length; i++) {
           final media = selectedMedia[i];
           final isVideoItem = isVideo[i];
@@ -239,27 +287,48 @@ class CreatePostViewModel extends BaseViewModel {
               if (kDebugMode) {
                 print('⚠️ Media file does not exist: ${media.path}');
               }
+              // Update progress even if file doesn't exist
+              _uploadProgress = (i + 1) / _totalUploadItems;
+              notifyListeners();
               continue;
             }
             
-            // Upload to Firebase Storage
-            final mediaUrl = await _uploadPostMedia(file, isVideoItem);
+            // Upload to Firebase Storage with progress tracking
+            final mediaUrl = await _uploadPostMedia(file, isVideoItem, i, _totalUploadItems);
             if (mediaUrl != null && mediaUrl.isNotEmpty) {
               mediaPaths!.add(mediaUrl);
               if (kDebugMode) {
                 print('✅ Uploaded media ${i + 1}/${selectedMedia.length}: $mediaUrl');
+                print('   Total uploaded so far: ${mediaPaths!.length}');
               }
             } else {
               if (kDebugMode) {
                 print('⚠️ Failed to upload media ${i + 1}, skipping');
               }
             }
+            
+            // Update progress after each item completes
+            _uploadProgress = (i + 1) / _totalUploadItems;
+            notifyListeners();
           } catch (e) {
             if (kDebugMode) {
               print('❌ Error uploading media ${i + 1}: $e');
             }
+            // Update progress even on error
+            _uploadProgress = (i + 1) / _totalUploadItems;
+            notifyListeners();
             // Continue with other media files even if one fails
           }
+        }
+        
+        // Reset progress after upload completes
+        _uploadStatus = 'Processing...';
+        notifyListeners();
+        
+        if (kDebugMode) {
+          print('📊 Upload summary:');
+          print('   Selected media: ${selectedMedia.length}');
+          print('   Successfully uploaded: ${mediaPaths?.length ?? 0}');
         }
         
         // Use the first uploaded media URL for backward compatibility
@@ -273,6 +342,24 @@ class CreatePostViewModel extends BaseViewModel {
           if (kDebugMode) {
             print('⚠️ All media uploads failed, using default image');
           }
+        }
+      } else {
+        if (kDebugMode) {
+          print('📝 No media selected, creating text-only post');
+        }
+      }
+
+      // Post counter: Always increment by 1 per post, regardless of media count
+      // This ensures one post = one count, whether it has 1 or multiple media items
+      const int postCountIncrement = 1;
+      
+      if (kDebugMode) {
+        if (mediaPaths != null && mediaPaths!.isNotEmpty) {
+          print('📊 Post counter: Will increment by 1 (post has ${mediaPaths!.length} media items)');
+        } else if (postContent.isNotEmpty) {
+          print('📊 Post counter: Will increment by 1 (text-only post)');
+        } else {
+          print('📊 Post counter: Will increment by 1 (fallback)');
         }
       }
 
@@ -295,10 +382,21 @@ class CreatePostViewModel extends BaseViewModel {
       };
 
       // Save post to Firestore (use festival collection if in rumors context)
+      // Post counter: Always increment by 1 per post (regardless of media count)
+      if (kDebugMode) {
+        print('💾 Saving post to Firestore');
+        print('   Collection: ${_collectionName ?? "festivalrumorglobalfeed"}');
+        print('   UserId: ${postData['userId']}');
+        print('   Post counter increment: 1 (one post = one count)');
+      }
       final postId = await _firestoreService.savePost(
         postData,
         collectionName: _collectionName, // Use festival collection if set
+        mediaCount: postCountIncrement, // Always 1 per post
       );
+      if (kDebugMode) {
+        print('✅ Post saved with ID: $postId');
+      }
 
       // Create PostModel with the created post data
       final newPost = PostModel(
@@ -321,6 +419,13 @@ class CreatePostViewModel extends BaseViewModel {
       // Clear form after successful upload
       postTextController.clear();
       clearAllMedia();
+      
+      // Reset upload progress
+      _uploadProgress = 0.0;
+      _currentUploadIndex = 0;
+      _totalUploadItems = 0;
+      _uploadStatus = '';
+      notifyListeners();
 
       // Navigate back with the created post as result
       _navigationService.pop<PostModel>(newPost);

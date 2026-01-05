@@ -10,6 +10,7 @@ import '../services/network_service.dart';
 import '../services/firestore_service.dart';
 import '../services/storage_service.dart';
 import '../services/geocoding_service.dart';
+import '../services/post_data_service.dart';
 import '../api/api_config.dart';
 import '../api/festival_api_service.dart';
 
@@ -27,6 +28,7 @@ Future<void> setupLocator() async {
   locator.registerLazySingleton<FirestoreService>(() => FirestoreService());
   locator.registerLazySingleton<StorageService>(() => StorageService());
   locator.registerLazySingleton<GeocodingService>(() => GeocodingService());
+  locator.registerLazySingleton<PostDataService>(() => PostDataService());
   
   // Initialize NetworkService with API base URL
   locator<NetworkService>().initialize(

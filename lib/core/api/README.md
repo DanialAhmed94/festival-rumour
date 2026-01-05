@@ -48,7 +48,7 @@ class FestivalApiService extends BaseApiService {
   // GET request example
   Future<ApiResponse<List<Festival>>> getFestivals() async {
     return get<List<Festival>>(
-      ApiConfig.festivals,
+      ApiConfig.festivals,                       
       fromJson: (json) => (json as List)
           .map((item) => Festival.fromJson(item))
           .toList(),

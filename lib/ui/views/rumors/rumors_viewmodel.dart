@@ -9,6 +9,7 @@ import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/network_service.dart';
 import '../../../core/services/error_handler_service.dart';
 import '../../../core/exceptions/exception_mapper.dart';
 import '../../../core/router/app_router.dart';
@@ -17,6 +18,7 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_durations.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../homeview/post_model.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 /// ViewModel for festival-specific rumors screen
 /// Reuses HomeViewModel logic but uses festival-specific Firestore collection
@@ -24,6 +26,7 @@ class RumorsViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
+  final NetworkService _networkService = locator<NetworkService>();
   final ErrorHandlerService _errorHandler = ErrorHandlerService();
   
   List<PostModel> posts = [];
@@ -929,6 +932,239 @@ class RumorsViewModel extends BaseViewModel {
   /// Navigate to subscription screen
   void goToSubscription() {
     _navigationService.navigateTo(AppRoutes.subscription);
+  }
+
+  /// Delete a post from the festival feed
+  /// 
+  /// [postId] - The post ID to delete
+  /// [context] - BuildContext for showing dialogs
+  Future<void> deletePost(String postId, BuildContext context) async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) {
+      if (kDebugMode) {
+        print('⚠️ User not authenticated, cannot delete post');
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You must be logged in to delete posts'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Find the post
+    final postIndex = posts.indexWhere((p) => p.postId == postId);
+    if (postIndex < 0) {
+      if (kDebugMode) {
+        print('⚠️ Post not found: $postId');
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Post not found'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final post = posts[postIndex];
+
+    // Verify the user owns the post
+    if (post.userId != currentUser.uid) {
+      if (kDebugMode) {
+        print('⚠️ User does not own this post');
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You can only delete your own posts'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Check internet connectivity BEFORE showing loading dialog
+    bool hasInternet = false;
+    try {
+      hasInternet = await _networkService.hasInternetConnection().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => false,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Error checking internet connection: $e');
+      }
+      hasInternet = false;
+    }
+
+    // If no internet, show error immediately and return
+    if (!hasInternet) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No internet connection. Please check your network and try again.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      if (kDebugMode) {
+        print('❌ No internet connection - aborting delete operation');
+      }
+      return;
+    }
+
+    // Show loading indicator only after confirming internet connection
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    try {
+      // Delete from Firestore with reduced timeout (this will also delete media from Storage)
+      await _firestoreService.deletePost(
+        postId: postId,
+        userId: currentUser.uid,
+        collectionName: _festivalCollectionName, // Use festival collection
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw TimeoutException(
+            'Delete operation timed out. Please check your internet connection and try again.',
+            const Duration(seconds: 15),
+          );
+        },
+      );
+
+      // Clear cached images for this post
+      if (post.allMediaPaths.isNotEmpty) {
+        for (final mediaUrl in post.allMediaPaths) {
+          if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+            try {
+              await CachedNetworkImage.evictFromCache(mediaUrl).timeout(
+                const Duration(seconds: 5),
+              );
+            } catch (e) {
+              if (kDebugMode) {
+                print('⚠️ Error clearing cache for $mediaUrl: $e');
+              }
+              // Ignore cache clearing errors
+            }
+          }
+        }
+      }
+
+      // Remove post from local lists
+      posts.removeAt(postIndex);
+      final allPostsIndex = allPosts.indexWhere((p) => p.postId == postId);
+      if (allPostsIndex >= 0) {
+        allPosts.removeAt(allPostsIndex);
+      }
+      notifyListeners();
+
+      // Close loading dialog
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Post deleted successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      if (kDebugMode) {
+        print('✅ Post deleted successfully: $postId');
+      }
+    } on TimeoutException catch (e) {
+      // Handle timeout specifically
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message ?? 'Operation timed out. Please try again.'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      if (kDebugMode) {
+        print('❌ Timeout deleting post: $e');
+      }
+    } on FirebaseException catch (e) {
+      // Handle Firebase-specific errors
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        String errorMessage = 'Failed to delete post. ';
+        if (e.code == 'permission-denied') {
+          errorMessage = 'You do not have permission to delete this post.';
+        } else if (e.code == 'unavailable') {
+          errorMessage = 'Service temporarily unavailable. Please check your internet connection and try again.';
+        } else if (e.code == 'deadline-exceeded') {
+          errorMessage = 'Operation timed out. Please check your internet connection and try again.';
+        } else {
+          errorMessage += 'Please try again.';
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      if (kDebugMode) {
+        print('❌ Firebase error deleting post: ${e.code} - ${e.message}');
+      }
+    } catch (e) {
+      // Handle other errors
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        
+        // Provide user-friendly error message
+        String errorMessage = 'Failed to delete post. ';
+        final errorString = e.toString().toLowerCase();
+        
+        if (errorString.contains('network') || errorString.contains('connection')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else if (errorString.contains('timeout')) {
+          errorMessage = 'Operation timed out. Please check your internet connection and try again.';
+        } else if (errorString.contains('permission') || errorString.contains('denied')) {
+          errorMessage = 'You do not have permission to delete this post.';
+        } else if (errorString.contains('not found')) {
+          errorMessage = 'Post not found. It may have already been deleted.';
+        } else {
+          errorMessage += 'Please try again.';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+
+      if (kDebugMode) {
+        print('❌ Error deleting post: $e');
+      }
+    }
   }
 
   /// Helper method to create a DocumentSnapshot-like object from Map

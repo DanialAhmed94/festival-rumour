@@ -103,6 +103,47 @@ class SettingsViewModel extends BaseViewModel {
     }, errorMessage: 'Failed to logout. Please try again.');
   }
 
+  /// Delete user account with proper error handling
+  Future<void> deleteAccount() async {
+    await handleAsync(() async {
+      if (kDebugMode) {
+        print('🗑️ [Settings] Starting account deletion process...');
+      }
+
+      try {
+        // Delete user from Firebase Authentication
+        await _authService.deleteAccount();
+        
+        if (kDebugMode) {
+          print('✅ [Settings] Firebase account deletion successful');
+        }
+
+        // Clear local storage (logged in state, user ID, etc.)
+        await _storageService.clearAll();
+        
+        if (kDebugMode) {
+          print('✅ [Settings] Storage cleared successfully');
+        }
+
+        // Navigate to welcome screen and clear navigation stack
+        // This removes all previous routes from the stack
+        await _navigationService.navigateToLogin();
+
+        if (kDebugMode) {
+          print('✅ [Settings] Account deletion completed successfully');
+        }
+      } catch (e, stackTrace) {
+        // Error is already handled by AuthService.deleteAccount() using global error handler
+        // But we still need to handle navigation failure separately
+        if (kDebugMode) {
+          print('❌ [Settings] Error during account deletion: $e');
+        }
+        // Re-throw to let handleAsync show error message to user
+        rethrow;
+      }
+    }, errorMessage: 'Failed to delete account. Please try again.');
+  }
+
   void goToSubscription() {
     _navigationService.navigateTo(AppRoutes.subscription);
   }

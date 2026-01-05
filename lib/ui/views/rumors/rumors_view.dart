@@ -266,6 +266,10 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
                 // Refresh posts to update comment counts
                 viewModel.refreshPostsAfterComment();
               },
+              onDeletePost: (postId) {
+                // Handle post deletion
+                viewModel.deletePost(postId, context);
+              },
             ),
             // Conditional spacing between posts
             if (index != viewModel.posts.length - 1)

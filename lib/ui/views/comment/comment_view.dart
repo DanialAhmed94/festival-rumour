@@ -60,47 +60,126 @@ class CommentView extends BaseView<CommentViewModel> {
                     },
                   ),
                 ),
-                // Comment input area
-                Container(
+                // Comment input area - hide when replying
+                Selector<CommentViewModel, bool>(
+                  selector: (context, vm) {
+                    // Check if user is NOT replying to any comment
+                    return !vm.comments.any((c) => vm.isReplyingTo(c.commentId));
+                  },
+                  builder: (context, isNotReplying, child) {
+                    if (!isNotReplying) {
+                      return const SizedBox.shrink(); // Hide completely when replying
+                    }
+                    return Container(
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.3,
                   ),
                   margin: EdgeInsets.only(top: AppDimensions.spaceM),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Comment input field
-                      Flexible(
                         child: Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.all(AppDimensions.paddingL),
                           decoration: BoxDecoration(
                             color: AppColors.onPrimary.withOpacity(0.3),
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(20),
                               topRight: Radius.circular(20),
                             ),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(AppDimensions.paddingL),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          // Text input field
+                          Flexible(
+                            child: Builder(
+                              builder: (context) {
+                                // Calculate maxLines based on available height
+                                final availableHeight = MediaQuery.of(context).size.height * 0.3 - (AppDimensions.paddingL * 2) - 48;
+                                final lineHeight = AppDimensions.textL * 1.4; // Approximate line height (fontSize * line height multiplier)
+                                final calculatedMaxLines = (availableHeight / lineHeight).floor().clamp(1, 10); // Min 1, Max 10 lines
+                                
+                                return Selector<CommentViewModel, bool>(
+                                  selector: (context, vm) {
+                                    // Check if user is NOT replying to any comment
+                                    // If isReplyingTo returns true for any comment, user is replying
+                                    return !vm.comments.any((c) => vm.isReplyingTo(c.commentId));
+                                  },
+                                  builder: (context, isNotReplying, child) {
+                                    return ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        maxHeight: availableHeight,
                           ),
                           child: TextField(
                             controller: viewModel.commentController,
-                            maxLines: null,
+                                        enabled: isNotReplying,
+                                        maxLines: calculatedMaxLines,
                             minLines: 1,
                             textAlignVertical: TextAlignVertical.top,
-                            decoration: const InputDecoration(
+                                        decoration: InputDecoration(
                               hintText: AppStrings.commentHint,
-                              hintStyle: TextStyle(color: AppColors.grey600),
+                                          hintStyle: TextStyle(
+                                            color: isNotReplying 
+                                                ? AppColors.white.withOpacity(0.7)
+                                                : AppColors.white.withOpacity(0.35),
+                                          ),
                               border: InputBorder.none,
-                            ),
-                            style: const TextStyle(
-                              color: AppColors.white,
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(
+                                            horizontal: AppDimensions.paddingS,
+                                            vertical: AppDimensions.spaceM,
+                                          ),
+                                        ),
+                                        style: TextStyle(
+                                          color: isNotReplying 
+                                              ? AppColors.white 
+                                              : AppColors.white.withOpacity(0.5),
                               fontSize: AppDimensions.textL,
+                                          height: 1.4, // Line height multiplier
+                                        ),
+                                        // TextField will scroll internally when maxLines is reached
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
                             ),
-                            // Text change listener in ViewModel handles debounced updates
                           ),
-                        ),
+                          const SizedBox(width: AppDimensions.spaceM),
+                          // Post button
+                          Selector<CommentViewModel, bool>(
+                            selector: (context, viewModel) {
+                              final isReplying = viewModel.comments.any((c) => viewModel.isReplyingTo(c.commentId));
+                              return viewModel.canPostComment && !viewModel.isLoading && !isReplying;
+                            },
+                            builder: (context, canPost, child) {
+                              final viewModel = Provider.of<CommentViewModel>(context, listen: false);
+                              return ElevatedButton(
+                                onPressed: canPost ? viewModel.postComment : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.accent,
+                                  foregroundColor: AppColors.black,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: AppDimensions.paddingL,
+                                    vertical: AppDimensions.spaceM,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  minimumSize: const Size(0, 48),
+                                ),
+                                child: const ResponsiveTextWidget(
+                                  AppStrings.post,
+                                  textType: TextType.caption,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
+                            },
                       ),
                     ],
                   ),
+                    ),
+                  ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -128,28 +207,8 @@ class CommentView extends BaseView<CommentViewModel> {
               fontWeight: FontWeight.w600,
             ),
           ),
-          Selector<CommentViewModel, bool>(
-            selector: (context, viewModel) => viewModel.canPostComment && !viewModel.isLoading,
-            builder: (context, canPost, child) {
-              final viewModel = Provider.of<CommentViewModel>(context, listen: false);
-              return ElevatedButton(
-                onPressed: canPost ? viewModel.postComment : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accent,
-                  foregroundColor: AppColors.black,
-                  padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingL, vertical: AppDimensions.spaceS),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-                child: const ResponsiveTextWidget(
-                  AppStrings.post,
-                  textType: TextType.caption,
-                  fontWeight: FontWeight.bold,
-                ),
-              );
-            },
-          ),
+          // Placeholder to maintain spacing (same width as IconButton)
+          const SizedBox(width: 48),
         ],
       ),
     );
@@ -476,6 +535,7 @@ class CommentView extends BaseView<CommentViewModel> {
         ),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           TextField(
@@ -485,9 +545,12 @@ class CommentView extends BaseView<CommentViewModel> {
             textAlignVertical: TextAlignVertical.top,
             decoration: InputDecoration(
               hintText: 'Write a reply...',
-              hintStyle: const TextStyle(color: AppColors.grey600),
+              hintStyle: TextStyle(color: AppColors.white.withOpacity(0.7)),
               border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingS,
+                vertical: AppDimensions.spaceM,
+              ),
             ),
             style: const TextStyle(
               color: AppColors.white,
@@ -498,20 +561,26 @@ class CommentView extends BaseView<CommentViewModel> {
           const SizedBox(height: AppDimensions.spaceS),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              TextButton(
+              Flexible(
+                fit: FlexFit.loose,
+                child: TextButton(
                 onPressed: () => viewModel.cancelReplying(),
                 child: const ResponsiveTextWidget(
                   'Cancel',
                   textType: TextType.caption,
                   color: AppColors.grey600,
+                  ),
                 ),
               ),
               const SizedBox(width: AppDimensions.spaceS),
               Selector<CommentViewModel, bool>(
                 selector: (context, vm) => vm.canPostReply(),
                 builder: (context, canPost, child) {
-                  return ElevatedButton(
+                  return Flexible(
+                    fit: FlexFit.loose,
+                    child: ElevatedButton(
                     onPressed: canPost
                         ? () => viewModel.postReply(parentCommentId)
                         : null,
@@ -530,6 +599,7 @@ class CommentView extends BaseView<CommentViewModel> {
                       'Reply',
                       textType: TextType.caption,
                       fontWeight: FontWeight.bold,
+                      ),
                     ),
                   );
                 },

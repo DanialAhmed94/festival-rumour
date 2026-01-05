@@ -1,12 +1,18 @@
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/utils/base_view.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/services/post_data_service.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
+import '../homeview/widgets/post_widget.dart';
+import '../Profile/profile_viewmodel.dart';
 import 'posts_view_model.dart';
 
 class PostsView extends BaseView<PostsViewModel> {
@@ -18,6 +24,54 @@ class PostsView extends BaseView<PostsViewModel> {
 
   @override
   Widget buildView(BuildContext context, PostsViewModel viewModel) {
+    // Initialize with posts data from arguments if provided, otherwise check PostDataService
+    // Must use addPostFrameCallback to avoid calling notifyListeners() during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Only initialize if not already initialized
+      if (viewModel.posts.isNotEmpty) {
+        if (kDebugMode) {
+          print('📥 PostsView: Already initialized with ${viewModel.posts.length} posts');
+        }
+        return;
+      }
+      
+      List<Map<String, dynamic>>? postsData;
+      String? collectionName;
+      
+      // Try to get data from arguments first
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Map<String, dynamic>) {
+        postsData = args['posts'] as List<Map<String, dynamic>>?;
+        collectionName = args['collectionName'] as String?;
+        if (kDebugMode) {
+          print('📥 PostsView: Got data from arguments (${postsData?.length ?? 0} posts)');
+        }
+      } else {
+        // Try PostDataService (when using sub-navigation)
+        try {
+          final postDataService = locator<PostDataService>();
+          postsData = postDataService.getPostData();
+          collectionName = postDataService.getCollectionName();
+          if (kDebugMode) {
+            print('📥 PostsView: Got data from PostDataService (${postsData?.length ?? 0} posts)');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Could not access PostDataService: $e');
+          }
+        }
+      }
+      
+      // Initialize if we have data
+      if (postsData != null && postsData.isNotEmpty) {
+        viewModel.initialize(postsData, collectionName: collectionName);
+      } else {
+        if (kDebugMode) {
+          print('⚠️ No posts data available');
+        }
+      }
+    });
+
     return Scaffold(
       body: Stack(
         children: [
@@ -40,12 +94,45 @@ class PostsView extends BaseView<PostsViewModel> {
               children: [
                 _buildAppBar(context),
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceS),
-                    itemCount: viewModel.posts.length,
-                    itemBuilder: (context, index) {
-                      final post = viewModel.posts[index];
-                      return _buildPostCard(context, post, index);
+                  child: Consumer<PostsViewModel>(
+                    builder: (context, vm, child) {
+                      if (kDebugMode && vm.posts.isEmpty) {
+                        print('📊 PostsView UI: posts list is empty (length: ${vm.posts.length})');
+                      }
+                      
+                      return vm.posts.isEmpty
+                          ? Center(
+                              child: ResponsiveTextWidget(
+                                'No posts to display',
+                                color: AppColors.white,
+                                fontSize: AppDimensions.textM,
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceS),
+                              itemCount: vm.posts.length,
+                              itemBuilder: (context, index) {
+                                final post = vm.posts[index];
+                                return PostWidget(
+                                  post: post,
+                                  collectionName: vm.collectionName,
+                                  onReactionSelected: (emotion) {
+                                    // Handle reaction selection
+                                    if (post.postId != null) {
+                                      vm.handleReactionSelected(post.postId!, emotion);
+                                    }
+                                  },
+                                  onCommentsUpdated: () {
+                                    // Refresh posts if needed
+                                    vm.notifyListeners();
+                                  },
+                                  onDeletePost: (postId) {
+                                    // Handle post deletion
+                                    vm.deletePost(postId, context);
+                                  },
+                                );
+                              },
+                            );
                     },
                   ),
                 ),
@@ -78,14 +165,6 @@ class PostsView extends BaseView<PostsViewModel> {
         fontWeight: FontWeight.w600,
       ),
       centerTitle: true,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.more_vert, color: AppColors.white),
-          onPressed: () {
-            // Handle more options
-          },
-        ),
-      ],
     );
   }
 

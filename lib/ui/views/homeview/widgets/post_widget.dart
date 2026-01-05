@@ -9,6 +9,8 @@ import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../core/di/locator.dart';
+import '../../../../core/services/auth_service.dart';
 import '../../../../shared/extensions/context_extensions.dart';
 import '../post_model.dart';
 
@@ -16,6 +18,7 @@ class PostWidget extends StatefulWidget {
   final PostModel post;
   final Function(String)? onReactionSelected; // Callback when user selects a reaction
   final VoidCallback? onCommentsUpdated; // Callback when comments are updated
+  final Function(String)? onDeletePost; // Callback when user deletes the post
   final String? collectionName; // Optional collection name (for festival-specific posts)
 
   const PostWidget({
@@ -23,6 +26,7 @@ class PostWidget extends StatefulWidget {
     required this.post,
     this.onReactionSelected,
     this.onCommentsUpdated,
+    this.onDeletePost,
     this.collectionName,
   });
 
@@ -38,11 +42,19 @@ class PostWidget extends StatefulWidget {
 }
 
 class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMixin {
+  final AuthService _authService = locator<AuthService>();
   bool _showReactions = false;
   String? _selectedReaction; // stores emoji / icon selected
   Color _reactionColor = AppColors.white; // default Like color
   PageController? _pageController;
   int _currentPage = 0;
+  bool _showDeleteOption = false; // Show delete option when more icon is tapped
+  
+  /// Check if the current user owns this post
+  bool get _isOwnPost {
+    final currentUser = _authService.currentUser;
+    return currentUser != null && widget.post.userId == currentUser.uid;
+  }
   
   // Video controllers for each media item (only initialize when needed)
   Map<int, VideoPlayerController?> _videoControllers = {};
@@ -203,6 +215,52 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     super.dispose();
   }
 
+  /// Show delete confirmation dialog
+  void _showDeleteConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppColors.postBackground,
+          title: const Text(
+            'Delete Post',
+            style: TextStyle(color: AppColors.white),
+          ),
+          content: const Text(
+            'Are you sure you want to delete this post? This action cannot be undone.',
+            style: TextStyle(color: AppColors.white),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                setState(() {
+                  _showDeleteOption = false;
+                });
+              },
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.primary),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                if (widget.post.postId != null && widget.onDeletePost != null) {
+                  widget.onDeletePost!(widget.post.postId!);
+                }
+              },
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   /// Pause all videos in this post widget
   void pauseAllVideos() {
     for (var entry in _chewieControllers.entries) {
@@ -257,7 +315,35 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
             subtitle: Text(post.timeAgo
                   , style: const TextStyle(fontWeight: FontWeight.bold,color: AppColors.primary),
             ),
-            trailing: const Icon(Icons.more_horiz),
+            trailing: _isOwnPost && _showDeleteOption
+                ? GestureDetector(
+                    onTap: () {
+                      // Show confirmation dialog
+                      _showDeleteConfirmation(context);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      child: const Icon(
+                        Icons.delete,
+                        color: AppColors.accent, // Yellow color
+                        size: 24,
+                      ),
+                    ),
+                  )
+                : _isOwnPost
+                    ? GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _showDeleteOption = true;
+                          });
+                        },
+                        child: const Icon(
+                          Icons.more_horiz,
+                          color: AppColors.white,
+                          size: 24,
+                        ),
+                      )
+                    : const SizedBox.shrink(), // Hide for other users' posts
           ),
 
           // Post Content

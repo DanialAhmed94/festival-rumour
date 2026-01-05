@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../exceptions/app_exception.dart';
 import '../exceptions/exception_mapper.dart';
 import 'error_handler_service.dart';
+import 'network_service.dart';
 
 /// Service for interacting with Cloud Firestore
 class FirestoreService {
@@ -14,9 +16,31 @@ class FirestoreService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ErrorHandlerService _errorHandler = ErrorHandlerService();
+  final NetworkService _networkService = NetworkService();
 
   /// Default collection name for global posts
   static const String defaultPostsCollection = 'festivalrumorglobalfeed';
+
+  // Cache for user profile data (images/videos)
+  // Key: "userId_images" or "userId_videos", Value: {data, timestamp}
+  final Map<String, Map<String, dynamic>> _profileCache = {};
+  static const Duration _cacheExpiry = Duration(minutes: 5); // Cache expires after 5 minutes
+
+  /// Clear cache for a specific user or all users
+  void clearProfileCache({String? userId}) {
+    if (userId != null) {
+      _profileCache.remove('${userId}_images');
+      _profileCache.remove('${userId}_videos');
+      if (kDebugMode) {
+        print('🗑️ Cleared cache for user: $userId');
+      }
+    } else {
+      _profileCache.clear();
+      if (kDebugMode) {
+        print('🗑️ Cleared all profile cache');
+      }
+    }
+  }
 
   /// Generate festival-specific collection name
   /// Format: {festivalId}_{festivalName}_rumour
@@ -68,6 +92,7 @@ class FirestoreService {
         'email': email,
         'password': hashedPassword, // Store hashed password
         'appIdentifier': 'festivalrumor', // Identify this app's users
+        'postCount': 0, // Initialize post count to 0
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
@@ -196,10 +221,12 @@ class FirestoreService {
   /// 
   /// [postData] - Map containing post data (username, content, imagePath, etc.)
   /// [collectionName] - Optional collection name (defaults to 'festivalrumorglobalfeed')
+  /// [mediaCount] - Post counter increment (always 1 per post, regardless of media items count)
   /// Returns the document ID of the created post
   Future<String> savePost(
     Map<String, dynamic> postData, {
     String? collectionName,
+    int mediaCount = 1, // Always 1 per post (one post = one count)
   }) async {
     try {
       // Convert DateTime to Timestamp if present
@@ -222,10 +249,1108 @@ class FirestoreService {
         print('Post saved to Firestore collection "$targetCollection": ${docRef.id}');
       }
 
+      // Increment user's post counter by 1 per post (regardless of media items)
+      // If userId is available, increment counter by 1
+      final userId = postData['userId'] as String?;
+      if (kDebugMode) {
+        print('🔢 Post counter increment check:');
+        print('   userId: $userId');
+        print('   increment: $mediaCount (always 1 per post)');
+        print('   userId is not null: ${userId != null}');
+        print('   userId is not empty: ${userId != null && userId.isNotEmpty}');
+        print('   mediaCount > 0: ${mediaCount > 0}');
+      }
+      if (userId != null && userId.isNotEmpty && mediaCount > 0) {
+        try {
+          if (kDebugMode) {
+            print('🔄 Incrementing post count by $mediaCount (1 per post) for user: $userId');
+          }
+          await incrementUserPostCount(userId, count: mediaCount);
+          if (kDebugMode) {
+            print('✅ Successfully incremented post count by 1');
+          }
+        } catch (e, stackTrace) {
+          // Log error but don't fail post creation if counter update fails
+          if (kDebugMode) {
+            print('⚠️ Failed to increment post count for user $userId: $e');
+            print('   Stack trace: $stackTrace');
+          }
+        }
+
+        // Clear profile cache for this user since new post was created
+        clearProfileCache(userId: userId);
+      } else {
+        if (kDebugMode) {
+          print('⚠️ Skipping post count increment: userId=${userId != null && userId.isNotEmpty}, mediaCount=$mediaCount');
+        }
+      }
+
       return docRef.id;
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(exception, stackTrace, 'FirestoreService.savePost');
+      rethrow;
+    }
+  }
+
+  /// Increment user's post count in Firestore
+  /// Uses atomic increment to safely handle concurrent updates
+  /// 
+  /// [userId] - The user ID whose post count should be incremented
+  /// [count] - The number to increment by (defaults to 1)
+  Future<void> incrementUserPostCount(String userId, {int count = 1}) async {
+    try {
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .set({
+        'postCount': FieldValue.increment(count),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (kDebugMode) {
+        print('✅ Incremented post count by $count for user: $userId');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.incrementUserPostCount');
+      rethrow;
+    }
+  }
+
+  /// Get posts created by a specific user from a collection (with pagination)
+  /// 
+  /// [userId] - The user ID to filter posts by
+  /// [collectionName] - Collection name to search in
+  /// [isVideoOnly] - If true, only return posts with videos. If false, only return posts with images (no videos)
+  /// [limit] - Number of posts to fetch (default: 20)
+  /// [lastDocument] - Last document from previous page for pagination
+  /// Returns map with 'posts' list, 'lastDocument', and 'hasMore' flag
+  Future<Map<String, dynamic>> getUserPostsPaginated({
+    required String userId,
+    required String collectionName,
+    bool? isVideoOnly, // null = all posts, true = only videos, false = only images
+    int limit = 20,
+    DocumentSnapshot? lastDocument,
+  }) async {
+    try {
+      // Try querying with orderBy first (requires index)
+      Query query = _firestore
+          .collection(collectionName)
+          .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
+          .limit(limit);
+
+      // Add pagination cursor if provided
+      if (lastDocument != null) {
+        query = query.startAfterDocument(lastDocument);
+      }
+
+      QuerySnapshot querySnapshot;
+      try {
+        querySnapshot = await query.get();
+      } catch (e) {
+        // Check if this is a Firestore index error (FAILED_PRECONDITION)
+        final isIndexError = e is FirebaseException && 
+            (e.code == 'failed-precondition' || 
+             e.message?.toLowerCase().contains('index') == true ||
+             e.message?.toLowerCase().contains('requires an index') == true) ||
+            e.toString().toLowerCase().contains('index') ||
+            e.toString().toLowerCase().contains('failed-precondition');
+        
+        if (isIndexError) {
+          // Silently fall back to querying without orderBy and sort in memory
+          // This is expected behavior when indexes don't exist yet
+          querySnapshot = await _firestore
+              .collection(collectionName)
+              .where('userId', isEqualTo: userId)
+              .get();
+        } else {
+          rethrow; // Re-throw if it's a different error
+        }
+      }
+
+      var posts = <Map<String, dynamic>>[];
+      DocumentSnapshot? newLastDocument;
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['postId'] = doc.id;
+
+        // Filter by video/image type if specified
+        if (isVideoOnly != null) {
+          final isVideo = data['isVideo'] as bool? ?? false;
+          final isVideoList = data['isVideoList'] as List<dynamic>?;
+          final hasVideo = isVideo || (isVideoList != null && isVideoList.any((v) => v == true));
+
+          if (isVideoOnly && !hasVideo) {
+            continue; // Skip non-video posts when only videos requested
+          }
+          if (!isVideoOnly && hasVideo) {
+            continue; // Skip video posts when only images requested
+          }
+        }
+
+        posts.add(data);
+        newLastDocument = doc; // Track last document for pagination
+      }
+
+      // If we queried without orderBy, sort and limit in memory
+      if (posts.isNotEmpty && posts.first['createdAt'] != null) {
+        posts.sort((a, b) {
+          final aTime = a['createdAt'];
+          final bTime = b['createdAt'];
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          
+          DateTime aDate;
+          DateTime bDate;
+          
+          if (aTime is Timestamp) {
+            aDate = aTime.toDate();
+          } else if (aTime is DateTime) {
+            aDate = aTime;
+          } else {
+            return 0;
+          }
+          
+          if (bTime is Timestamp) {
+            bDate = bTime.toDate();
+          } else if (bTime is DateTime) {
+            bDate = bTime;
+          } else {
+            return 0;
+          }
+          
+          return bDate.compareTo(aDate); // Descending order
+        });
+
+        // Apply limit if we queried without orderBy
+        if (querySnapshot.docs.length > limit) {
+          posts = posts.take(limit).toList();
+          newLastDocument = querySnapshot.docs[limit - 1];
+        }
+      }
+
+      // Check if there are more posts
+      final hasMore = querySnapshot.docs.length == limit;
+
+      if (kDebugMode) {
+        print('Fetched ${posts.length} user posts from collection "$collectionName" for userId: $userId (hasMore: $hasMore)');
+      }
+
+      return {
+        'posts': posts,
+        'lastDocument': newLastDocument,
+        'hasMore': hasMore,
+      };
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getUserPostsPaginated');
+      rethrow;
+    }
+  }
+
+  /// Get all posts created by a specific user from a collection
+  /// 
+  /// [userId] - The user ID to filter posts by
+  /// [collectionName] - Collection name to search in
+  /// [isVideoOnly] - If true, only return posts with videos. If false, only return posts with images (no videos)
+  /// Returns list of post data maps
+  /// 
+  /// @deprecated Use getUserPostsPaginated for better performance
+  Future<List<Map<String, dynamic>>> getUserPosts({
+    required String userId,
+    required String collectionName,
+    bool? isVideoOnly, // null = all posts, true = only videos, false = only images
+  }) async {
+    try {
+      // Try querying with orderBy first (requires index)
+      Query query = _firestore
+          .collection(collectionName)
+          .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true);
+
+      QuerySnapshot querySnapshot;
+      try {
+        querySnapshot = await query.get();
+      } catch (e) {
+        // Check if this is a Firestore index error (FAILED_PRECONDITION)
+        final isIndexError = e is FirebaseException && 
+            (e.code == 'failed-precondition' || 
+             e.message?.toLowerCase().contains('index') == true ||
+             e.message?.toLowerCase().contains('requires an index') == true) ||
+            e.toString().toLowerCase().contains('index') ||
+            e.toString().toLowerCase().contains('failed-precondition');
+        
+        if (isIndexError) {
+          // Silently fall back to querying without orderBy and sort in memory
+          // This is expected behavior when indexes don't exist yet
+          querySnapshot = await _firestore
+              .collection(collectionName)
+              .where('userId', isEqualTo: userId)
+              .get();
+        } else {
+          rethrow; // Re-throw if it's a different error
+        }
+      }
+
+      final posts = <Map<String, dynamic>>[];
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['postId'] = doc.id;
+
+        // Filter by video/image type if specified
+        if (isVideoOnly != null) {
+          final isVideo = data['isVideo'] as bool? ?? false;
+          final isVideoList = data['isVideoList'] as List<dynamic>?;
+          final hasVideo = isVideo || (isVideoList != null && isVideoList.any((v) => v == true));
+
+          if (isVideoOnly && !hasVideo) {
+            continue; // Skip non-video posts when only videos requested
+          }
+          if (!isVideoOnly && hasVideo) {
+            continue; // Skip video posts when only images requested
+          }
+        }
+
+        posts.add(data);
+      }
+
+      // Sort by createdAt descending if we queried without orderBy
+      if (posts.isNotEmpty && posts.first['createdAt'] != null) {
+        posts.sort((a, b) {
+          final aTime = a['createdAt'];
+          final bTime = b['createdAt'];
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          
+          // Handle both Timestamp and DateTime
+          DateTime aDate;
+          DateTime bDate;
+          
+          if (aTime is Timestamp) {
+            aDate = aTime.toDate();
+          } else if (aTime is DateTime) {
+            aDate = aTime;
+          } else {
+            return 0;
+          }
+          
+          if (bTime is Timestamp) {
+            bDate = bTime.toDate();
+          } else if (bTime is DateTime) {
+            bDate = bTime;
+          } else {
+            return 0;
+          }
+          
+          return bDate.compareTo(aDate); // Descending order
+        });
+      }
+
+      if (kDebugMode) {
+        print('Fetched ${posts.length} user posts from collection "$collectionName" for userId: $userId');
+      }
+
+      return posts;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getUserPosts');
+      rethrow;
+    }
+  }
+
+  /// Get user's images from a specific collection
+  /// Helper method to extract images from posts
+  /// Returns list of image URLs (for backward compatibility)
+  /// For profile grid: Only returns the first image per post (to match postInfos - one tile per post)
+  List<String> _extractImagesFromPosts(List<Map<String, dynamic>> posts) {
+    final images = <String>[];
+    for (var post in posts) {
+      final mediaPaths = post['mediaPaths'] as List<dynamic>?;
+      final isVideoList = post['isVideoList'] as List<dynamic>?;
+      
+      if (mediaPaths != null && mediaPaths.isNotEmpty) {
+        // Only extract the first image (to match postInfos - one tile per post)
+        // Find the first non-video media item
+        String? firstImage;
+        for (int i = 0; i < mediaPaths.length; i++) {
+          final isVideo = (isVideoList != null && i < isVideoList.length) 
+              ? (isVideoList[i] as bool? ?? false)
+              : (post['isVideo'] as bool? ?? false);
+          
+          if (!isVideo) {
+            firstImage = mediaPaths[i] as String;
+            break; // Use first non-video image
+          }
+        }
+        
+        // Only add if we found an image (skip posts with only videos)
+        if (firstImage != null) {
+          images.add(firstImage);
+        }
+      } else if (post['imagePath'] != null && !(post['isVideo'] as bool? ?? false)) {
+        // Fallback for old posts with single imagePath
+        images.add(post['imagePath'] as String);
+      }
+    }
+    return images;
+  }
+
+  /// Extract lightweight post info (postId, mediaUrl, collectionName) from posts
+  /// Used for profile grid - only loads essential data
+  /// For images grid: Only returns postInfos for posts that have at least one image
+  /// (to match _extractImagesFromPosts - one tile per post with images)
+  List<Map<String, dynamic>> _extractPostInfoFromPosts(
+    List<Map<String, dynamic>> posts,
+    String collectionName,
+  ) {
+    final postInfos = <Map<String, dynamic>>[];
+    for (var post in posts) {
+      final postId = post['postId'] as String? ?? '';
+      if (postId.isEmpty) continue;
+
+      final mediaPaths = post['mediaPaths'] as List<dynamic>?;
+      final isVideoList = post['isVideoList'] as List<dynamic>?;
+      
+      if (mediaPaths != null && mediaPaths.isNotEmpty) {
+        // Find the first image (non-video) media item to match _extractImagesFromPosts
+        String? firstImageUrl;
+        bool? firstIsVideo;
+        bool hasMultipleMedia = mediaPaths.length > 1;
+        
+        for (int i = 0; i < mediaPaths.length; i++) {
+          final isVideo = (isVideoList != null && i < isVideoList.length) 
+              ? (isVideoList[i] as bool? ?? false)
+              : (post['isVideo'] as bool? ?? false);
+          
+          if (!isVideo) {
+            // Found first image
+            firstImageUrl = mediaPaths[i] as String;
+            firstIsVideo = false;
+            break;
+          }
+        }
+        
+        // Only add postInfo if we found an image (skip video-only posts for images grid)
+        if (firstImageUrl != null) {
+          postInfos.add({
+            'postId': postId,
+            'mediaUrl': firstImageUrl, // First image (matches _extractImagesFromPosts)
+            'collectionName': collectionName,
+            'isVideo': firstIsVideo ?? false,
+            'hasMultipleMedia': hasMultipleMedia, // Flag to show icon overlay
+          });
+        }
+      } else if (post['imagePath'] != null && !(post['isVideo'] as bool? ?? false)) {
+        // Fallback for old posts with single imagePath (only if not a video)
+        postInfos.add({
+          'postId': postId,
+          'mediaUrl': post['imagePath'] as String,
+          'collectionName': collectionName,
+          'isVideo': false,
+          'hasMultipleMedia': false, // Old posts have single media
+        });
+      }
+    }
+    return postInfos;
+  }
+
+  /// Get user's videos from a specific collection
+  /// Helper method to extract videos from posts
+  /// Returns list of video URLs (only first video per post)
+  List<String> _extractVideosFromPosts(List<Map<String, dynamic>> posts) {
+    final videos = <String>[];
+    for (var post in posts) {
+      final mediaPaths = post['mediaPaths'] as List<dynamic>?;
+      final isVideoList = post['isVideoList'] as List<dynamic>?;
+      
+      if (mediaPaths != null) {
+        // Only extract the first video per post (similar to images)
+        for (int i = 0; i < mediaPaths.length; i++) {
+          final isVideo = (isVideoList != null && i < isVideoList.length) 
+              ? (isVideoList[i] as bool? ?? false)
+              : (post['isVideo'] as bool? ?? false);
+          
+          if (isVideo) {
+            videos.add(mediaPaths[i] as String);
+            break; // Only take first video per post
+          }
+        }
+      } else if (post['imagePath'] != null && (post['isVideo'] as bool? ?? false)) {
+        // Fallback for old posts with single video
+        videos.add(post['imagePath'] as String);
+      }
+    }
+    return videos;
+  }
+
+  /// Extract video post info from posts (for reels grid)
+  /// Returns list of post info maps with first video URL and hasMultipleMedia flag
+  List<Map<String, dynamic>> _extractVideoInfoFromPosts(
+    List<Map<String, dynamic>> posts,
+    String collectionName,
+  ) {
+    final postInfos = <Map<String, dynamic>>[];
+    for (var post in posts) {
+      final postId = post['postId'] as String? ?? '';
+      if (postId.isEmpty) continue;
+
+      final mediaPaths = post['mediaPaths'] as List<dynamic>?;
+      final isVideoList = post['isVideoList'] as List<dynamic>?;
+      
+      if (mediaPaths != null && mediaPaths.isNotEmpty) {
+        // Find the first video media item to match _extractVideosFromPosts
+        String? firstVideoUrl;
+        bool hasMultipleMedia = false;
+        int videoCount = 0;
+        
+        for (int i = 0; i < mediaPaths.length; i++) {
+          final isVideo = (isVideoList != null && i < isVideoList.length) 
+              ? (isVideoList[i] as bool? ?? false)
+              : (post['isVideo'] as bool? ?? false);
+          
+          if (isVideo) {
+            videoCount++;
+            if (firstVideoUrl == null) {
+              // Found first video
+              firstVideoUrl = mediaPaths[i] as String;
+            }
+          }
+        }
+        
+        // Set hasMultipleMedia if post has multiple videos
+        hasMultipleMedia = videoCount > 1;
+        
+        // Only add postInfo if we found a video (skip image-only posts for videos grid)
+        if (firstVideoUrl != null) {
+          postInfos.add({
+            'postId': postId,
+            'mediaUrl': firstVideoUrl, // First video (matches _extractVideosFromPosts)
+            'collectionName': collectionName,
+            'isVideo': true,
+            'hasMultipleMedia': hasMultipleMedia, // Flag to show icon overlay (true if multiple videos)
+          });
+        }
+      } else if (post['imagePath'] != null && (post['isVideo'] as bool? ?? false)) {
+        // Fallback for old posts with single video
+        postInfos.add({
+          'postId': postId,
+          'mediaUrl': post['imagePath'] as String,
+          'collectionName': collectionName,
+          'isVideo': true,
+          'hasMultipleMedia': false, // Old posts have single media
+        });
+      }
+    }
+    return postInfos;
+  }
+
+  /// Get user's images with pagination and caching
+  /// [userId] - User ID
+  /// [festivalCollectionNames] - Optional list of festival collection names to query
+  /// [limit] - Number of images per page (default: 20)
+  /// [lastDocument] - Last document from previous page for pagination
+  /// [useCache] - Whether to use cached data if available (default: true)
+  /// Returns map with 'images' list, 'lastDocument', 'hasMore', and 'cached' flag
+  Future<Map<String, dynamic>> getUserImagesPaginated(
+    String userId, {
+    List<String>? festivalCollectionNames,
+    int limit = 20,
+    Map<String, DocumentSnapshot?>? lastDocuments, // Map of collectionName -> lastDocument
+    bool useCache = true,
+  }) async {
+    try {
+      final cacheKey = '${userId}_images';
+      
+      // Check cache if this is first page and cache is enabled
+      if (useCache && lastDocuments == null) {
+        final cached = _profileCache[cacheKey];
+        if (cached != null) {
+          final cacheTime = cached['timestamp'] as DateTime;
+          if (DateTime.now().difference(cacheTime) < _cacheExpiry) {
+            if (kDebugMode) {
+              print('📦 Using cached images for user: $userId');
+            }
+            return {
+              'images': List<String>.from(cached['data'] as List),
+              'postInfos': cached['postInfos'] != null 
+                  ? List<Map<String, dynamic>>.from(cached['postInfos'] as List)
+                  : <Map<String, dynamic>>[],
+              'lastDocuments': null,
+              'hasMore': false,
+              'cached': true,
+            };
+          } else {
+            // Cache expired, remove it
+            _profileCache.remove(cacheKey);
+          }
+        }
+      }
+
+      // Check network status - if offline and no cache, return empty immediately
+      final hasInternet = await _networkService.hasInternetConnection();
+      if (!hasInternet) {
+        if (kDebugMode) {
+          print('📴 Offline - returning cached data or empty result');
+        }
+        // If we have cache (even if expired), return it when offline
+        if (useCache && lastDocuments == null) {
+          final cached = _profileCache[cacheKey];
+          if (cached != null) {
+            if (kDebugMode) {
+              print('📦 Using expired cache (offline mode)');
+            }
+            return {
+              'images': List<String>.from(cached['data'] as List),
+              'postInfos': cached['postInfos'] != null 
+                  ? List<Map<String, dynamic>>.from(cached['postInfos'] as List)
+                  : <Map<String, dynamic>>[],
+              'lastDocuments': null,
+              'hasMore': false,
+              'cached': true,
+            };
+          }
+        }
+        // No cache available offline
+        return {
+          'images': <String>[],
+          'postInfos': <Map<String, dynamic>>[],
+          'lastDocuments': null,
+          'hasMore': false,
+          'cached': false,
+        };
+      }
+
+      final allImages = <String>[];
+      final newLastDocuments = <String, DocumentSnapshot?>{};
+      bool hasMore = false;
+
+      // Create list of all collection queries to run in parallel
+      final collectionQueries = <Future<Map<String, dynamic>>>[];
+
+      // Add global feed query
+      final globalLastDoc = lastDocuments?[defaultPostsCollection];
+      collectionQueries.add(
+        getUserPostsPaginated(
+          userId: userId,
+          collectionName: defaultPostsCollection,
+          isVideoOnly: false,
+          limit: limit,
+          lastDocument: globalLastDoc,
+        ).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            if (kDebugMode) print('Timeout fetching global posts');
+            return {
+              'posts': <Map<String, dynamic>>[],
+              'lastDocument': null,
+              'hasMore': false,
+            };
+          },
+        ),
+      );
+
+      // Add festival collection queries if provided (limit to first 20)
+      if (festivalCollectionNames != null && festivalCollectionNames.isNotEmpty) {
+        final limitedCollections = festivalCollectionNames.take(20).toList();
+        for (var collectionName in limitedCollections) {
+          final collectionLastDoc = lastDocuments?[collectionName];
+          collectionQueries.add(
+            getUserPostsPaginated(
+              userId: userId,
+              collectionName: collectionName,
+              isVideoOnly: false,
+              limit: limit,
+              lastDocument: collectionLastDoc,
+            )
+                .timeout(
+                  const Duration(seconds: 3),
+                  onTimeout: () {
+                    if (kDebugMode) print('Timeout fetching from $collectionName');
+                    return {
+                      'posts': <Map<String, dynamic>>[],
+                      'lastDocument': null,
+                      'hasMore': false,
+                    };
+                  },
+                )
+                .catchError((e) {
+                  return {
+                    'posts': <Map<String, dynamic>>[],
+                    'lastDocument': null,
+                    'hasMore': false,
+                  };
+                }),
+          );
+        }
+      }
+
+      // Execute all queries in parallel
+      final results = await Future.wait(collectionQueries).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          if (kDebugMode) print('Timeout waiting for all queries');
+          return List<Map<String, dynamic>>.filled(
+            collectionQueries.length,
+            {
+              'posts': <Map<String, dynamic>>[],
+              'lastDocument': null,
+              'hasMore': false,
+            },
+          );
+        },
+      );
+
+      // Extract images and post info from all results and track pagination state
+      int collectionIndex = 0;
+      final allPostInfos = <Map<String, dynamic>>[];
+      
+      // Global feed
+      final globalResult = results[collectionIndex++];
+      final globalPosts = globalResult['posts'] as List<Map<String, dynamic>>;
+      allImages.addAll(_extractImagesFromPosts(globalPosts));
+      allPostInfos.addAll(_extractPostInfoFromPosts(globalPosts, defaultPostsCollection));
+      if (globalResult['lastDocument'] != null) {
+        newLastDocuments[defaultPostsCollection] = globalResult['lastDocument'] as DocumentSnapshot;
+      }
+      if (globalResult['hasMore'] == true) {
+        hasMore = true;
+      }
+
+      // Festival collections
+      if (festivalCollectionNames != null && festivalCollectionNames.isNotEmpty) {
+        final limitedCollections = festivalCollectionNames.take(20).toList();
+        for (var collectionName in limitedCollections) {
+          if (collectionIndex >= results.length) break;
+          
+          final result = results[collectionIndex++];
+          final posts = result['posts'] as List<Map<String, dynamic>>;
+          allImages.addAll(_extractImagesFromPosts(posts));
+          allPostInfos.addAll(_extractPostInfoFromPosts(posts, collectionName));
+          
+          if (result['lastDocument'] != null) {
+            newLastDocuments[collectionName] = result['lastDocument'] as DocumentSnapshot;
+          }
+          if (result['hasMore'] == true) {
+            hasMore = true;
+          }
+        }
+      }
+
+      // Cache first page results (both URLs and post info)
+      if (lastDocuments == null && allImages.isNotEmpty) {
+        _profileCache[cacheKey] = {
+          'data': allImages,
+          'postInfos': allPostInfos, // Store post metadata for fetching full details later
+          'timestamp': DateTime.now(),
+        };
+      }
+
+      if (kDebugMode) {
+        print('Found ${allImages.length} images for user: $userId (hasMore: $hasMore)');
+      }
+
+      return {
+        'images': allImages,
+        'postInfos': allPostInfos, // Return post metadata for profile grid
+        'lastDocuments': newLastDocuments.isEmpty ? null : newLastDocuments,
+        'hasMore': hasMore,
+        'cached': false,
+      };
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getUserImagesPaginated');
+      rethrow;
+    }
+  }
+
+  /// Get all user's images from all collections (global + festival collections)
+  /// [festivalCollectionNames] - Optional list of festival collection names to query
+  /// Returns list of image URLs from posts
+  /// 
+  /// @deprecated Use getUserImagesPaginated for better performance
+  Future<List<String>> getUserImages(
+    String userId, {
+    List<String>? festivalCollectionNames,
+  }) async {
+    try {
+      final allImages = <String>[];
+
+      // Create list of all collection queries to run in parallel
+      final collectionQueries = <Future<List<Map<String, dynamic>>>>[];
+
+      // Add global feed query (most important, run first)
+      collectionQueries.add(
+        getUserPosts(
+          userId: userId,
+          collectionName: defaultPostsCollection,
+          isVideoOnly: false, // Only images
+        ).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            if (kDebugMode) print('Timeout fetching global posts');
+            return <Map<String, dynamic>>[];
+          },
+        ),
+      );
+
+      // Add festival collection queries if provided (limit to first 20 to avoid too many queries)
+      if (festivalCollectionNames != null && festivalCollectionNames.isNotEmpty) {
+        final limitedCollections = festivalCollectionNames.take(20).toList();
+        for (var collectionName in limitedCollections) {
+          collectionQueries.add(
+            getUserPosts(
+              userId: userId,
+              collectionName: collectionName,
+              isVideoOnly: false, // Only images
+            )
+                .timeout(
+                  const Duration(seconds: 3),
+                  onTimeout: () {
+                    if (kDebugMode) print('Timeout fetching from $collectionName');
+                    return <Map<String, dynamic>>[];
+                  },
+                )
+                .catchError((e) {
+                  // Return empty list on error instead of throwing
+                  return <Map<String, dynamic>>[];
+                }),
+          );
+        }
+      }
+
+      // Execute all queries in parallel with timeout
+      final results = await Future.wait(collectionQueries).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          if (kDebugMode) print('Timeout waiting for all queries');
+          return List<List<Map<String, dynamic>>>.filled(
+            collectionQueries.length,
+            <Map<String, dynamic>>[],
+          );
+        },
+      );
+
+      // Extract images from all results
+      for (var posts in results) {
+        allImages.addAll(_extractImagesFromPosts(posts));
+      }
+
+      if (kDebugMode) {
+        print('Found ${allImages.length} images for user: $userId');
+      }
+
+      return allImages;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getUserImages');
+      rethrow;
+    }
+  }
+
+  /// Get user's videos with pagination and caching
+  /// [userId] - User ID
+  /// [festivalCollectionNames] - Optional list of festival collection names to query
+  /// [limit] - Number of videos per page (default: 20)
+  /// [lastDocument] - Last document from previous page for pagination
+  /// [useCache] - Whether to use cached data if available (default: true)
+  /// Returns map with 'videos' list, 'lastDocument', 'hasMore', and 'cached' flag
+  Future<Map<String, dynamic>> getUserVideosPaginated(
+    String userId, {
+    List<String>? festivalCollectionNames,
+    int limit = 20,
+    Map<String, DocumentSnapshot?>? lastDocuments, // Map of collectionName -> lastDocument
+    bool useCache = true,
+  }) async {
+    try {
+      final cacheKey = '${userId}_videos';
+      
+      // Check cache if this is first page and cache is enabled
+      if (useCache && lastDocuments == null) {
+        final cached = _profileCache[cacheKey];
+        if (cached != null) {
+          final cacheTime = cached['timestamp'] as DateTime;
+          if (DateTime.now().difference(cacheTime) < _cacheExpiry) {
+            if (kDebugMode) {
+              print('📦 Using cached videos for user: $userId');
+            }
+            return {
+              'videos': List<String>.from(cached['data'] as List),
+              'postInfos': cached['postInfos'] != null 
+                  ? List<Map<String, dynamic>>.from(cached['postInfos'] as List)
+                  : <Map<String, dynamic>>[],
+              'lastDocuments': null,
+              'hasMore': false,
+              'cached': true,
+            };
+          } else {
+            // Cache expired, remove it
+            _profileCache.remove(cacheKey);
+          }
+        }
+      }
+
+      // Check network status - if offline and no cache, return empty immediately
+      final hasInternet = await _networkService.hasInternetConnection();
+      if (!hasInternet) {
+        if (kDebugMode) {
+          print('📴 Offline - returning cached data or empty result');
+        }
+        // If we have cache (even if expired), return it when offline
+        if (useCache && lastDocuments == null) {
+          final cached = _profileCache[cacheKey];
+          if (cached != null) {
+            if (kDebugMode) {
+              print('📦 Using expired cache (offline mode)');
+            }
+            return {
+              'videos': List<String>.from(cached['data'] as List),
+              'postInfos': cached['postInfos'] != null 
+                  ? List<Map<String, dynamic>>.from(cached['postInfos'] as List)
+                  : <Map<String, dynamic>>[],
+              'lastDocuments': null,
+              'hasMore': false,
+              'cached': true,
+            };
+          }
+        }
+        // No cache available offline
+        return {
+          'videos': <String>[],
+          'postInfos': <Map<String, dynamic>>[],
+          'lastDocuments': null,
+          'hasMore': false,
+          'cached': false,
+        };
+      }
+
+      final allVideos = <String>[];
+      final newLastDocuments = <String, DocumentSnapshot?>{};
+      bool hasMore = false;
+
+      // Create list of all collection queries to run in parallel
+      final collectionQueries = <Future<Map<String, dynamic>>>[];
+
+      // Add global feed query
+      final globalLastDoc = lastDocuments?[defaultPostsCollection];
+      collectionQueries.add(
+        getUserPostsPaginated(
+          userId: userId,
+          collectionName: defaultPostsCollection,
+          isVideoOnly: true,
+          limit: limit,
+          lastDocument: globalLastDoc,
+        ).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            if (kDebugMode) print('Timeout fetching global posts');
+            return {
+              'posts': <Map<String, dynamic>>[],
+              'lastDocument': null,
+              'hasMore': false,
+            };
+          },
+        ),
+      );
+
+      // Add festival collection queries if provided (limit to first 20)
+      if (festivalCollectionNames != null && festivalCollectionNames.isNotEmpty) {
+        final limitedCollections = festivalCollectionNames.take(20).toList();
+        for (var collectionName in limitedCollections) {
+          final collectionLastDoc = lastDocuments?[collectionName];
+          collectionQueries.add(
+            getUserPostsPaginated(
+              userId: userId,
+              collectionName: collectionName,
+              isVideoOnly: true,
+              limit: limit,
+              lastDocument: collectionLastDoc,
+            )
+                .timeout(
+                  const Duration(seconds: 3),
+                  onTimeout: () {
+                    if (kDebugMode) print('Timeout fetching from $collectionName');
+                    return {
+                      'posts': <Map<String, dynamic>>[],
+                      'lastDocument': null,
+                      'hasMore': false,
+                    };
+                  },
+                )
+                .catchError((e) {
+                  return {
+                    'posts': <Map<String, dynamic>>[],
+                    'lastDocument': null,
+                    'hasMore': false,
+                  };
+                }),
+          );
+        }
+      }
+
+      // Execute all queries in parallel
+      final results = await Future.wait(collectionQueries).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          if (kDebugMode) print('Timeout waiting for all queries');
+          return List<Map<String, dynamic>>.filled(
+            collectionQueries.length,
+            {
+              'posts': <Map<String, dynamic>>[],
+              'lastDocument': null,
+              'hasMore': false,
+            },
+          );
+        },
+      );
+
+      // Extract videos and post info from all results and track pagination state
+      int collectionIndex = 0;
+      final allPostInfos = <Map<String, dynamic>>[];
+      
+      // Global feed
+      final globalResult = results[collectionIndex++];
+      final globalPosts = globalResult['posts'] as List<Map<String, dynamic>>;
+      allVideos.addAll(_extractVideosFromPosts(globalPosts));
+      allPostInfos.addAll(_extractVideoInfoFromPosts(globalPosts, defaultPostsCollection));
+      if (globalResult['lastDocument'] != null) {
+        newLastDocuments[defaultPostsCollection] = globalResult['lastDocument'] as DocumentSnapshot;
+      }
+      if (globalResult['hasMore'] == true) {
+        hasMore = true;
+      }
+
+      // Festival collections
+      if (festivalCollectionNames != null && festivalCollectionNames.isNotEmpty) {
+        final limitedCollections = festivalCollectionNames.take(20).toList();
+        for (var collectionName in limitedCollections) {
+          if (collectionIndex >= results.length) break;
+          
+          final result = results[collectionIndex++];
+          final posts = result['posts'] as List<Map<String, dynamic>>;
+          allVideos.addAll(_extractVideosFromPosts(posts));
+          allPostInfos.addAll(_extractVideoInfoFromPosts(posts, collectionName));
+          
+          if (result['lastDocument'] != null) {
+            newLastDocuments[collectionName] = result['lastDocument'] as DocumentSnapshot;
+          }
+          if (result['hasMore'] == true) {
+            hasMore = true;
+          }
+        }
+      }
+
+      // Cache first page results (both URLs and post info)
+      if (lastDocuments == null && allVideos.isNotEmpty) {
+        _profileCache[cacheKey] = {
+          'data': allVideos,
+          'postInfos': allPostInfos, // Store post metadata for fetching full details later
+          'timestamp': DateTime.now(),
+        };
+      }
+
+      if (kDebugMode) {
+        print('Found ${allVideos.length} videos for user: $userId (hasMore: $hasMore)');
+      }
+
+      return {
+        'videos': allVideos,
+        'postInfos': allPostInfos, // Return post metadata for profile grid
+        'lastDocuments': newLastDocuments.isEmpty ? null : newLastDocuments,
+        'hasMore': hasMore,
+        'cached': false,
+      };
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getUserVideosPaginated');
+      rethrow;
+    }
+  }
+
+  /// Get all user's videos from all collections (global + festival collections)
+  /// [festivalCollectionNames] - Optional list of festival collection names to query
+  /// Returns list of video URLs from posts
+  /// 
+  /// @deprecated Use getUserVideosPaginated for better performance
+  Future<List<String>> getUserVideos(
+    String userId, {
+    List<String>? festivalCollectionNames,
+  }) async {
+    try {
+      final allVideos = <String>[];
+
+      // Create list of all collection queries to run in parallel
+      final collectionQueries = <Future<List<Map<String, dynamic>>>>[];
+
+      // Add global feed query (most important, run first)
+      collectionQueries.add(
+        getUserPosts(
+          userId: userId,
+          collectionName: defaultPostsCollection,
+          isVideoOnly: true, // Only videos
+        ).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            if (kDebugMode) print('Timeout fetching global posts');
+            return <Map<String, dynamic>>[];
+          },
+        ),
+      );
+
+      // Add festival collection queries if provided (limit to first 20 to avoid too many queries)
+      if (festivalCollectionNames != null && festivalCollectionNames.isNotEmpty) {
+        final limitedCollections = festivalCollectionNames.take(20).toList();
+        for (var collectionName in limitedCollections) {
+          collectionQueries.add(
+            getUserPosts(
+              userId: userId,
+              collectionName: collectionName,
+              isVideoOnly: true, // Only videos
+            )
+                .timeout(
+                  const Duration(seconds: 3),
+                  onTimeout: () {
+                    if (kDebugMode) print('Timeout fetching from $collectionName');
+                    return <Map<String, dynamic>>[];
+                  },
+                )
+                .catchError((e) {
+                  // Return empty list on error instead of throwing
+                  return <Map<String, dynamic>>[];
+                }),
+          );
+        }
+      }
+
+      // Execute all queries in parallel with timeout
+      final results = await Future.wait(collectionQueries).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          if (kDebugMode) print('Timeout waiting for all queries');
+          return List<List<Map<String, dynamic>>>.filled(
+            collectionQueries.length,
+            <Map<String, dynamic>>[],
+          );
+        },
+      );
+
+      // Extract videos from all results
+      for (var posts in results) {
+        allVideos.addAll(_extractVideosFromPosts(posts));
+      }
+
+      if (kDebugMode) {
+        print('Found ${allVideos.length} videos for user: $userId');
+      }
+
+      return allVideos;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getUserVideos');
       rethrow;
     }
   }
@@ -889,6 +2014,43 @@ class FirestoreService {
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getComments');
+      rethrow;
+    }
+  }
+
+  /// Get a single post by ID with full details (comments count, reactions, etc.)
+  /// 
+  /// [postId] - The post document ID
+  /// [collectionName] - Collection name where post is stored
+  /// Returns post data map with all details, or null if not found
+  Future<Map<String, dynamic>?> getPostById({
+    required String postId,
+    required String collectionName,
+  }) async {
+    try {
+      final doc = await _firestore
+          .collection(collectionName)
+          .doc(postId)
+          .get();
+
+      if (!doc.exists) {
+        if (kDebugMode) {
+          print('⚠️ Post not found: $postId in collection $collectionName');
+        }
+        return null;
+      }
+
+      final data = doc.data() as Map<String, dynamic>;
+      data['postId'] = doc.id;
+
+      if (kDebugMode) {
+        print('✅ Fetched post: $postId from collection $collectionName');
+      }
+
+      return data;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getPostById');
       rethrow;
     }
   }
@@ -1964,6 +3126,293 @@ class FirestoreService {
       _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getPrivateChatRoomsForUser');
       // Return empty stream on error
       return Stream.value(<Map<String, dynamic>>[]);
+    }
+  }
+
+  /// Delete a post from Firestore and its media from Firebase Storage
+  /// 
+  /// [postId] - The post document ID to delete
+  /// [userId] - The user ID (to verify ownership)
+  /// [collectionName] - Optional collection name (defaults to 'festivalrumorglobalfeed')
+  Future<void> deletePost({
+    required String postId,
+    required String userId,
+    String? collectionName,
+  }) async {
+    try {
+      final targetCollection = collectionName ?? defaultPostsCollection;
+      
+      // Get the post document first to verify ownership and get media URLs
+      final postRef = _firestore.collection(targetCollection).doc(postId);
+      final postDoc = await postRef.get();
+      
+      if (!postDoc.exists) {
+        if (kDebugMode) {
+          print('⚠️ Post not found: $postId');
+        }
+        throw Exception('Post not found');
+      }
+
+      final postData = postDoc.data() as Map<String, dynamic>? ?? {};
+      final postUserId = postData['userId'] as String?;
+
+      // Verify the user owns the post
+      if (postUserId != userId) {
+        if (kDebugMode) {
+          print('⚠️ User $userId does not own post $postId');
+        }
+        throw Exception('You can only delete your own posts');
+      }
+
+      // Get media paths from the post
+      final mediaPaths = <String>[];
+      
+      // Check for old format (single imagePath)
+      if (postData['imagePath'] != null) {
+        final imagePath = postData['imagePath'] as String?;
+        if (imagePath != null && imagePath.isNotEmpty && 
+            (imagePath.startsWith('http://') || imagePath.startsWith('https://'))) {
+          mediaPaths.add(imagePath);
+        }
+      }
+      
+      // Check for new format (mediaPaths array)
+      if (postData['mediaPaths'] != null) {
+        final paths = postData['mediaPaths'] as List<dynamic>?;
+        if (paths != null) {
+          for (final path in paths) {
+            if (path is String && path.isNotEmpty &&
+                (path.startsWith('http://') || path.startsWith('https://'))) {
+              mediaPaths.add(path);
+            }
+          }
+        }
+      }
+
+      // Delete media files from Firebase Storage
+      if (mediaPaths.isNotEmpty) {
+        await _deletePostMediaFromStorage(mediaPaths);
+      }
+
+      // Delete all subcollections (reactions, comments)
+      await _deletePostSubcollections(postRef);
+
+      // Delete the post document
+      await postRef.delete();
+
+      // Decrement user's post count
+      // Always decrement by 1 per post (same as increment - one post = one count)
+      // This matches the increment logic where we always increment by 1 regardless of media items
+      try {
+        const int postCountDecrement = 1; // Always 1 per post
+        if (kDebugMode) {
+          print('🔢 Post counter decrement: Will decrement by 1 (post had ${mediaPaths.length} media items)');
+        }
+        await decrementUserPostCount(userId, count: postCountDecrement);
+      } catch (e) {
+        // Log error but don't fail deletion if counter update fails
+        if (kDebugMode) {
+          print('⚠️ Failed to decrement post count for user $userId: $e');
+        }
+      }
+
+      // Clear profile cache for this user
+      clearProfileCache(userId: userId);
+
+      if (kDebugMode) {
+        print('✅ Post deleted successfully: $postId');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.deletePost');
+      rethrow;
+    }
+  }
+
+  /// Delete media files from Firebase Storage
+  /// 
+  /// [mediaUrls] - List of media URLs to delete
+  Future<void> _deletePostMediaFromStorage(List<String> mediaUrls) async {
+    try {
+      for (final url in mediaUrls) {
+        try {
+          // Extract the storage path from the download URL
+          // Format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{path}?alt=media&token=...
+          final uri = Uri.parse(url);
+          final pathSegments = uri.pathSegments;
+          
+          if (pathSegments.length >= 2 && pathSegments[0] == 'v0' && pathSegments[1] == 'b') {
+            // Extract the path from the URL
+            // The path is URL-encoded in the 'o' parameter
+            final pathParam = uri.queryParameters['alt'] == 'media' 
+                ? pathSegments[pathSegments.length - 1] 
+                : null;
+            
+            if (pathParam != null) {
+              // Decode the path
+              final decodedPath = Uri.decodeComponent(pathParam);
+              
+              // Create storage reference
+              final ref = FirebaseStorage.instance.refFromURL(url);
+              
+              // Delete the file
+              await ref.delete();
+              
+              if (kDebugMode) {
+                print('✅ Deleted media from Storage: $decodedPath');
+              }
+            } else {
+              // Fallback: try to delete using the full URL
+              final ref = FirebaseStorage.instance.refFromURL(url);
+              await ref.delete();
+              
+              if (kDebugMode) {
+                print('✅ Deleted media from Storage (fallback): $url');
+              }
+            }
+          } else {
+            // Try direct deletion using refFromURL
+            try {
+              final ref = FirebaseStorage.instance.refFromURL(url);
+              await ref.delete();
+              if (kDebugMode) {
+                print('✅ Deleted media from Storage: $url');
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                print('⚠️ Could not delete media from Storage: $url - $e');
+              }
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Error deleting media from Storage: $url - $e');
+          }
+          // Continue with other files even if one fails
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error in _deletePostMediaFromStorage: $e');
+      }
+      // Don't throw - media deletion failures shouldn't prevent post deletion
+    }
+  }
+
+  /// Delete all subcollections of a post (reactions, comments)
+  /// 
+  /// [postRef] - Reference to the post document
+  Future<void> _deletePostSubcollections(DocumentReference postRef) async {
+    try {
+      // Delete reactions subcollection
+      final reactionsRef = postRef.collection('reactions');
+      final reactionsSnapshot = await reactionsRef.get();
+      
+      if (reactionsSnapshot.docs.isNotEmpty) {
+        // Firestore batch write limit is 500 operations
+        const batchSize = 500;
+        WriteBatch? currentBatch;
+        int operationCount = 0;
+
+        for (var doc in reactionsSnapshot.docs) {
+          if (currentBatch == null || operationCount >= batchSize) {
+            if (currentBatch != null) {
+              await currentBatch.commit();
+            }
+            currentBatch = _firestore.batch();
+            operationCount = 0;
+          }
+          currentBatch.delete(doc.reference);
+          operationCount++;
+        }
+
+        if (currentBatch != null && operationCount > 0) {
+          await currentBatch.commit();
+        }
+
+        if (kDebugMode) {
+          print('✅ Deleted ${reactionsSnapshot.docs.length} reactions');
+        }
+      }
+
+      // Delete comments subcollection
+      final commentsRef = postRef.collection('comments');
+      final commentsSnapshot = await commentsRef.get();
+      
+      if (commentsSnapshot.docs.isNotEmpty) {
+        // Firestore batch write limit is 500 operations
+        const batchSize = 500;
+        WriteBatch? currentBatch;
+        int operationCount = 0;
+
+        for (var doc in commentsSnapshot.docs) {
+          if (currentBatch == null || operationCount >= batchSize) {
+            if (currentBatch != null) {
+              await currentBatch.commit();
+            }
+            currentBatch = _firestore.batch();
+            operationCount = 0;
+          }
+          currentBatch.delete(doc.reference);
+          operationCount++;
+        }
+
+        if (currentBatch != null && operationCount > 0) {
+          await currentBatch.commit();
+        }
+
+        if (kDebugMode) {
+          print('✅ Deleted ${commentsSnapshot.docs.length} comments');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Error deleting subcollections: $e');
+      }
+      // Don't throw - subcollection deletion failures shouldn't prevent post deletion
+    }
+  }
+
+  /// Decrement user's post count in Firestore
+  /// Uses atomic decrement to safely handle concurrent updates
+  /// Ensures count never goes below 0
+  /// 
+  /// [userId] - The user ID whose post count should be decremented
+  /// [count] - The number to decrement by (defaults to 1)
+  Future<void> decrementUserPostCount(String userId, {int count = 1}) async {
+    try {
+      final userRef = _firestore.collection('users').doc(userId);
+      
+      // Get current count first to ensure it doesn't go negative
+      final userDoc = await userRef.get();
+      final currentData = userDoc.data() as Map<String, dynamic>? ?? {};
+      final currentCount = currentData['postCount'] as int? ?? 0;
+      
+      // Calculate new count and ensure it's not negative
+      final newCount = (currentCount - count).clamp(0, double.infinity).toInt();
+      
+      // Only update if the count would change
+      if (newCount != currentCount) {
+        await userRef.update({
+          'postCount': newCount,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        if (kDebugMode) {
+          print('✅ Decremented post count for user $userId: $currentCount -> $newCount (decrement by $count)');
+        }
+      } else {
+        if (kDebugMode) {
+          print('⚠️ Post count already at minimum (0), cannot decrement further');
+        }
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.decrementUserPostCount');
+      // Don't rethrow - counter updates are not critical
+      if (kDebugMode) {
+        print('⚠️ Failed to decrement post count: $e');
+      }
     }
   }
 }

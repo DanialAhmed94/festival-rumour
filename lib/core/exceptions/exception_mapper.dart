@@ -36,6 +36,38 @@ class ExceptionMapper {
       return NetworkException.timeout();
     }
 
+    // If it's a plain Exception with a user-friendly message, preserve it
+    if (error is Exception) {
+      final message = error.toString();
+      // Check if it's a user-friendly message (not just "Exception: ...")
+      if (message.contains(':') && !message.startsWith('Exception:')) {
+        // Extract the message part after the colon
+        final parts = message.split(':');
+        if (parts.length > 1) {
+          final userMessage = parts.sublist(1).join(':').trim();
+          if (userMessage.isNotEmpty && userMessage.length > 10) {
+            // Likely a user-friendly message, preserve it
+            return UnknownException(
+              message: userMessage,
+              originalError: error,
+              stackTrace: stackTrace,
+            );
+          }
+        }
+      }
+      // If message starts with "Exception: ", extract the actual message
+      if (message.startsWith('Exception: ')) {
+        final userMessage = message.substring(11).trim();
+        if (userMessage.isNotEmpty) {
+          return UnknownException(
+            message: userMessage,
+            originalError: error,
+            stackTrace: stackTrace,
+          );
+        }
+      }
+    }
+
     // Default to unknown exception
     return UnknownException.fromError(error, stackTrace);
   }

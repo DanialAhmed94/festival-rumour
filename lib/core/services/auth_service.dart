@@ -366,4 +366,64 @@ class AuthService {
       rethrow;
     }
   }
+
+  /// Delete user account from Firebase Authentication
+  Future<void> deleteAccount() async {
+    try {
+      final user = currentUser;
+      if (user == null) {
+        throw Exception('No user is currently signed in.');
+      }
+      await user.delete();
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.deleteAccount');
+      rethrow;
+    }
+  }
+
+  /// Re-authenticate user with email and password
+  /// Required before sensitive operations like password change
+  Future<void> reauthenticateWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final user = currentUser;
+      if (user == null) {
+        throw Exception('No user is currently signed in.');
+      }
+
+      // Create credential for re-authentication
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: password,
+      );
+
+      // Re-authenticate the user
+      await user.reauthenticateWithCredential(credential);
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.reauthenticateWithEmailPassword');
+      rethrow;
+    }
+  }
+
+  /// Update user password
+  /// Requires re-authentication first
+  Future<void> updatePassword(String newPassword) async {
+    try {
+      final user = currentUser;
+      if (user == null) {
+        throw Exception('No user is currently signed in.');
+      }
+
+      await user.updatePassword(newPassword);
+      await reloadUser();
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.updatePassword');
+      rethrow;
+    }
+  }
 }

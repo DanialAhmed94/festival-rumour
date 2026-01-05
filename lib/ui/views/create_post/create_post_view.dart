@@ -203,9 +203,11 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                   ),
                 ),
                 const Spacer(),
-                TextButton(
-                  onPressed: () => viewModel.clearAllMedia(),
-                  child: const Text('Clear All'),
+                Flexible(
+                  child: TextButton(
+                    onPressed: () => viewModel.clearAllMedia(),
+                    child: const Text('Clear All'),
+                  ),
                 ),
               ],
             ),
@@ -401,26 +403,63 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
         elevation: canPost ? 2 : 0,
       ),
       child: viewModel.isLoading
-          ? const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    color: AppColors.white,
-                    strokeWidth: 2.5,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: AppColors.white,
+                        strokeWidth: 2.5,
+                        value: viewModel.uploadProgress > 0 ? viewModel.uploadProgress : null,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            viewModel.uploadStatus.isNotEmpty 
+                                ? viewModel.uploadStatus 
+                                : 'Uploading...',
+                            style: const TextStyle(
+                              color: AppColors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (viewModel.uploadProgress > 0 && viewModel.totalUploadItems > 0)
+                            Text(
+                              '${(viewModel.uploadProgress * 100).toStringAsFixed(0)}% (${viewModel.currentUploadIndex}/${viewModel.totalUploadItems})',
+                              style: const TextStyle(
+                                color: AppColors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(width: 12),
-                Text(
-                  'Uploading...',
-                  style: TextStyle(
-                    color: AppColors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                if (viewModel.uploadProgress > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: LinearProgressIndicator(
+                      value: viewModel.uploadProgress,
+                      backgroundColor: AppColors.white, // Remaining/unfilled part - white
+                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent), // Active progress - yellow
+                      minHeight: 3,
+                    ),
                   ),
-                ),
               ],
             )
           : const Row(

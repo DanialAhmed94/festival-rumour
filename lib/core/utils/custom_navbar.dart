@@ -3,6 +3,7 @@ import '../constants/app_colors.dart';
 import '../constants/app_sizes.dart';
 import '../constants/app_strings.dart';
 import '../../shared/extensions/context_extensions.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class CustomNavBar extends StatelessWidget {
   final int currentIndex;
@@ -72,6 +73,14 @@ class CustomNavBar extends StatelessWidget {
     double fontSize,
     double spacing,
   ) {
+    // Determine colors based on selection state
+    final iconColor = selected
+        ? AppColors.black // Black for selected (contrasts well with accent)
+        : const Color(0xFF9E9E9E); // Light gray for unselected
+    final textColor = selected
+        ? AppColors.black // Black for selected (contrasts well with accent)
+        : const Color(0xFF9E9E9E); // Light gray for unselected (matches icon)
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -82,42 +91,30 @@ class CustomNavBar extends StatelessWidget {
                 : Colors.transparent, // Transparent for unselected
         borderRadius: BorderRadius.circular(20),
       ),
-        child:
-            selected
-                ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      item["icon"] as IconData,
-                      color:
-                          AppColors
-                              .black, // Black for selected (contrasts well with accent)
-                      size: iconSize,
-                    ),
-                    SizedBox(width: spacing),
-                    Flexible(
-                      child: Text(
-                        item["label"] as String,
-                        style: TextStyle(
-                          color:
-                              AppColors
-                                  .black, // Black for selected (contrasts well with accent)
-                          fontWeight: FontWeight.w600,
-                          fontSize: fontSize,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                    ),
-                  ],
-                )
-                : Icon(
-                  item["icon"] as IconData,
-                  color: const Color(0xFF9E9E9E), // Light gray for unselected
-                  size: iconSize,
-                ),
-      );
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            item["icon"] as IconData,
+            color: iconColor,
+            size: iconSize,
+          ),
+          SizedBox(height: spacing),
+          Text(
+            item["label"] as String,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+              fontSize: 11.sp,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
   }
 
   // Responsive helper methods
