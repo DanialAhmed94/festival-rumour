@@ -1,4 +1,5 @@
 import 'package:festival_rumour/ui/views/username/username_view.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../ui/views/forgot_password/forgot_password_view.dart';
 import '../../ui/views/jobdetail/festivals_job_view.dart';
@@ -38,6 +39,8 @@ import '../../ui/views/chat/create_chat_room_view.dart';
 import '../../ui/views/rumors/rumors_view.dart';
 import '../../ui/views/test/firebase_test_view.dart';
 import '../../ui/views/create_post/create_post_view.dart';
+import '../../ui/views/search_users/search_users_view.dart';
+import '../../ui/views/Profile/view_user_profile_view.dart';
 import '../../ui/views/homeview/post_model.dart';
 import '../utils/transition.dart';
 
@@ -81,6 +84,8 @@ class AppRoutes {
   static const String viewAll = '/view_all';
   static const String forgotpassword = '/forgot_password';
   static const String createPost = '/create_post';
+  static const String searchUsers = '/search_users';
+  static const String viewUserProfile = '/view_user_profile';
 }
 
 Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -175,12 +180,61 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const FestivalsJobPostView());
 
     case AppRoutes.profile:
-      return SmoothPageRoute(page: ProfileView());
+      // Arguments can be:
+      // - String: userId to view another user's profile
+      // - Map: {'userId': String, 'fromRoute': String?} for navigation tracking
+      String? userId;
+      String? fromRoute;
+      
+      if (settings.arguments is Map) {
+        final args = settings.arguments as Map<String, dynamic>;
+        userId = args['userId'] as String?;
+        fromRoute = args['fromRoute'] as String?;
+      } else if (settings.arguments is String) {
+        userId = settings.arguments as String;
+      }
+      
+      return SmoothPageRoute(
+        page: ProfileView(
+          userId: userId,
+          fromRoute: fromRoute, // Pass the route we came from
+        ),
+      );
 
     case AppRoutes.profileList:
-      final args = settings.arguments as int? ?? 0;
+      // Arguments can be:
+      // - int: initialTab (0 = Followers, 1 = Following, 2 = Festivals)
+      // - Map: {'initialTab': int, 'username': String, 'userId': String?}
+      int initialTab = 0;
+      String username = 'username';
+      String? userId;
+      
+      if (settings.arguments is Map) {
+        final args = settings.arguments as Map<String, dynamic>;
+        initialTab = args['initialTab'] as int? ?? 0;
+        username = args['username'] as String? ?? 'username';
+        userId = args['userId'] as String?;
+        
+        if (kDebugMode) {
+          print('🔍 [AppRouter.profileList] Parsing arguments:');
+          print('   initialTab: $initialTab');
+          print('   username: $username');
+          print('   userId: $userId');
+          print('   args: $args');
+        }
+      } else if (settings.arguments is int) {
+        initialTab = settings.arguments as int;
+      }
+      
+      if (kDebugMode) {
+        print('📱 [AppRouter.profileList] Creating ProfileListView');
+        print('   initialTab: $initialTab');
+        print('   username: $username');
+        print('   userId: $userId');
+      }
+      
       return SmoothPageRoute(
-        page: ProfileListView(initialTab: args, Username: 'username'),
+        page: ProfileListView(initialTab: initialTab, Username: username, userId: userId),
       );
 
     case AppRoutes.posts:
@@ -246,6 +300,20 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
           name: AppRoutes.createPost,
           arguments: collectionName, // Pass collection name as arguments
         ),
+      );
+
+    case AppRoutes.searchUsers:
+      return SmoothPageRoute(page: const SearchUsersView());
+
+    case AppRoutes.viewUserProfile:
+      // Arguments should be userId (String) to view another user's profile
+      final userId = settings.arguments as String?;
+      if (userId == null) {
+        // If no userId provided, return to home or show error
+        return SmoothPageRoute(page: const HomeView());
+      }
+      return SmoothPageRoute(
+        page: ViewUserProfileView(userId: userId),
       );
 
     default:

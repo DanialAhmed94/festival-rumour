@@ -30,12 +30,16 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
   @override
   void onViewModelReady(DiscoverViewModel viewModel) {
     super.onViewModelReady(viewModel);
-    // Update FestivalProvider when festivals are loaded
-    // We'll do this in the buildView using a listener or Consumer
   }
 
   @override
   Widget buildView(BuildContext context, DiscoverViewModel viewModel) {
+    // Load favorite status when view is built
+    // The viewModel has internal flags (_hasLoadedFavorite, _isLoadingFavorite) 
+    // to prevent multiple calls, so it's safe to call this on every rebuild
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      viewModel.loadFavoriteStatus(context);
+    });
     return WillPopScope(
       onWillPop: () async {
         print("🔙 Discover screen back button pressed");
@@ -124,17 +128,27 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
   /// ---------------- FAVORITE BUTTON ----------------
   Widget _buildFavoriteButton(BuildContext context, DiscoverViewModel viewModel) {
     return GestureDetector(
-      onTap: () {
-        viewModel.toggleFavorite();
-        if (viewModel.isFavorited) {
-          SnackbarUtil.showSuccessSnackBar(
+      onTap: () async {
+        final wasFavorited = viewModel.isFavorited;
+        try {
+          await viewModel.toggleFavorite(context);
+          // Show snackbar after successful toggle
+          if (viewModel.isFavorited) {
+            SnackbarUtil.showSuccessSnackBar(
+              context,
+              AppStrings.addedToFavorites,
+            );
+          } else {
+            SnackbarUtil.showInfoSnackBar(
+              context,
+              AppStrings.removedFromFavorites,
+            );
+          }
+        } catch (e) {
+          // Error handling is done in view model, just show error snackbar
+          SnackbarUtil.showErrorSnackBar(
             context,
-            AppStrings.addedToFavorites,
-          );
-        } else {
-          SnackbarUtil.showInfoSnackBar(
-            context,
-            AppStrings.removedFromFavorites,
+            'Failed to update favorite. Please try again.',
           );
         }
       },
@@ -157,11 +171,20 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
 
   /// ---------------- ACTION TILES ----------------
   Widget _buildActionTiles(BuildContext context) {
+    // Get selected festival from provider
+    final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+    final selectedFestival = festivalProvider.selectedFestival;
+    
+    // Create dynamic text with actual festival name
+    final countMeInText = selectedFestival != null
+        ? 'Count me in, catch ya at ${selectedFestival.title}'
+        : AppStrings.countMeInCatchYaAtLunaFest; // Fallback to default if no festival selected
+    
     return Column(
       children: [
         ActionTile(
           iconPath: AppAssets.handicon,
-          text: AppStrings.countMeInCatchYaAtLunaFest,
+          text: countMeInText,
           onTap: () => _showShareLocationDialog(context),
         ),
         SizedBox(height: AppDimensions.spaceS),

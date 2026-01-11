@@ -633,6 +633,11 @@ class HomeViewModel extends BaseViewModel {
     }
   }
 
+  /// Navigate back to festival screen
+  void navigateToFestival() {
+    _navigationService.navigateTo(AppRoutes.festivals);
+  }
+
   /// Refresh posts after returning from comment view
   /// No longer needed with real-time updates, but kept for backward compatibility
   /// The real-time listener will automatically update comment counts

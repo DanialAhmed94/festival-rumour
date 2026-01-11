@@ -199,6 +199,141 @@ class FirestoreService {
     }
   }
 
+  /// Add a festival to user's favorites
+  /// Stores festival ID in an array field 'favoriteFestivals' in user document
+  Future<void> addFavoriteFestival(String userId, int festivalId) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'favoriteFestivals': FieldValue.arrayUnion([festivalId]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (kDebugMode) {
+        print('✅ Added festival $festivalId to favorites for user $userId');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.addFavoriteFestival');
+      rethrow;
+    }
+  }
+
+  /// Remove a festival from user's favorites
+  Future<void> removeFavoriteFestival(String userId, int festivalId) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'favoriteFestivals': FieldValue.arrayRemove([festivalId]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (kDebugMode) {
+        print('✅ Removed festival $festivalId from favorites for user $userId');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.removeFavoriteFestival');
+      rethrow;
+    }
+  }
+
+  /// Get list of favorite festival IDs for a user
+  /// Returns empty list if user has no favorites or doesn't exist
+  Future<List<int>> getFavoriteFestivalIds(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      
+      if (!doc.exists) {
+        return [];
+      }
+
+      final data = doc.data();
+      final favorites = data?['favoriteFestivals'] as List<dynamic>?;
+      
+      if (favorites == null || favorites.isEmpty) {
+        return [];
+      }
+
+      // Convert to List<int>, filtering out any invalid values
+      return favorites
+          .map((e) => e is int ? e : (e is String ? int.tryParse(e) : null))
+          .whereType<int>()
+          .toList();
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getFavoriteFestivalIds');
+      rethrow;
+    }
+  }
+
+  /// Check if a festival is in user's favorites
+  Future<bool> isFestivalFavorited(String userId, int festivalId) async {
+    try {
+      final favoriteIds = await getFavoriteFestivalIds(userId);
+      return favoriteIds.contains(festivalId);
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.isFestivalFavorited');
+      rethrow;
+    }
+  }
+
+  /// Search users by display name
+  /// Returns a list of user data matching the search query
+  /// Limits results to 20 for performance
+  Future<List<Map<String, dynamic>>> searchUsersByName(String searchQuery, {int limit = 20}) async {
+    try {
+      if (searchQuery.trim().isEmpty) {
+        return [];
+      }
+
+      final query = searchQuery.trim().toLowerCase();
+      
+      // Get all users with appIdentifier = 'festivalrumor'
+      // Note: Firestore doesn't support case-insensitive search natively,
+      // so we fetch and filter in memory for accurate results
+      final querySnapshot = await _firestore
+          .collection('users')
+          .where('appIdentifier', isEqualTo: 'festivalrumor')
+          .limit(100) // Fetch more to filter, but limit for performance
+          .get();
+
+      final results = <Map<String, dynamic>>[];
+      
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final displayName = data['displayName'] as String? ?? '';
+        final email = data['email'] as String? ?? '';
+        
+        // Case-insensitive search in displayName or email
+        if (displayName.toLowerCase().contains(query) || 
+            email.toLowerCase().contains(query)) {
+          results.add({
+            'userId': doc.id,
+            'displayName': displayName,
+            'email': email,
+            'photoUrl': data['photoUrl'] as String?,
+            'bio': data['bio'] as String?,
+          });
+          
+          // Limit results
+          if (results.length >= limit) {
+            break;
+          }
+        }
+      }
+
+      if (kDebugMode) {
+        print('✅ Found ${results.length} users matching "$searchQuery"');
+      }
+
+      return results;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.searchUsersByName');
+      rethrow;
+    }
+  }
+
   /// Check if user exists in Firestore by app identifier
   Future<bool> isFestivalRumorUser(String userId) async {
     try {
@@ -3413,6 +3548,461 @@ class FirestoreService {
       if (kDebugMode) {
         print('⚠️ Failed to decrement post count: $e');
       }
+    }
+  }
+
+  // ==================== FOLLOW/UNFOLLOW METHODS ====================
+
+  /// Follow a user
+  /// Adds the targetUserId to currentUserId's following list
+  /// Adds currentUserId to targetUserId's followers list
+  /// Updates follower/following counts atomically
+  /// 
+  /// [currentUserId] - The user who is following
+  /// [targetUserId] - The user being followed
+  Future<void> followUser(String currentUserId, String targetUserId) async {
+    try {
+      if (kDebugMode) {
+        print('🔄 [followUser] Called');
+        print('   currentUserId: $currentUserId');
+        print('   targetUserId: $targetUserId');
+      }
+      
+      if (currentUserId == targetUserId) {
+        throw Exception('Cannot follow yourself');
+      }
+
+      // Check if already following to prevent duplicates
+      final isAlreadyFollowing = await isFollowing(currentUserId, targetUserId);
+      if (isAlreadyFollowing) {
+        if (kDebugMode) {
+          print('ℹ️ [followUser] User $currentUserId is already following $targetUserId, skipping...');
+        }
+        return;
+      }
+
+      // Get current user document to check if following array exists
+      final currentUserDoc = await _firestore.collection('users').doc(currentUserId).get();
+      final currentUserData = currentUserDoc.data() as Map<String, dynamic>? ?? {};
+      final currentFollowing = (currentUserData['following'] as List<dynamic>?) ?? [];
+      
+      if (kDebugMode) {
+        print('📊 [followUser] Current user data BEFORE update:');
+        print('   following array exists: ${currentUserData.containsKey('following')}');
+        print('   following array length: ${currentFollowing.length}');
+        print('   following array content: $currentFollowing');
+        print('   followingCount: ${currentUserData['followingCount']}');
+        print('   Already contains targetUserId: ${currentFollowing.contains(targetUserId)}');
+      }
+
+      final batch = _firestore.batch();
+      
+      // Add targetUserId to currentUserId's following array
+      // Use arrayUnion which will create the array if it doesn't exist
+      final currentUserRef = _firestore.collection('users').doc(currentUserId);
+      
+      // If following array doesn't exist, we need to set it first
+      if (!currentUserData.containsKey('following')) {
+        if (kDebugMode) {
+          print('⚠️ [followUser] following array does not exist, creating it...');
+        }
+        // Set the array if it doesn't exist
+        batch.set(currentUserRef, {
+          'following': [targetUserId],
+          'followingCount': 1,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } else {
+        // Array exists, use arrayUnion
+        batch.update(currentUserRef, {
+          'following': FieldValue.arrayUnion([targetUserId]),
+          'followingCount': FieldValue.increment(1),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // Add currentUserId to targetUserId's followers array
+      final targetUserRef = _firestore.collection('users').doc(targetUserId);
+      batch.update(targetUserRef, {
+        'followers': FieldValue.arrayUnion([currentUserId]),
+        'followersCount': FieldValue.increment(1),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      if (kDebugMode) {
+        print('✅ [followUser] Successfully followed');
+        print('   User $currentUserId followed $targetUserId');
+        
+        // Verify the update
+        final verifyDoc = await _firestore.collection('users').doc(currentUserId).get();
+        final verifyData = verifyDoc.data() as Map<String, dynamic>? ?? {};
+        final verifyFollowing = (verifyData['following'] as List<dynamic>?) ?? [];
+        print('   Verification - following array length: ${verifyFollowing.length}');
+        print('   Verification - followingCount: ${verifyData['followingCount']}');
+        print('   Verification - contains targetUserId: ${verifyFollowing.contains(targetUserId)}');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [followUser] Error: $e');
+        print('   Stack trace: $stackTrace');
+      }
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.followUser');
+      rethrow;
+    }
+  }
+
+  /// Unfollow a user
+  /// Removes the targetUserId from currentUserId's following list
+  /// Removes currentUserId from targetUserId's followers list
+  /// Updates follower/following counts atomically
+  /// Ensures counts never go below 0
+  /// 
+  /// [currentUserId] - The user who is unfollowing
+  /// [targetUserId] - The user being unfollowed
+  Future<void> unfollowUser(String currentUserId, String targetUserId) async {
+    try {
+      if (currentUserId == targetUserId) {
+        throw Exception('Cannot unfollow yourself');
+      }
+
+      // Get current counts to ensure they don't go negative
+      final currentUserDoc = await _firestore.collection('users').doc(currentUserId).get();
+      final targetUserDoc = await _firestore.collection('users').doc(targetUserId).get();
+      
+      final currentUserData = currentUserDoc.data() as Map<String, dynamic>? ?? {};
+      final targetUserData = targetUserDoc.data() as Map<String, dynamic>? ?? {};
+      
+      final currentFollowingCount = (currentUserData['followingCount'] as int?) ?? 0;
+      final targetFollowersCount = (targetUserData['followersCount'] as int?) ?? 0;
+
+      final batch = _firestore.batch();
+      
+      // Remove targetUserId from currentUserId's following array
+      final currentUserRef = _firestore.collection('users').doc(currentUserId);
+      final newCurrentFollowingCount = (currentFollowingCount - 1).clamp(0, double.infinity).toInt();
+      batch.update(currentUserRef, {
+        'following': FieldValue.arrayRemove([targetUserId]),
+        'followingCount': newCurrentFollowingCount,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Remove currentUserId from targetUserId's followers array
+      final targetUserRef = _firestore.collection('users').doc(targetUserId);
+      final newTargetFollowersCount = (targetFollowersCount - 1).clamp(0, double.infinity).toInt();
+      batch.update(targetUserRef, {
+        'followers': FieldValue.arrayRemove([currentUserId]),
+        'followersCount': newTargetFollowersCount,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      if (kDebugMode) {
+        print('✅ User $currentUserId unfollowed $targetUserId');
+        print('   Current user following: $currentFollowingCount -> $newCurrentFollowingCount');
+        print('   Target user followers: $targetFollowersCount -> $newTargetFollowersCount');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.unfollowUser');
+      rethrow;
+    }
+  }
+
+  /// Check if currentUserId is following targetUserId
+  /// 
+  /// [currentUserId] - The user to check
+  /// [targetUserId] - The user being checked
+  /// Returns true if following, false otherwise
+  Future<bool> isFollowing(String currentUserId, String targetUserId) async {
+    try {
+      if (currentUserId == targetUserId) {
+        return false;
+      }
+
+      final userDoc = await _firestore.collection('users').doc(currentUserId).get();
+      final data = userDoc.data();
+      final following = (data?['following'] as List<dynamic>?) ?? [];
+      
+      return following.contains(targetUserId);
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.isFollowing');
+      return false;
+    }
+  }
+
+  /// Get followers list for a user with pagination
+  /// 
+  /// [userId] - The user whose followers to fetch
+  /// [limit] - Maximum number of followers to fetch per page (default: 20)
+  /// [lastIndex] - Last index for pagination (null for first page)
+  /// Returns a map with 'followers' list and 'nextIndex' for next page
+  Future<Map<String, dynamic>> getFollowersPaginated(
+    String userId, {
+    int limit = 20,
+    int? lastIndex,
+  }) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      final data = userDoc.data();
+      final followerIds = (data?['followers'] as List<dynamic>?) ?? [];
+
+      if (followerIds.isEmpty) {
+        return {
+          'followers': <Map<String, dynamic>>[],
+          'nextIndex': null,
+          'hasMore': false,
+        };
+      }
+
+      // Get paginated follower IDs
+      final startIndex = lastIndex ?? 0;
+      final endIndex = (startIndex + limit).clamp(0, followerIds.length);
+      final paginatedIds = followerIds.sublist(startIndex, endIndex);
+
+      // Fetch user data for each follower ID
+      final followers = <Map<String, dynamic>>[];
+      for (var followerId in paginatedIds) {
+        try {
+          final followerDoc = await _firestore.collection('users').doc(followerId.toString()).get();
+          if (followerDoc.exists) {
+            final followerData = followerDoc.data() ?? {};
+            followers.add({
+              'userId': followerId.toString(),
+              'name': followerData['displayName'] ?? followerData['name'] ?? 'Unknown User',
+              'username': followerData['username'] ?? '@${followerId.toString().substring(0, 8)}',
+              'image': followerData['photoUrl'] ?? followerData['profilePhotoUrl'] ?? '',
+              'photoUrl': followerData['photoUrl'] ?? followerData['profilePhotoUrl'],
+            });
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Error fetching follower $followerId: $e');
+          }
+        }
+      }
+
+      final hasMore = endIndex < followerIds.length;
+
+      return {
+        'followers': followers,
+        'nextIndex': hasMore ? endIndex : null,
+        'hasMore': hasMore,
+      };
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getFollowersPaginated');
+      rethrow;
+    }
+  }
+
+  /// Get following list for a user with pagination
+  /// 
+  /// [userId] - The user whose following to fetch
+  /// [limit] - Maximum number of following to fetch per page (default: 20)
+  /// [lastIndex] - Last index for pagination (null for first page)
+  /// Returns a map with 'following' list and 'nextIndex' for next page
+  Future<Map<String, dynamic>> getFollowingPaginated(
+    String userId, {
+    int limit = 20,
+    int? lastIndex,
+  }) async {
+    try {
+      if (kDebugMode) {
+        print('🔍 [FirestoreService.getFollowingPaginated] Called');
+        print('   userId: $userId');
+        print('   limit: $limit');
+        print('   lastIndex: $lastIndex');
+      }
+      
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      
+      if (kDebugMode) {
+        print('📄 [FirestoreService.getFollowingPaginated] User document exists: ${userDoc.exists}');
+      }
+      
+      if (!userDoc.exists) {
+        if (kDebugMode) {
+          print('⚠️ [FirestoreService.getFollowingPaginated] User document does not exist');
+        }
+        return {
+          'following': <Map<String, dynamic>>[],
+          'nextIndex': null,
+          'hasMore': false,
+        };
+      }
+      
+      final data = userDoc.data();
+      
+      if (kDebugMode) {
+        print('📊 [FirestoreService.getFollowingPaginated] User document data keys: ${data?.keys}');
+      }
+      
+      final followingIds = (data?['following'] as List<dynamic>?) ?? [];
+
+      if (kDebugMode) {
+        print('👥 [FirestoreService.getFollowingPaginated] Following IDs:');
+        print('   followingIds type: ${followingIds.runtimeType}');
+        print('   followingIds length: ${followingIds.length}');
+        if (followingIds.isNotEmpty) {
+          print('   First 3 IDs: ${followingIds.take(3).toList()}');
+        }
+      }
+
+      if (followingIds.isEmpty) {
+        if (kDebugMode) {
+          print('ℹ️ [FirestoreService.getFollowingPaginated] No following IDs found, returning empty list');
+        }
+        return {
+          'following': <Map<String, dynamic>>[],
+          'nextIndex': null,
+          'hasMore': false,
+        };
+      }
+
+      // Get paginated following IDs
+      final startIndex = lastIndex ?? 0;
+      final endIndex = (startIndex + limit).clamp(0, followingIds.length);
+      final paginatedIds = followingIds.sublist(startIndex, endIndex);
+
+      if (kDebugMode) {
+        print('📑 [FirestoreService.getFollowingPaginated] Pagination:');
+        print('   startIndex: $startIndex');
+        print('   endIndex: $endIndex');
+        print('   paginatedIds.length: ${paginatedIds.length}');
+        print('   paginatedIds: $paginatedIds');
+      }
+
+      // Fetch user data for each following ID
+      final following = <Map<String, dynamic>>[];
+      for (var followingId in paginatedIds) {
+        try {
+          if (kDebugMode) {
+            print('   🔄 Fetching user data for followingId: $followingId');
+          }
+          
+          final followingDoc = await _firestore.collection('users').doc(followingId.toString()).get();
+          
+          if (kDebugMode) {
+            print('      Document exists: ${followingDoc.exists}');
+          }
+          
+          if (followingDoc.exists) {
+            final followingData = followingDoc.data() ?? {};
+            
+            if (kDebugMode) {
+              print('      Data keys: ${followingData.keys}');
+              print('      displayName: ${followingData['displayName']}');
+              print('      name: ${followingData['name']}');
+              print('      username: ${followingData['username']}');
+              print('      photoUrl: ${followingData['photoUrl']}');
+              print('      profilePhotoUrl: ${followingData['profilePhotoUrl']}');
+            }
+            
+            final userData = {
+              'userId': followingId.toString(),
+              'name': followingData['displayName'] ?? followingData['name'] ?? 'Unknown User',
+              'username': followingData['username'] ?? '@${followingId.toString().substring(0, 8)}',
+              'image': followingData['photoUrl'] ?? followingData['profilePhotoUrl'] ?? '',
+              'photoUrl': followingData['photoUrl'] ?? followingData['profilePhotoUrl'],
+            };
+            
+            if (kDebugMode) {
+              print('      ✅ Created user data: $userData');
+            }
+            
+            following.add(userData);
+          } else {
+            if (kDebugMode) {
+              print('      ⚠️ User document does not exist for followingId: $followingId');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('      ❌ Error fetching following $followingId: $e');
+          }
+        }
+      }
+
+      final hasMore = endIndex < followingIds.length;
+
+      if (kDebugMode) {
+        print('✅ [FirestoreService.getFollowingPaginated] Returning result:');
+        print('   following.length: ${following.length}');
+        print('   nextIndex: ${hasMore ? endIndex : null}');
+        print('   hasMore: $hasMore');
+        if (following.isNotEmpty) {
+          print('   First following item: ${following.first}');
+        }
+      }
+
+      return {
+        'following': following,
+        'nextIndex': hasMore ? endIndex : null,
+        'hasMore': hasMore,
+      };
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [FirestoreService.getFollowingPaginated] Exception: $e');
+        print('   Stack trace: $stackTrace');
+      }
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getFollowingPaginated');
+      rethrow;
+    }
+  }
+
+  /// Get follower count for a user
+  /// 
+  /// [userId] - The user whose follower count to fetch
+  /// Returns the follower count (0 if not found or negative)
+  Future<int> getFollowerCount(String userId) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      final data = userDoc.data();
+      
+      // Try to get from cached count first
+      final cachedCount = data?['followersCount'] as int?;
+      if (cachedCount != null) {
+        return cachedCount.clamp(0, double.infinity).toInt(); // Ensure non-negative
+      }
+
+      // Fallback: count array length
+      final followers = (data?['followers'] as List<dynamic>?) ?? [];
+      return followers.length.clamp(0, double.infinity).toInt(); // Ensure non-negative
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getFollowerCount');
+      return 0;
+    }
+  }
+
+  /// Get following count for a user
+  /// 
+  /// [userId] - The user whose following count to fetch
+  /// Returns the following count (0 if not found or negative)
+  Future<int> getFollowingCount(String userId) async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      final data = userDoc.data();
+      
+      // Try to get from cached count first
+      final cachedCount = data?['followingCount'] as int?;
+      if (cachedCount != null) {
+        return cachedCount.clamp(0, double.infinity).toInt(); // Ensure non-negative
+      }
+
+      // Fallback: count array length
+      final following = (data?['following'] as List<dynamic>?) ?? [];
+      return following.length.clamp(0, double.infinity).toInt(); // Ensure non-negative
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getFollowingCount');
+      return 0;
     }
   }
 }

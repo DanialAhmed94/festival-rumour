@@ -994,3 +994,4 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     );
   }
 }
+ 

@@ -1,4 +1,8 @@
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/navigation_service.dart';
@@ -42,16 +46,73 @@ class SettingsViewModel extends BaseViewModel {
     _navigationService.navigateTo(AppRoutes.leaderboard);
   }
 
-  void openHelp() {
-    // TODO: Open How to Use section
+  /// Rate the app - opens Play Store (Android) or App Store (iOS)
+  Future<void> rateApp() async {
+    try {
+      PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      final String packageName = packageInfo.packageName;
+      
+      String url;
+      if (Platform.isAndroid) {
+        // Android Play Store URL
+        url = 'https://play.google.com/store/apps/details?id=$packageName';
+      } else if (Platform.isIOS) {
+        // iOS App Store URL - replace with your actual App Store ID
+        const String iosAppStoreId = 'YOUR_IOS_APP_STORE_ID'; // TODO: Replace with actual App Store ID
+        url = 'https://apps.apple.com/app/id$iosAppStoreId';
+      } else {
+        if (kDebugMode) {
+          print('⚠️ Rate app not supported on this platform');
+        }
+        return;
+      }
+
+      final Uri uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (kDebugMode) {
+          print('❌ Could not launch URL: $url');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error rating app: $e');
+      }
+    }
   }
 
-  void rateApp() {
-    // TODO: Launch app store for rating
-  }
+  /// Share the app - opens native share dialog
+  Future<void> shareApp() async {
+    try {
+      PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      final String packageName = packageInfo.packageName;
+      final String appName = packageInfo.appName;
+      
+      String shareText;
+      String shareUrl;
+      
+      if (Platform.isAndroid) {
+        shareUrl = 'https://play.google.com/store/apps/details?id=$packageName';
+        shareText = 'Check out $appName on Google Play Store!\n$shareUrl';
+      } else if (Platform.isIOS) {
+        const String iosAppStoreId = 'YOUR_IOS_APP_STORE_ID'; // TODO: Replace with actual App Store ID
+        shareUrl = 'https://apps.apple.com/app/id$iosAppStoreId';
+        shareText = 'Check out $appName on the App Store!\n$shareUrl';
+      } else {
+        shareUrl = 'https://play.google.com/store/apps/details?id=$packageName';
+        shareText = 'Check out $appName!\n$shareUrl';
+      }
 
-  void shareApp() {
-    // TODO: Implement app sharing logic
+      await Share.share(
+        shareText,
+        subject: 'Check out $appName',
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error sharing app: $e');
+      }
+    }
   }
 
   void openPrivacyPolicy() {

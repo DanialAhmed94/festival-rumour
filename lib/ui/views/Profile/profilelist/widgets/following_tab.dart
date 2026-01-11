@@ -1,5 +1,6 @@
 import 'package:festival_rumour/shared/widgets/responsive_widget.dart';
 import 'package:flutter/material.dart';
+import '../../../../../core/constants/app_assets.dart';
 import '../../../../../core/constants/app_colors.dart';
 import '../../../../../core/constants/app_sizes.dart';
 import '../../../../../core/constants/app_strings.dart';
@@ -37,11 +38,55 @@ class FollowingTab extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
-            itemCount: viewModel.following.length,
-            itemBuilder: (context, index) {
-              final following = viewModel.following[index];
+          child: viewModel.following.isEmpty && !viewModel.isLoadingInitialFollowing
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppDimensions.paddingXL),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: 64,
+                          color: AppColors.white,
+                        ),
+                        const SizedBox(height: AppDimensions.paddingM),
+                        ResponsiveText(
+                          'Not following anyone yet',
+                          style: TextStyle(
+                            color: AppColors.white,
+                            fontSize: AppDimensions.textL,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : viewModel.isLoadingInitialFollowing
+                  ? const Center(
+                      child: CircularProgressIndicator(),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
+                      itemCount: viewModel.following.length + (viewModel.hasMoreFollowing ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        // Load more indicator
+                        if (index == viewModel.following.length) {
+                          if (viewModel.isLoadingMoreFollowing) {
+                            return const Padding(
+                              padding: EdgeInsets.all(AppDimensions.paddingM),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          // Trigger load more when reaching the end
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            viewModel.loadFollowing(loadMore: true);
+                          });
+                          return const SizedBox.shrink();
+                        }
+
+                    final following = viewModel.following[index];
+              final photoUrl = following['photoUrl'] as String? ?? following['image'] as String? ?? '';
               return Container(
                 margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
                 padding: const EdgeInsets.all(AppDimensions.paddingM),
@@ -57,8 +102,17 @@ class FollowingTab extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: AppDimensions.avatarS,
-                      backgroundImage: AssetImage(following['image'] ?? ''),
+                      backgroundImage: photoUrl.isNotEmpty
+                          ? NetworkImage(photoUrl)
+                          : null,
                       backgroundColor: AppColors.primary.withOpacity(0.1),
+                      child: photoUrl.isEmpty
+                          ? Image.asset(
+                              AppAssets.profile,
+                              width: AppDimensions.avatarS * 2,
+                              height: AppDimensions.avatarS * 2,
+                            )
+                          : null,
                     ),
                     const SizedBox(width: AppDimensions.paddingXS),
                     Expanded(
@@ -84,39 +138,37 @@ class FollowingTab extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Container(
-                      height: AppDimensions.buttonHeightM,
-                      margin: const EdgeInsets.only(right: AppDimensions.spaceS),
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // Navigate to chat view
-                          Navigator.pushNamed(context, AppRoutes.chat);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.accent,
-                          foregroundColor: AppColors.onPrimary,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+                    ElevatedButton(
+                      onPressed: () {
+                        // Navigate to chat view
+                        Navigator.pushNamed(context, AppRoutes.chat);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: AppColors.onPrimary,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        minimumSize: Size(0, AppDimensions.buttonHeightM),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const ResponsiveText(
-                          'Message',
-                          style: TextStyle(
-                            fontSize: AppDimensions.textM,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      ),
+                      child: const ResponsiveText(
+                        'Message',
+                        style: TextStyle(
+                          fontSize: AppDimensions.textM,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
+                    const SizedBox(width: AppDimensions.spaceS),
                     PopupMenuButton<String>(
                       icon: const Icon(
                         Icons.more_vert,
                         color: AppColors.white,
                       ),
-                      onSelected: (value) {
+                      onSelected: (value) async {
                         if (value == 'unfollow') {
-                          viewModel.unfollowUser(following);
+                          await viewModel.unfollowUser(following);
                         }
                       },
                       itemBuilder: (BuildContext context) => [

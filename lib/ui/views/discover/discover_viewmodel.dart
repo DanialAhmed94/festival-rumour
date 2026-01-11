@@ -8,16 +8,22 @@ import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/firestore_service.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/navigation_service.dart';
+import '../../../core/services/network_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../festival/festival_model.dart';
 
 class DiscoverViewModel extends BaseViewModel {
   final FirestoreService _firestoreService = locator<FirestoreService>();
+  final AuthService _authService = locator<AuthService>();
   final NavigationService _navigationService = locator<NavigationService>();
+  final NetworkService _networkService = locator<NetworkService>();
   
   String selected = AppStrings.live;
   bool _isFavorited = false;
+  bool _isLoadingFavorite = false; // Prevent multiple simultaneous loads
+  bool _hasLoadedFavorite = false; // Track if we've already loaded favorite status
   String searchQuery = ''; // Search query
   late FocusNode searchFocusNode; // Search field focus node
   final TextEditingController searchController = TextEditingController();
@@ -46,9 +52,180 @@ class DiscoverViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  void toggleFavorite() {
-    _isFavorited = !_isFavorited;
-    notifyListeners();
+  /// Load favorite status for the current festival from Firebase
+  /// Checks internet connection and shows appropriate snackbars
+  Future<void> loadFavoriteStatus(BuildContext context) async {
+    // CRITICAL: Check flags FIRST to prevent multiple calls
+    if (_hasLoadedFavorite || _isLoadingFavorite) {
+      if (kDebugMode) {
+        print('⏳ Favorite status already loaded or loading, skipping duplicate call...');
+      }
+      return;
+    }
+
+    _isLoadingFavorite = true;
+    final userId = _authService.userUid;
+    if (userId == null) {
+      if (kDebugMode) {
+        print('⚠️ User not logged in, cannot load favorite status');
+      }
+      _isFavorited = false;
+      notifyListeners();
+      return;
+    }
+
+    final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+    final selectedFestival = festivalProvider.selectedFestival;
+    
+    if (selectedFestival == null) {
+      _isFavorited = false;
+      notifyListeners();
+      return;
+    }
+
+    // Check internet connection first
+    bool hasInternet = false;
+    try {
+      hasInternet = await _networkService.hasInternetConnection().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => false,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Error checking internet connection: $e');
+      }
+      hasInternet = false;
+    }
+
+    // If no internet, show snackbar and set default state
+    if (!hasInternet) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No internet connection. Cannot load favorite status.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      _isFavorited = false;
+      _hasLoadedFavorite = true; // Mark as attempted
+      _isLoadingFavorite = false;
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final isFavorited = await _firestoreService.isFestivalFavorited(
+        userId,
+        selectedFestival.id,
+      );
+      _isFavorited = isFavorited;
+      _hasLoadedFavorite = true; // Mark as loaded
+      notifyListeners();
+      
+      if (kDebugMode) {
+        print('✅ Loaded favorite status for festival ${selectedFestival.id}: $isFavorited');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error loading favorite status: $e');
+      }
+      _isFavorited = false;
+      _hasLoadedFavorite = true; // Mark as attempted even on error
+      notifyListeners();
+      
+      // Show error snackbar
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load favorite status: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      _isLoadingFavorite = false;
+    }
+  }
+
+  /// Toggle favorite status and save to Firebase
+  /// Checks internet connection and prevents duplicate additions
+  Future<void> toggleFavorite(BuildContext context) async {
+    final userId = _authService.userUid;
+    if (userId == null) {
+      if (kDebugMode) {
+        print('⚠️ User not logged in, cannot toggle favorite');
+      }
+      return;
+    }
+
+    final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+    final selectedFestival = festivalProvider.selectedFestival;
+    
+    if (selectedFestival == null) {
+      if (kDebugMode) {
+        print('⚠️ No festival selected, cannot toggle favorite');
+      }
+      return;
+    }
+
+    // Check internet connection first
+    bool hasInternet = false;
+    try {
+      hasInternet = await _networkService.hasInternetConnection().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => false,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Error checking internet connection: $e');
+      }
+      hasInternet = false;
+    }
+
+    // If no internet, show snackbar and return
+    if (!hasInternet) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No internet connection. Cannot update favorite status.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    final oldFavoriteStatus = _isFavorited;
+    final newFavoriteStatus = !_isFavorited;
+
+    try {
+      if (newFavoriteStatus) {
+        // Add to favorites - arrayUnion automatically prevents duplicates
+        await _firestoreService.addFavoriteFestival(userId, selectedFestival.id);
+      } else {
+        // Remove from favorites
+        await _firestoreService.removeFavoriteFestival(userId, selectedFestival.id);
+      }
+
+      _isFavorited = newFavoriteStatus;
+      notifyListeners();
+
+      if (kDebugMode) {
+        print('✅ ${newFavoriteStatus ? "Added" : "Removed"} festival ${selectedFestival.id} ${newFavoriteStatus ? "to" : "from"} favorites');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error toggling favorite: $e');
+      }
+      // Revert the UI state on error
+      _isFavorited = oldFavoriteStatus;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   void goToRumors(BuildContext context) {

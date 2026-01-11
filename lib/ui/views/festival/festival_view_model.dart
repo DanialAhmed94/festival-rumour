@@ -141,6 +141,11 @@ class FestivalViewModel extends BaseViewModel {
     _navigationService.pop();
   }
 
+  /// Navigate to Global Feed (Home)
+  void navigateToGlobalFeed(BuildContext context) {
+    _navigationService.navigateTo(AppRoutes.home);
+  }
+
   void goToNextSlide() {
     if (isDisposed || pageController.positions.isEmpty || !pageController.hasClients) return;
     

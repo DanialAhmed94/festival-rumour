@@ -66,6 +66,10 @@ class AppAssets {
   static const String performance = 'assets/images/performance.png';
   static const String performance1 = 'assets/images/performanceimage.jpg';
 
+  // Logos
+  static const String caLogo = 'assets/logos/CA logo.png';
+  static const String festivalResourceLogo = 'assets/logos/Festival Resource Log.png';
+  static const String fetiefoodieLogo = 'assets/logos/fetiefoodie logo.png';
 
   static const String proback = 'assets/images/proback.png';
   static const String profile = 'assets/images/profile.png';

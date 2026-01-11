@@ -18,7 +18,9 @@ import 'profile_viewmodel.dart';
 class ProfileView extends BaseView<ProfileViewModel> {
   final VoidCallback? onBack;
   final Function(String)? onNavigateToSub;
-  const ProfileView({super.key, this.onBack, this.onNavigateToSub});
+  final String? userId; // Optional userId to view another user's profile
+  final String? fromRoute; // Route we came from (for proper back navigation)
+  const ProfileView({super.key, this.onBack, this.onNavigateToSub, this.userId, this.fromRoute});
 
   @override
   ProfileViewModel createViewModel() => ProfileViewModel();
@@ -26,19 +28,42 @@ class ProfileView extends BaseView<ProfileViewModel> {
   @override
   Widget buildView(BuildContext context, ProfileViewModel viewModel) {
     // Initialize and load user profile data on first build
+    // Always call initialize - it will handle userId changes internally
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!viewModel.isLoading && viewModel.postCount == 0 && viewModel.userImages.isEmpty) {
-        viewModel.initialize(context);
+      if (!viewModel.isLoading) {
+        viewModel.initialize(context, userId: userId, fromRoute: fromRoute);
       }
     });
+    
+    // Refresh user profile info when view becomes visible again
+    // This handles the case when returning from edit profile screen or after following/unfollowing
+    // Only refresh if viewing own profile (refreshUserProfileInfo checks this)
+    if (viewModel.isInitialized && userId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Refresh profile info and counts when returning to own profile
+        viewModel.refreshUserProfileInfo();
+      });
+    }
     return WillPopScope(
       onWillPop: () async {
-        print("🔙 Profile screen back button pressed");
+        print("🔙 Profile screen back button pressed (userId: $userId, fromRoute: $fromRoute)");
         if (onBack != null) {
           onBack!(); // Navigate to home tab
           return false; // Prevent default back behavior
         }
-        return true;
+        // If we have a fromRoute and are viewing another user's profile, pop until we reach it
+        if (fromRoute != null && userId != null) {
+          Navigator.popUntil(context, (route) {
+            final routeName = route.settings.name;
+            final matches = routeName == fromRoute;
+            if (matches || route.isFirst) {
+              return true; // Stop at matching route or first route
+            }
+            return false; // Continue popping
+          });
+          return false; // Prevent default back behavior
+        }
+        return true; // Default: allow normal back navigation
       },
       child: Scaffold(
         // floatingActionButton: _buildFloatingButton(context), // ✅ Add FAB here
@@ -152,9 +177,9 @@ class ProfileView extends BaseView<ProfileViewModel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipOval(
-                child: viewModel.authService.userPhotoUrl != null
+                child: viewModel.userPhotoUrl != null
                     ? CachedNetworkImage(
-                        imageUrl: viewModel.authService.userPhotoUrl!,
+                        imageUrl: viewModel.userPhotoUrl!,
                         width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
                         height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
                         fit: BoxFit.cover,
@@ -176,7 +201,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
                           fit: BoxFit.cover,
                         ),
                         // Enable offline caching
-                        cacheKey: viewModel.authService.userPhotoUrl,
+                        cacheKey: viewModel.userPhotoUrl,
                         maxWidthDiskCache: 200,
                         maxHeightDiskCache: 200,
                       )
@@ -194,7 +219,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
                   children: [
                     // Username
                     ResponsiveTextWidget(
-                      viewModel.authService.userDisplayName ?? AppStrings.name,
+                      viewModel.userDisplayName ?? 'User',
                     //  textType: TextType.title,
                       color: AppColors.white,
                       fontWeight: FontWeight.bold,
@@ -223,32 +248,101 @@ class ProfileView extends BaseView<ProfileViewModel> {
                           },
                         ),
                         SizedBox(width: context.getConditionalSpacing()),
-                        _buildClickableStat(context, "5.4K", AppStrings.followers, () {
-                          if (onNavigateToSub != null) {
-                            onNavigateToSub!('followers');
-                          } else {
-                            Navigator.pushNamed(context, AppRoutes.profileList,
-                                arguments: 0);
-                          }
-                        }),
+                        Consumer<ProfileViewModel>(
+                          builder: (context, vm, child) {
+                            return _buildClickableStat(
+                              context,
+                              '${vm.followersCount}',
+                              AppStrings.followers,
+                              () {
+                                if (onNavigateToSub != null) {
+                                  onNavigateToSub!('followers');
+                                } else {
+                                  // Try to get userId, but don't block navigation if null
+                                  // ProfileListViewModel will handle fallback
+                                  final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
+                                  if (kDebugMode) {
+                                    print('🔍 [ProfileView] Navigating to followers list');
+                                    print('   vm.authService.userUid: ${vm.authService.userUid}');
+                                    print('   vm.authService.currentUser?.uid: ${vm.authService.currentUser?.uid}');
+                                    print('   currentUserId: $currentUserId');
+                                  }
+                                  
+                                  // Always navigate - ProfileListViewModel will use fallback if userId is null
+                                  Navigator.pushNamed(
+                                    context,
+                                    AppRoutes.profileList,
+                                    arguments: {
+                                      'initialTab': 0,
+                                      'username': vm.userDisplayName ?? 'User',
+                                      'userId': currentUserId, // May be null, but that's okay
+                                    },
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
                         SizedBox(width: context.getConditionalSpacing()),
-                        _buildClickableStat(context, "340", AppStrings.following, () {
-                          if (onNavigateToSub != null) {
-                            onNavigateToSub!('following');
-                          } else {
-                            Navigator.pushNamed(context, AppRoutes.profileList,
-                                arguments: 1);
-                          }
-                        }),
+                        Consumer<ProfileViewModel>(
+                          builder: (context, vm, child) {
+                            return _buildClickableStat(
+                              context,
+                              '${vm.followingCount}',
+                              AppStrings.following,
+                              () {
+                                if (onNavigateToSub != null) {
+                                  onNavigateToSub!('following');
+                                } else {
+                                  // Try to get userId, but don't block navigation if null
+                                  // ProfileListViewModel will handle fallback
+                                  final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
+                                  if (kDebugMode) {
+                                    print('🔍 [ProfileView] Navigating to following list');
+                                    print('   vm.authService.userUid: ${vm.authService.userUid}');
+                                    print('   vm.authService.currentUser?.uid: ${vm.authService.currentUser?.uid}');
+                                    print('   currentUserId: $currentUserId');
+                                  }
+                                  
+                                  // Always navigate - ProfileListViewModel will use fallback if userId is null
+                                  Navigator.pushNamed(
+                                    context,
+                                    AppRoutes.profileList,
+                                    arguments: {
+                                      'initialTab': 1,
+                                      'username': vm.userDisplayName ?? 'User',
+                                      'userId': currentUserId, // May be null, but that's okay
+                                    },
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
                         SizedBox(width: context.getConditionalSpacing()),
-                        _buildClickableStat(context, "3", AppStrings.festivals, () {
-                          if (onNavigateToSub != null) {
-                            onNavigateToSub!('festivals');
-                          } else {
-                            Navigator.pushNamed(context, AppRoutes.profileList,
-                                arguments: 2);
-                          }
-                        }),
+                        Consumer<ProfileViewModel>(
+                          builder: (context, vm, child) {
+                            return _buildClickableStat(
+                              context,
+                              '${vm.favoriteFestivalsCount}',
+                              AppStrings.festivals,
+                              () {
+                                if (onNavigateToSub != null) {
+                                  onNavigateToSub!('festivals');
+                                } else {
+                                  Navigator.pushNamed(
+                                    context,
+                                    AppRoutes.profileList,
+                                    arguments: {
+                                      'initialTab': 2,
+                                      'username': vm.userDisplayName ?? 'User',
+                                    },
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ],
@@ -305,7 +399,33 @@ class ProfileView extends BaseView<ProfileViewModel> {
         children: [
           /// Back button
           CustomBackButton(
-            onTap: onBack ?? () {},
+            onTap: () {
+              if (onBack != null) {
+                onBack!();
+              } else {
+                // Handle back navigation based on where we came from
+                if (fromRoute != null) {
+                  // If viewing another user's profile, pop until we reach the original route
+                  if (userId != null) {
+                    // Pop until we reach the route we came from (e.g., search screen)
+                    Navigator.popUntil(context, (route) {
+                      final routeName = route.settings.name;
+                      final matches = routeName == fromRoute;
+                      if (matches || route.isFirst) {
+                        return true; // Stop at matching route or first route
+                      }
+                      return false; // Continue popping
+                    });
+                  } else {
+                    // Viewing own profile - just pop
+                    Navigator.pop(context);
+                  }
+                } else {
+                  // Default: just pop
+                  Navigator.pop(context);
+                }
+              }
+            },
           ),
 
           SizedBox(width: AppDimensions.spaceM),
@@ -326,6 +446,22 @@ class ProfileView extends BaseView<ProfileViewModel> {
           Row(
             mainAxisSize: MainAxisSize.max,
             children: [
+              IconButton(
+                onPressed: () {
+                  // Navigate to search users screen
+                  Navigator.pushNamed(context, AppRoutes.searchUsers);
+                },
+                icon: Icon(
+                  Icons.search,
+                  color: AppColors.white, 
+                  size: AppDimensions.iconL,
+                ),
+                padding: context.responsivePadding,
+                constraints: BoxConstraints(
+                  minWidth: context.getConditionalIconSize(),
+                  minHeight: context.getConditionalIconSize(),
+                ),
+              ),
               IconButton(
                 onPressed: () => _showPostBottomSheet(context),
                 icon: Icon(Icons.add_box_outlined,
@@ -351,8 +487,18 @@ class ProfileView extends BaseView<ProfileViewModel> {
                 ),
               ),
               IconButton(
-                onPressed: () {
-                  Navigator.pushNamed(context, AppRoutes.settings);
+                onPressed: () async {
+                  // Navigate to settings and wait for return
+                  await Navigator.pushNamed(context, AppRoutes.settings);
+                  // When returning from settings, refresh profile info
+                  // Add a small delay to ensure route is fully active
+                  await Future.delayed(const Duration(milliseconds: 100));
+                  if (context.mounted && viewModel.isInitialized && userId == null) {
+                    // Reset refresh flags to allow refresh
+                    viewModel.resetRefreshFlags();
+                    // Refresh profile info to show updated changes
+                    await viewModel.refreshUserProfileInfo();
+                  }
                 },
                 icon: Icon(Icons.settings,
                     color: AppColors.white, 
@@ -381,6 +527,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
       ),
     );
   }
+
   /// ---------------- GRID / REELS / REPOSTS ---------------- 
   Widget _profileGridWidget(BuildContext context, {Key? key}) {
     return Consumer<ProfileViewModel>(
@@ -840,7 +987,8 @@ class ProfileView extends BaseView<ProfileViewModel> {
   /// ---------------- HELPERS ---------------- 
   Widget _buildStat(BuildContext context, String count, String label) {
     return Column(
-     // mainAxisSize: MainAxisSize.max,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ResponsiveTextWidget(
           count,
@@ -868,7 +1016,15 @@ class ProfileView extends BaseView<ProfileViewModel> {
   Widget _buildClickableStat(BuildContext context, String count, String label, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque, // Make entire area tappable
+      child: Container(
+        // Responsive padding for larger tap area
+        padding: EdgeInsets.symmetric(
+          horizontal: context.isSmallScreen ? 6 : context.isMediumScreen ? 8 : 10,
+          vertical: context.isSmallScreen ? 3 : context.isMediumScreen ? 4 : 5,
+        ),
         child: _buildStat(context, count, label),
+      ),
     );
   }
 

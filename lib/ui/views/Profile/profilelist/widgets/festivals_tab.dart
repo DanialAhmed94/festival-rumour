@@ -14,18 +14,6 @@ class FestivalsTab extends StatefulWidget {
 }
 
 class _FestivalsTabState extends State<FestivalsTab> {
-  final Set<int> _favoriteFestivals = {};
-
-  void _toggleFavorite(int index) {
-    setState(() {
-      if (_favoriteFestivals.contains(index)) {
-        _favoriteFestivals.remove(index);
-      } else {
-        _favoriteFestivals.add(index);
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -50,95 +38,105 @@ class _FestivalsTabState extends State<FestivalsTab> {
                 borderSide: const BorderSide(color: AppColors.onPrimary, width: 2), // ✅ White border when active
               ),
             ),
-
             onChanged: widget.viewModel.searchFestivals,
           ),
         ),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
-            itemCount: widget.viewModel.festivals.length,
-            itemBuilder: (context, index) {
-              final festival = widget.viewModel.festivals[index];
-              final isFavorite = _favoriteFestivals.contains(index);
-              return Container(
-                margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
-                padding: const EdgeInsets.all(AppDimensions.paddingM),
-                decoration: BoxDecoration(
-                  color: AppColors.black,
-                  borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-                  border: Border.all(
-                    color: AppColors.white,
-                    width: AppDimensions.dividerThickness,
+          child: widget.viewModel.isLoadingFestivals
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.primary,
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: AppDimensions.imageM,
-                      height: AppDimensions.imageM,
-                      decoration: BoxDecoration(
-                        color: AppColors.accent.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(AppDimensions.avatarS),
-                      ),
-                      child: const Icon(
-                        Icons.military_tech,
-                        color: AppColors.accent,
-                        size: AppDimensions.imageM,
-                      ),
-                    ),
-                    SizedBox(width: AppDimensions.spaceM),
-                    Expanded(
+                )
+              : widget.viewModel.festivals.isEmpty
+                  ? Center(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ResponsiveText(
-                            festival['title'] ?? 'Unknown Festival',
-                            style: const TextStyle(
-                              color: AppColors.white,
-                              fontSize: AppDimensions.textM,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          Icon(
+                            Icons.favorite_border,
+                            color: AppColors.white,
+                            size: 64,
                           ),
-                          SizedBox(height: AppDimensions.spaceXS),
+                          const SizedBox(height: AppDimensions.spaceM),
                           ResponsiveText(
-                            festival['location'] ?? 'Unknown Location',
-                            style: const TextStyle(
-                              color: AppColors.grey600,
+                            'No favorite festivals yet',
+                            style: TextStyle(
+                              color: AppColors.white,
                               fontSize: AppDimensions.textM,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    Container(
-                      margin: const EdgeInsets.only(right: AppDimensions.spaceXS),
-                      child: IconButton(
-                        onPressed: () => _toggleFavorite(index),
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                        ),
-                        icon: Icon(
-                          isFavorite ? Icons.favorite : Icons.favorite_border,
-                          color: isFavorite ? AppColors.red : AppColors.white,
-                          size: AppDimensions.iconL,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.more_vert,
-                        color: AppColors.white,
-                      ),
-                      onPressed: () {
-                        // Handle more options
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
+                      itemCount: widget.viewModel.festivals.length,
+                      itemBuilder: (context, index) {
+                        final festival = widget.viewModel.festivals[index];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
+                          padding: const EdgeInsets.all(AppDimensions.paddingM),
+                          decoration: BoxDecoration(
+                            color: AppColors.black,
+                            borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                            border: Border.all(
+                              color: AppColors.white,
+                              width: AppDimensions.dividerThickness,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: AppDimensions.imageM,
+                                height: AppDimensions.imageM,
+                                decoration: BoxDecoration(
+                                  color: AppColors.accent.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(AppDimensions.avatarS),
+                                ),
+                                child: const Icon(
+                                  Icons.military_tech,
+                                  color: AppColors.accent,
+                                  size: AppDimensions.imageM,
+                                ),
+                              ),
+                              SizedBox(width: AppDimensions.spaceM),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    ResponsiveText(
+                                      festival['title'] ?? 'Unknown Festival',
+                                      style: const TextStyle(
+                                        color: AppColors.white,
+                                        fontSize: AppDimensions.textM,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    SizedBox(height: AppDimensions.spaceXS),
+                                    ResponsiveText(
+                                      festival['location'] ?? 'Unknown Location',
+                                      style: const TextStyle(
+                                        color: AppColors.grey600,
+                                        fontSize: AppDimensions.textM,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                margin: const EdgeInsets.only(right: AppDimensions.spaceXS),
+                                child: const Icon(
+                                  Icons.favorite,
+                                  color: AppColors.red,
+                                  size: AppDimensions.iconL,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
                       },
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
         ),
       ],
     );

@@ -152,16 +152,10 @@ class SettingsView extends BaseView<SettingsViewModel> {
               ),
             const SizedBox(height: AppDimensions.paddingS),
             _buildTile(
-              icon: Icons.help_outline,
-              iconColor: AppColors.cyan,
-              title: AppStrings.howToUse,
-              onTap: viewModel.openHelp,
-            ),
-            _buildTile(
               icon: Icons.star_outline,
               iconColor: AppColors.yellow,
               title: AppStrings.rateUs,
-              onTap: viewModel.rateApp,
+              onTap: () => _showRateAppDialog(context, viewModel),
             ),
             _buildTile(
               icon: Icons.share_outlined,
@@ -530,6 +524,127 @@ class SettingsView extends BaseView<SettingsViewModel> {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  /// Show rate app dialog
+  void _showRateAppDialog(BuildContext context, SettingsViewModel viewModel) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.4),
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          ),
+          backgroundColor: AppColors.primary,
+          child: Container(
+            padding: EdgeInsets.all(
+              context.isSmallScreen 
+                  ? AppDimensions.paddingM
+                  : context.isMediumScreen 
+                      ? AppDimensions.paddingL
+                      : AppDimensions.paddingXL
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Star icon
+                Container(
+                  padding: const EdgeInsets.all(AppDimensions.paddingM),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.star,
+                    size: 48,
+                    color: AppColors.accent,
+                  ),
+                ),
+                const SizedBox(height: AppDimensions.paddingM),
+                
+                // Title
+                const ResponsiveTextWidget(
+                  'Enjoying Festival Rumour?',
+                  textType: TextType.heading,
+                  fontWeight: FontWeight.bold,
+                  fontSize: AppDimensions.textL,
+                  color: AppColors.onPrimary,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppDimensions.paddingS),
+                
+                // Message
+                const ResponsiveTextWidget(
+                  'Your feedback helps us improve! Please rate us on the App Store.',
+                  textType: TextType.body,
+                  fontSize: AppDimensions.textM,
+                  color: AppColors.grey600,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppDimensions.paddingL),
+                
+                // Buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Flexible(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const ResponsiveTextWidget(
+                          AppStrings.cancel,
+                          textType: TextType.body,
+                          fontSize: AppDimensions.textM,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.grey600,
+                        ),
+                      ),
+                    ),
+                    Flexible(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(dialogContext);
+                          viewModel.rateApp();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppDimensions.paddingL,
+                            vertical: AppDimensions.paddingM,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.star, size: 20, color: Colors.black),
+                            SizedBox(width: AppDimensions.spaceXS),
+                            Flexible(
+                              child: ResponsiveTextWidget(
+                                'Rate Us',
+                                textType: TextType.body,
+                                fontSize: AppDimensions.textM,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         );
       },
     );

@@ -7,6 +7,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/utils/base_view.dart';
+import '../../../core/utils/backbutton.dart';
 import '../../../core/router/app_router.dart';
 import '../../../shared/widgets/responsive_widget.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
@@ -176,6 +177,11 @@ class _HomeViewContentState extends State<_HomeViewContent> {
       ),
       child: Row(
         children: [
+          // Back button to navigate to festival screen
+          CustomBackButton(
+            onTap: () => viewModel.navigateToFestival(),
+          ),
+          SizedBox(width: context.getConditionalSpacing()),
           // Logo with responsive sizing
           SvgPicture.asset(
             AppAssets.logo,
