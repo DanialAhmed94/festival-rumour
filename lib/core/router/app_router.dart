@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import '../../ui/views/forgot_password/forgot_password_view.dart';
 import '../../ui/views/jobdetail/festivals_job_view.dart';
 import '../../ui/views/jobpost/festivals_job_post_view.dart';
+import '../../ui/views/jobpost/my_jobs_view.dart';
+import '../../ui/views/jobpost/all_jobs_view.dart';
+import '../../ui/views/jobpost/job_detail_view.dart';
 import '../../ui/views/signup/signupphone/signup_view.dart';
 import '../../ui/views/username/username_view.dart';
 import '../../ui/views/viewall/viewall_view.dart';
@@ -86,6 +89,9 @@ class AppRoutes {
   static const String createPost = '/create_post';
   static const String searchUsers = '/search_users';
   static const String viewUserProfile = '/view_user_profile';
+  static const String myJobs = '/my_jobs';
+  static const String allJobs = '/all_jobs';
+  static const String jobDetail = '/job_detail';
 }
 
 Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -177,7 +183,15 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const FestivalsJobView());
 
     case AppRoutes.jobpost:
-      return SmoothPageRoute(page: const FestivalsJobPostView());
+      final arguments = settings.arguments;
+      final category = arguments is Map ? arguments['category'] as String? : null;
+      final jobData = arguments is Map ? arguments['jobData'] as Map<String, dynamic>? : null;
+      return SmoothPageRoute(
+        page: FestivalsJobPostView(
+          category: category,
+          jobData: jobData, // Pass job data for editing
+        ),
+      );
 
     case AppRoutes.profile:
       // Arguments can be:
@@ -315,6 +329,19 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(
         page: ViewUserProfileView(userId: userId),
       );
+    
+    case AppRoutes.myJobs:
+      return SmoothPageRoute(page: const MyJobsView());
+    
+    case AppRoutes.allJobs:
+      return SmoothPageRoute(page: const AllJobsView());
+    
+    case AppRoutes.jobDetail:
+      final jobData = settings.arguments as Map<String, dynamic>?;
+      if (jobData == null) {
+        return SmoothPageRoute(page: const AllJobsView());
+      }
+      return SmoothPageRoute(page: JobDetailView(jobData: jobData));
 
     default:
       final name = settings.name?.toLowerCase() ?? "";

@@ -1165,8 +1165,12 @@ class ProfileView extends BaseView<ProfileViewModel> {
                 image: AppAssets.job1,
                 title: AppStrings.festivalGizzaJob,
                 onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.jobpost);
-                  // Navigate to add job screen if needed
+                  Navigator.pop(context); // Close bottom sheet
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.jobpost,
+                    arguments: {'category': 'Festival Gizza'},
+                  );
                 },
               ),
               const Divider(color: AppColors.yellow, thickness: 1),
@@ -1175,8 +1179,12 @@ class ProfileView extends BaseView<ProfileViewModel> {
                 image: AppAssets.job2,
                 title: AppStrings.festieHerosJob,
                 onTap: () {
-                  Navigator.pushNamed(context, AppRoutes.jobpost);
-                  //d post screen if needed
+                  Navigator.pop(context); // Close bottom sheet
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.jobpost,
+                    arguments: {'category': 'Festie Heroes'},
+                  );
                 },
               ),
               const SizedBox(height: AppDimensions.paddingS),

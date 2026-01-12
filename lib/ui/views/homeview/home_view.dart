@@ -221,7 +221,9 @@ class _HomeViewContentState extends State<_HomeViewContent> {
              width: AppDimensions.iconXL,
               height: AppDimensions.iconXL,
             ),
-            onPressed: () => _showPostBottomSheet(context),
+            onPressed: () {
+              Navigator.pushNamed(context, AppRoutes.allJobs);
+            },
           ),
           
           // Conditional spacing before Pro label

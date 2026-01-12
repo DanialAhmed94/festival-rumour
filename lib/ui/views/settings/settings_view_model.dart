@@ -46,6 +46,10 @@ class SettingsViewModel extends BaseViewModel {
     _navigationService.navigateTo(AppRoutes.leaderboard);
   }
 
+  void openMyJobs() {
+    _navigationService.navigateTo(AppRoutes.myJobs);
+  }
+
   /// Rate the app - opens Play Store (Android) or App Store (iOS)
   Future<void> rateApp() async {
     try {

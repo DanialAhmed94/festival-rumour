@@ -428,6 +428,569 @@ class FirestoreService {
     }
   }
 
+  /// Save job post to Firestore
+  /// 
+  /// [jobData] - Map containing job post data
+  /// [category] - Job category (e.g., 'Festival Gizza', 'Festie Heroes')
+  /// 
+  /// Returns the document ID of the saved job
+  Future<String> saveJob(
+    Map<String, dynamic> jobData, {
+    required String category,
+  }) async {
+    try {
+      // Convert DateTime to Timestamp if present
+      final dataToSave = Map<String, dynamic>.from(jobData);
+      if (dataToSave['postedDate'] is DateTime) {
+        dataToSave['postedDate'] = Timestamp.fromDate(dataToSave['postedDate'] as DateTime);
+      } else if (!dataToSave.containsKey('postedDate')) {
+        dataToSave['postedDate'] = FieldValue.serverTimestamp();
+      }
+      
+      if (dataToSave['createdAt'] is DateTime) {
+        dataToSave['createdAt'] = Timestamp.fromDate(dataToSave['createdAt'] as DateTime);
+      } else if (!dataToSave.containsKey('createdAt')) {
+        dataToSave['createdAt'] = FieldValue.serverTimestamp();
+      }
+
+      // Sanitize category name for collection name
+      final sanitizedCategory = category
+          .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '') // Remove special chars
+          .replaceAll(RegExp(r'\s+'), '_') // Replace spaces with underscore
+          .toLowerCase();
+
+      // Use category-specific collection: jobs_{category}
+      // Example: jobs_festival_gizza, jobs_festie_heroes
+      final collectionName = 'jobs_$sanitizedCategory';
+
+      if (kDebugMode) {
+        print('💼 Saving job to Firestore collection: $collectionName');
+        print('   Category: $category');
+        print('   UserId: ${dataToSave['userId']}');
+      }
+
+      // Add to collection (will be created if it doesn't exist)
+      final docRef = await _firestore
+          .collection(collectionName)
+          .add(dataToSave);
+
+      if (kDebugMode) {
+        print('✅ Job saved to Firestore collection "$collectionName": ${docRef.id}');
+      }
+
+      return docRef.id;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.saveJob');
+      rethrow;
+    }
+  }
+
+  /// Get all jobs posted by a user, organized by category
+  /// 
+  /// [userId] - The user ID whose jobs to fetch
+  /// Returns a map with category as key and list of jobs as value
+  Future<Map<String, List<Map<String, dynamic>>>> getUserJobs(String userId) async {
+    try {
+      if (kDebugMode) {
+        print('💼 Fetching jobs for user: $userId');
+      }
+
+      final Map<String, List<Map<String, dynamic>>> jobsByCategory = {};
+      
+      // Known categories
+      final categories = ['Festival Gizza', 'Festie Heroes'];
+      
+      for (final category in categories) {
+        // Sanitize category name for collection name
+        final sanitizedCategory = category
+            .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '')
+            .replaceAll(RegExp(r'\s+'), '_')
+            .toLowerCase();
+        
+        final collectionName = 'jobs_$sanitizedCategory';
+        
+        try {
+          // Try querying with orderBy first (requires index)
+          Query query = _firestore
+              .collection(collectionName)
+              .where('userId', isEqualTo: userId)
+              .orderBy('createdAt', descending: true);
+
+          QuerySnapshot querySnapshot;
+          try {
+            querySnapshot = await query.get();
+          } catch (e) {
+            // Check if this is a Firestore index error (FAILED_PRECONDITION)
+            final isIndexError = e is FirebaseException && 
+                (e.code == 'failed-precondition' || 
+                 e.message?.toLowerCase().contains('index') == true ||
+                 e.message?.toLowerCase().contains('requires an index') == true) ||
+                e.toString().toLowerCase().contains('index') ||
+                e.toString().toLowerCase().contains('failed-precondition');
+            
+            if (isIndexError) {
+              // Silently fall back to querying without orderBy and sort in memory
+              // This is expected behavior when indexes don't exist yet
+              if (kDebugMode) {
+                print('⚠️ Index not found for $collectionName, falling back to in-memory sort');
+              }
+              querySnapshot = await _firestore
+                  .collection(collectionName)
+                  .where('userId', isEqualTo: userId)
+                  .get();
+            } else {
+              rethrow; // Re-throw if it's a different error
+            }
+          }
+          
+          final jobs = <Map<String, dynamic>>[];
+          for (var doc in querySnapshot.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            data['jobId'] = doc.id; // Add document ID
+            data['category'] = category; // Add category name
+            jobs.add(data);
+          }
+
+          // Sort by createdAt descending if we queried without orderBy
+          if (jobs.isNotEmpty && jobs.first['createdAt'] != null) {
+            jobs.sort((a, b) {
+              final aTime = a['createdAt'];
+              final bTime = b['createdAt'];
+              if (aTime == null && bTime == null) return 0;
+              if (aTime == null) return 1;
+              if (bTime == null) return -1;
+              
+              // Handle both Timestamp and DateTime
+              DateTime aDate;
+              DateTime bDate;
+              
+              if (aTime is Timestamp) {
+                aDate = aTime.toDate();
+              } else if (aTime is DateTime) {
+                aDate = aTime;
+              } else {
+                return 0;
+              }
+              
+              if (bTime is Timestamp) {
+                bDate = bTime.toDate();
+              } else if (bTime is DateTime) {
+                bDate = bTime;
+              } else {
+                return 0;
+              }
+              
+              return bDate.compareTo(aDate); // Descending order
+            });
+          }
+          
+          if (jobs.isNotEmpty) {
+            jobsByCategory[category] = jobs;
+            if (kDebugMode) {
+              print('✅ Found ${jobs.length} jobs in category "$category"');
+            }
+          }
+        } catch (e) {
+          // If collection doesn't exist or query fails, skip this category
+          if (kDebugMode) {
+            print('⚠️ Error fetching jobs from $collectionName: $e');
+          }
+          continue;
+        }
+      }
+      
+      if (kDebugMode) {
+        print('✅ Total categories with jobs: ${jobsByCategory.length}');
+      }
+      
+      return jobsByCategory;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getUserJobs');
+      rethrow;
+    }
+  }
+
+  /// Get all jobs from all users, organized by category (paginated)
+  /// 
+  /// [limit] - Number of jobs per category to fetch (default: 10)
+  /// [lastDocuments] - Map of category to last document for pagination
+  /// Returns a map with 'jobsByCategory', 'lastDocuments', and 'hasMore' flags
+  Future<Map<String, dynamic>> getAllJobsPaginated({
+    int limit = 10,
+    Map<String, DocumentSnapshot>? lastDocuments,
+  }) async {
+    try {
+      if (kDebugMode) {
+        print('💼 Fetching all jobs from all users (paginated, limit: $limit)');
+      }
+
+      final Map<String, List<Map<String, dynamic>>> jobsByCategory = {};
+      final Map<String, DocumentSnapshot> newLastDocuments = {};
+      final Map<String, bool> hasMoreByCategory = {};
+      
+      // Known categories
+      final categories = ['Festival Gizza', 'Festie Heroes'];
+      
+      for (final category in categories) {
+        // Sanitize category name for collection name
+        final sanitizedCategory = category
+            .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '')
+            .replaceAll(RegExp(r'\s+'), '_')
+            .toLowerCase();
+        
+        final collectionName = 'jobs_$sanitizedCategory';
+        final lastDoc = lastDocuments?[category];
+        
+        try {
+          // Try querying with orderBy first (requires index)
+          Query query = _firestore
+              .collection(collectionName)
+              .orderBy('createdAt', descending: true)
+              .limit(limit);
+
+          // Add pagination cursor if provided
+          if (lastDoc != null) {
+            query = query.startAfterDocument(lastDoc);
+          }
+
+          QuerySnapshot querySnapshot;
+          try {
+            querySnapshot = await query.get();
+          } catch (e) {
+            // Check if this is a Firestore index error (FAILED_PRECONDITION)
+            final isIndexError = e is FirebaseException && 
+                (e.code == 'failed-precondition' || 
+                 e.message?.toLowerCase().contains('index') == true ||
+                 e.message?.toLowerCase().contains('requires an index') == true) ||
+                e.toString().toLowerCase().contains('index') ||
+                e.toString().toLowerCase().contains('failed-precondition');
+            
+            if (isIndexError) {
+              // Silently fall back to querying without orderBy and sort in memory
+              if (kDebugMode) {
+                print('⚠️ Index not found for $collectionName, falling back to in-memory sort');
+              }
+              querySnapshot = await _firestore
+                  .collection(collectionName)
+                  .limit(limit)
+                  .get();
+            } else {
+              rethrow; // Re-throw if it's a different error
+            }
+          }
+          
+          final jobs = <Map<String, dynamic>>[];
+          DocumentSnapshot? newLastDoc;
+          
+          for (var doc in querySnapshot.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            data['jobId'] = doc.id; // Add document ID
+            data['category'] = category; // Add category name
+            jobs.add(data);
+            newLastDoc = doc; // Track last document
+          }
+
+          // Sort by createdAt descending if we queried without orderBy
+          if (jobs.isNotEmpty && jobs.first['createdAt'] != null) {
+            jobs.sort((a, b) {
+              final aTime = a['createdAt'];
+              final bTime = b['createdAt'];
+              if (aTime == null && bTime == null) return 0;
+              if (aTime == null) return 1;
+              if (bTime == null) return -1;
+              
+              // Handle both Timestamp and DateTime
+              DateTime aDate;
+              DateTime bDate;
+              
+              if (aTime is Timestamp) {
+                aDate = aTime.toDate();
+              } else if (aTime is DateTime) {
+                aDate = aTime;
+              } else {
+                return 0;
+              }
+              
+              if (bTime is Timestamp) {
+                bDate = bTime.toDate();
+              } else if (bTime is DateTime) {
+                bDate = bTime;
+              } else {
+                return 0;
+              }
+              
+              return bDate.compareTo(aDate); // Descending order
+            });
+            
+            // Apply limit if we queried without orderBy
+            if (jobs.length > limit) {
+              jobs.removeRange(limit, jobs.length);
+              newLastDoc = querySnapshot.docs.length > limit 
+                  ? querySnapshot.docs[limit - 1] 
+                  : querySnapshot.docs.isNotEmpty 
+                      ? querySnapshot.docs.last 
+                      : null;
+            }
+          }
+          
+          // Check if there are more jobs
+          bool hasMore = false;
+          if (querySnapshot.docs.length == limit && newLastDoc != null) {
+            try {
+              final nextQuery = _firestore
+                  .collection(collectionName)
+                  .orderBy('createdAt', descending: true)
+                  .startAfterDocument(newLastDoc)
+                  .limit(1);
+              final nextSnapshot = await nextQuery.get();
+              hasMore = nextSnapshot.docs.isNotEmpty;
+            } catch (e) {
+              // If check fails, assume there might be more if we got full limit
+              hasMore = querySnapshot.docs.length == limit;
+            }
+          }
+          
+          if (jobs.isNotEmpty) {
+            jobsByCategory[category] = jobs;
+            if (newLastDoc != null) {
+              newLastDocuments[category] = newLastDoc;
+            }
+            hasMoreByCategory[category] = hasMore;
+            if (kDebugMode) {
+              print('✅ Found ${jobs.length} jobs in category "$category" (hasMore: $hasMore)');
+            }
+          } else {
+            hasMoreByCategory[category] = false;
+          }
+        } catch (e) {
+          // If collection doesn't exist or query fails, skip this category
+          if (kDebugMode) {
+            print('⚠️ Error fetching jobs from $collectionName: $e');
+          }
+          hasMoreByCategory[category] = false;
+          continue;
+        }
+      }
+      
+      if (kDebugMode) {
+        print('✅ Total categories with jobs: ${jobsByCategory.length}');
+      }
+      
+      return {
+        'jobsByCategory': jobsByCategory,
+        'lastDocuments': newLastDocuments,
+        'hasMoreByCategory': hasMoreByCategory,
+      };
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getAllJobsPaginated');
+      rethrow;
+    }
+  }
+
+  /// Get all jobs from all users, organized by category
+  /// 
+  /// Returns a map with category as key and list of jobs as value
+  Future<Map<String, List<Map<String, dynamic>>>> getAllJobs() async {
+    try {
+      if (kDebugMode) {
+        print('💼 Fetching all jobs from all users');
+      }
+
+      final Map<String, List<Map<String, dynamic>>> jobsByCategory = {};
+      
+      // Known categories
+      final categories = ['Festival Gizza', 'Festie Heroes'];
+      
+      for (final category in categories) {
+        // Sanitize category name for collection name
+        final sanitizedCategory = category
+            .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '')
+            .replaceAll(RegExp(r'\s+'), '_')
+            .toLowerCase();
+        
+        final collectionName = 'jobs_$sanitizedCategory';
+        
+        try {
+          // Try querying with orderBy first (requires index)
+          Query query = _firestore
+              .collection(collectionName)
+              .orderBy('createdAt', descending: true);
+
+          QuerySnapshot querySnapshot;
+          try {
+            querySnapshot = await query.get();
+          } catch (e) {
+            // Check if this is a Firestore index error (FAILED_PRECONDITION)
+            final isIndexError = e is FirebaseException && 
+                (e.code == 'failed-precondition' || 
+                 e.message?.toLowerCase().contains('index') == true ||
+                 e.message?.toLowerCase().contains('requires an index') == true) ||
+                e.toString().toLowerCase().contains('index') ||
+                e.toString().toLowerCase().contains('failed-precondition');
+            
+            if (isIndexError) {
+              // Silently fall back to querying without orderBy and sort in memory
+              if (kDebugMode) {
+                print('⚠️ Index not found for $collectionName, falling back to in-memory sort');
+              }
+              querySnapshot = await _firestore
+                  .collection(collectionName)
+                  .get();
+            } else {
+              rethrow; // Re-throw if it's a different error
+            }
+          }
+          
+          final jobs = <Map<String, dynamic>>[];
+          for (var doc in querySnapshot.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            data['jobId'] = doc.id; // Add document ID
+            data['category'] = category; // Add category name
+            jobs.add(data);
+          }
+
+          // Sort by createdAt descending if we queried without orderBy
+          if (jobs.isNotEmpty && jobs.first['createdAt'] != null) {
+            jobs.sort((a, b) {
+              final aTime = a['createdAt'];
+              final bTime = b['createdAt'];
+              if (aTime == null && bTime == null) return 0;
+              if (aTime == null) return 1;
+              if (bTime == null) return -1;
+              
+              // Handle both Timestamp and DateTime
+              DateTime aDate;
+              DateTime bDate;
+              
+              if (aTime is Timestamp) {
+                aDate = aTime.toDate();
+              } else if (aTime is DateTime) {
+                aDate = aTime;
+              } else {
+                return 0;
+              }
+              
+              if (bTime is Timestamp) {
+                bDate = bTime.toDate();
+              } else if (bTime is DateTime) {
+                bDate = bTime;
+              } else {
+                return 0;
+              }
+              
+              return bDate.compareTo(aDate); // Descending order
+            });
+          }
+          
+          if (jobs.isNotEmpty) {
+            jobsByCategory[category] = jobs;
+            if (kDebugMode) {
+              print('✅ Found ${jobs.length} jobs in category "$category"');
+            }
+          }
+        } catch (e) {
+          // If collection doesn't exist or query fails, skip this category
+          if (kDebugMode) {
+            print('⚠️ Error fetching jobs from $collectionName: $e');
+          }
+          continue;
+        }
+      }
+      
+      if (kDebugMode) {
+        print('✅ Total categories with jobs: ${jobsByCategory.length}');
+      }
+      
+      return jobsByCategory;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getAllJobs');
+      rethrow;
+    }
+  }
+
+  /// Update a job post
+  /// 
+  /// [jobId] - The job document ID
+  /// [category] - Job category (e.g., 'Festival Gizza', 'Festie Heroes')
+  /// [jobData] - Updated job data
+  Future<void> updateJob(
+    String jobId,
+    String category,
+    Map<String, dynamic> jobData,
+  ) async {
+    try {
+      // Sanitize category name for collection name
+      final sanitizedCategory = category
+          .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '')
+          .replaceAll(RegExp(r'\s+'), '_')
+          .toLowerCase();
+      
+      final collectionName = 'jobs_$sanitizedCategory';
+      
+      // Convert DateTime to Timestamp if present
+      final dataToUpdate = Map<String, dynamic>.from(jobData);
+      if (dataToUpdate['postedDate'] is DateTime) {
+        dataToUpdate['postedDate'] = Timestamp.fromDate(dataToUpdate['postedDate'] as DateTime);
+      }
+      
+      dataToUpdate['updatedAt'] = FieldValue.serverTimestamp();
+      
+      if (kDebugMode) {
+        print('💼 Updating job: $jobId in collection: $collectionName');
+      }
+      
+      await _firestore
+          .collection(collectionName)
+          .doc(jobId)
+          .update(dataToUpdate);
+      
+      if (kDebugMode) {
+        print('✅ Job updated successfully');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.updateJob');
+      rethrow;
+    }
+  }
+
+  /// Delete a job post
+  /// 
+  /// [jobId] - The job document ID
+  /// [category] - Job category (e.g., 'Festival Gizza', 'Festie Heroes')
+  Future<void> deleteJob(String jobId, String category) async {
+    try {
+      // Sanitize category name for collection name
+      final sanitizedCategory = category
+          .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '')
+          .replaceAll(RegExp(r'\s+'), '_')
+          .toLowerCase();
+      
+      final collectionName = 'jobs_$sanitizedCategory';
+      
+      if (kDebugMode) {
+        print('💼 Deleting job: $jobId from collection: $collectionName');
+      }
+      
+      await _firestore
+          .collection(collectionName)
+          .doc(jobId)
+          .delete();
+      
+      if (kDebugMode) {
+        print('✅ Job deleted successfully');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.deleteJob');
+      rethrow;
+    }
+  }
+
   /// Increment user's post count in Firestore
   /// Uses atomic increment to safely handle concurrent updates
   /// 
