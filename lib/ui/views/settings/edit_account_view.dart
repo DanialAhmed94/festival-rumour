@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -49,8 +50,15 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                 ),
                 backgroundColor: AppColors.success,
                 behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 2),
               ),
             );
+            // Clear success message after showing snackbar
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (context.mounted) {
+                vm.clearSuccessMessage();
+              }
+            });
           });
         }
         
@@ -75,7 +83,24 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                 padding: const EdgeInsets.only(right: AppDimensions.paddingM),
                 child: IntrinsicWidth(
                   child: ElevatedButton.icon(
-                    onPressed: vm.isLoading ? null : vm.saveChanges,
+                    onPressed: vm.isLoading 
+                        ? null 
+                        : () {
+                            // Hide keyboard
+                            FocusScope.of(context).unfocus();
+                            if (kDebugMode) {
+                              print('🔘 [EditAccountView] Save button tapped');
+                              print('   isLoading: ${vm.isLoading}');
+                            }
+                            // Validate form first to show errors on screen
+                            if (vm.formKey.currentState?.validate() ?? false) {
+                              vm.saveChanges();
+                            } else {
+                              if (kDebugMode) {
+                                print('❌ [EditAccountView] Form validation failed');
+                              }
+                            }
+                          },
                     icon: vm.isLoading
                         ? const SizedBox(
                             width: 18,
@@ -126,7 +151,11 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                       _buildContactInfoSection(context, vm),
                       const SizedBox(height: AppDimensions.paddingL),
                       
-                      _buildPasswordSection(context, vm),
+                      // Password section in separate form
+                      Form(
+                        key: vm.passwordFormKey,
+                        child: _buildPasswordSection(context, vm),
+                      ),
                       const SizedBox(height: AppDimensions.paddingL),
                       
                       _buildDangerZoneSection(context, vm),
@@ -330,7 +359,9 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             hint: "Enter your full name",
             validator: viewModel.validateName,
             icon: Icons.person_outline,
-            onChanged: viewModel.onNameChanged,
+            focusNode: viewModel.nameFocus,
+            onFieldSubmitted: (_) => viewModel.handleNameSubmitted(),
+            textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: AppDimensions.paddingM),
           
@@ -339,9 +370,12 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             controller: viewModel.bioController,
             label: "Bio",
             hint: "Tell us about yourself",
-            validator: viewModel.validateBio,
+            validator: null, // No validation
             icon: Icons.description_outlined,
             maxLines: 3,
+            focusNode: viewModel.bioFocus,
+            onFieldSubmitted: (_) => viewModel.handleBioSubmitted(),
+            textInputAction: TextInputAction.done,
           ),
         ],
       ),
@@ -489,7 +523,12 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: viewModel.changePassword,
+              onPressed: () {
+                // Validate password form first
+                if (viewModel.passwordFormKey.currentState?.validate() ?? false) {
+                  viewModel.changePassword();
+                }
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
@@ -572,21 +611,28 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     required TextEditingController controller,
     required String label,
     required String hint,
-    required String? Function(String?) validator,
+    String? Function(String?)? validator,
     required IconData icon,
     TextInputType? keyboardType,
     int maxLines = 1,
     bool readOnly = false,
     String? helperText,
     Function(String)? onChanged,
+    FocusNode? focusNode,
+    void Function(String)? onFieldSubmitted,
+    TextInputAction? textInputAction,
   }) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       keyboardType: keyboardType,
       validator: validator,
       maxLines: maxLines,
       readOnly: readOnly,
       onChanged: onChanged,
+      onFieldSubmitted: onFieldSubmitted,
+      textInputAction: textInputAction,
+      cursorColor: Colors.black,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -616,8 +662,18 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-          borderSide: const BorderSide(color: Colors.red),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
+        errorStyle: const TextStyle(
+          color: Colors.red,
+          fontSize: 12,
+        ),
+        errorMaxLines: 3,
+        isDense: false,
       ),
     );
   }
@@ -666,8 +722,18 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-          borderSide: const BorderSide(color: Colors.red),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+        ),
+        errorStyle: const TextStyle(
+          color: Colors.red,
+          fontSize: 12,
+        ),
+        errorMaxLines: 3,
+        isDense: false,
       ),
     );
   }

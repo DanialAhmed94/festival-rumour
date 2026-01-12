@@ -50,6 +50,7 @@ class ProfileViewModel extends BaseViewModel {
   bool _isFollowing = false;
   bool _isLoadingFollowStatus = false;
   bool _hasLoadedFollowStatus = false;
+  bool _isUpdatingFollowStatus = false; // For follow/unfollow operations
   int _followersCount = 0;
   int _followingCount = 0;
   
@@ -107,6 +108,7 @@ class ProfileViewModel extends BaseViewModel {
   // Follow state getters
   bool get isFollowing => _isFollowing;
   bool get isLoadingFollowStatus => _isLoadingFollowStatus;
+  bool get isUpdatingFollowStatus => _isUpdatingFollowStatus;
   int get followersCount => _followersCount;
   int get followingCount => _followingCount;
   int get favoriteFestivalsCount => _favoriteFestivalsCount;
@@ -1024,12 +1026,15 @@ class ProfileViewModel extends BaseViewModel {
       return;
     }
 
-    if (_isFollowing) {
-      return; // Already following
+    if (_isFollowing || _isUpdatingFollowStatus) {
+      return; // Already following or operation in progress
     }
 
     final currentUserId = _authService.userUid!;
     final targetUserId = _viewingUserId!;
+
+    _isUpdatingFollowStatus = true;
+    notifyListeners();
 
     await handleAsync(() async {
       try {
@@ -1046,8 +1051,6 @@ class ProfileViewModel extends BaseViewModel {
           _followingCount = await _firestoreService.getFollowingCount(currentUserId);
         }
         
-        notifyListeners();
-        
         if (kDebugMode) {
           print('✅ Successfully followed user: $targetUserId');
         }
@@ -1056,6 +1059,9 @@ class ProfileViewModel extends BaseViewModel {
           print('⚠️ Error following user: $e');
         }
         rethrow;
+      } finally {
+        _isUpdatingFollowStatus = false;
+        notifyListeners();
       }
     });
   }
@@ -1066,12 +1072,15 @@ class ProfileViewModel extends BaseViewModel {
       return;
     }
 
-    if (!_isFollowing) {
-      return; // Not following
+    if (!_isFollowing || _isUpdatingFollowStatus) {
+      return; // Not following or operation in progress
     }
 
     final currentUserId = _authService.userUid!;
     final targetUserId = _viewingUserId!;
+
+    _isUpdatingFollowStatus = true;
+    notifyListeners();
 
     await handleAsync(() async {
       try {
@@ -1088,8 +1097,6 @@ class ProfileViewModel extends BaseViewModel {
           _followingCount = await _firestoreService.getFollowingCount(currentUserId);
         }
         
-        notifyListeners();
-        
         if (kDebugMode) {
           print('✅ Successfully unfollowed user: $targetUserId');
         }
@@ -1098,6 +1105,9 @@ class ProfileViewModel extends BaseViewModel {
           print('⚠️ Error unfollowing user: $e');
         }
         rethrow;
+      } finally {
+        _isUpdatingFollowStatus = false;
+        notifyListeners();
       }
     });
   }

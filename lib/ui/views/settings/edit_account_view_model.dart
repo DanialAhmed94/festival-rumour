@@ -28,13 +28,18 @@ class EditAccountViewModel extends BaseViewModel {
   final TextEditingController newPasswordController = TextEditingController();
   final TextEditingController confirmPasswordController = TextEditingController();
 
+  // Focus nodes for personal information fields
+  final FocusNode nameFocus = FocusNode();
+  final FocusNode bioFocus = FocusNode();
+  
   // Focus nodes for password fields
   final FocusNode currentPasswordFocus = FocusNode();
   final FocusNode newPasswordFocus = FocusNode();
   final FocusNode confirmPasswordFocus = FocusNode();
 
   // Form validation
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> formKey = GlobalKey<FormState>(); // For personal information
+  final GlobalKey<FormState> passwordFormKey = GlobalKey<FormState>(); // For password section
   
   // UI state
   bool isPasswordVisible = false;
@@ -54,6 +59,12 @@ class EditAccountViewModel extends BaseViewModel {
   // Success message for snackbar
   String? _successMessage;
   String? get successMessage => _successMessage;
+  
+  /// Clear success message
+  void clearSuccessMessage() {
+    _successMessage = null;
+    notifyListeners();
+  }
 
   // Preferences
   String selectedLanguage = "English";
@@ -74,6 +85,8 @@ class EditAccountViewModel extends BaseViewModel {
     currentPasswordController.dispose();
     newPasswordController.dispose();
     confirmPasswordController.dispose();
+    nameFocus.dispose();
+    bioFocus.dispose();
     currentPasswordFocus.dispose();
     newPasswordFocus.dispose();
     confirmPasswordFocus.dispose();
@@ -137,30 +150,31 @@ class EditAccountViewModel extends BaseViewModel {
 
   // Form validation methods
   String? validateName(String? value) {
-    // Allow empty - will restore original name
+    // Allow empty
     if (value == null || value.isEmpty) {
-      return null; // Not required, will use original
+      return null;
     }
     if (value.length < 2) {
       return AppStrings.usernameMinLength;
     }
-    if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value)) {
-      return AppStrings.usernameInvalid;
+    // Allow letters only OR combination of letters and numbers, no special characters
+    if (!RegExp(r'^[a-zA-Z0-9\s]+$').hasMatch(value)) {
+      return 'Name can only contain letters and numbers';
+    }
+    // Must contain at least one letter
+    if (!RegExp(r'[a-zA-Z]').hasMatch(value)) {
+      return 'Name must contain at least one letter';
     }
     return null;
   }
-
-  // Restore original name if field is cleared
-  void onNameChanged(String value) {
-    if (value.isEmpty && _originalName != null) {
-      // Restore original name after a short delay to allow user to see it was cleared
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (nameController.text.isEmpty && _originalName != null) {
-          nameController.text = _originalName!;
-          notifyListeners();
-        }
-      });
-    }
+  
+  // Focus navigation methods
+  void handleNameSubmitted() {
+    bioFocus.requestFocus();
+  }
+  
+  void handleBioSubmitted() {
+    bioFocus.unfocus();
   }
 
   String? validateEmail(String? value) {
@@ -184,6 +198,7 @@ class EditAccountViewModel extends BaseViewModel {
   }
 
   String? validateCurrentPassword(String? value) {
+    // Required when changing password
     if (value == null || value.isEmpty) {
       return AppStrings.passwordRequired;
     }
@@ -191,6 +206,7 @@ class EditAccountViewModel extends BaseViewModel {
   }
 
   String? validateNewPassword(String? value) {
+    // Required when changing password
     if (value == null || value.isEmpty) {
       return AppStrings.passwordRequired;
     }
@@ -201,6 +217,7 @@ class EditAccountViewModel extends BaseViewModel {
   }
 
   String? validateConfirmPassword(String? value) {
+    // Required when changing password
     if (value == null || value.isEmpty) {
       return AppStrings.passwordRequired;
     }
@@ -350,10 +367,23 @@ class EditAccountViewModel extends BaseViewModel {
   }
 
   Future<void> saveChanges() async {
-    // Only validate name if it's not empty (not required)
+    // Validate form first - this will show errors on screen
+    if (!formKey.currentState!.validate()) {
+      if (kDebugMode) {
+        print('❌ [EditAccount] Form validation failed');
+      }
+      setError('Please fix the validation errors before saving');
+      return;
+    }
+    
+    // Additional validation check (backup)
     if (nameController.text.isNotEmpty) {
       final nameError = validateName(nameController.text);
       if (nameError != null) {
+        if (kDebugMode) {
+          print('❌ [EditAccount] Validation failed: $nameError');
+        }
+        setError(nameError);
         return;
       }
     }
@@ -362,6 +392,10 @@ class EditAccountViewModel extends BaseViewModel {
     final nameToSave = nameController.text.isEmpty && _originalName != null 
         ? _originalName! 
         : nameController.text;
+    
+    if (kDebugMode) {
+      print('📝 [EditAccount] Proceeding with save, nameToSave: "$nameToSave"');
+    }
 
     await handleAsync(() async {
       final currentUser = _authService.currentUser;
@@ -412,12 +446,6 @@ class EditAccountViewModel extends BaseViewModel {
       // Set success message
       _successMessage = 'Profile updated successfully';
       notifyListeners();
-      
-      // Clear success message after a delay
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _successMessage = null;
-        notifyListeners();
-      });
 
       if (kDebugMode) {
         print('✅ User data saved successfully');
@@ -426,17 +454,21 @@ class EditAccountViewModel extends BaseViewModel {
   }
 
   Future<void> changePassword() async {
-    // Validate all password fields are filled
+    // Form validation is already done in the view before calling this method
+    // Additional validation checks
     if (currentPasswordController.text.isEmpty || 
         newPasswordController.text.isEmpty || 
         confirmPasswordController.text.isEmpty) {
       setError('Please fill in all password fields');
+      // Trigger form validation to show errors on screen
+      passwordFormKey.currentState?.validate();
       return;
     }
 
     // Validate passwords match
     if (newPasswordController.text != confirmPasswordController.text) {
       setError('New passwords do not match');
+      passwordFormKey.currentState?.validate();
       return;
     }
 
@@ -444,12 +476,14 @@ class EditAccountViewModel extends BaseViewModel {
     final passwordError = validateNewPassword(newPasswordController.text);
     if (passwordError != null) {
       setError(passwordError);
+      passwordFormKey.currentState?.validate();
       return;
     }
 
     // Validate new password is different from current
     if (currentPasswordController.text == newPasswordController.text) {
       setError('New password must be different from current password');
+      passwordFormKey.currentState?.validate();
       return;
     }
 

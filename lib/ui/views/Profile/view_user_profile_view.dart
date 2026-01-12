@@ -163,20 +163,40 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Profile picture
-              CircleAvatar(
-                radius: context.isLargeScreen ? 55 : context.isMediumScreen ? 50 : 50,
-                backgroundColor: AppColors.primary.withOpacity(0.1),
-                backgroundImage: vm.userPhotoUrl != null && vm.userPhotoUrl!.isNotEmpty
-                    ? NetworkImage(vm.userPhotoUrl!)
-                    : null,
-                child: vm.userPhotoUrl == null || vm.userPhotoUrl!.isEmpty
-                    ? Image.asset(
+              ClipOval(
+                child: vm.userPhotoUrl != null && vm.userPhotoUrl!.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: vm.userPhotoUrl!,
+                        width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                        height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                          height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                          color: AppColors.black.withOpacity(0.3),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.primary,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Image.asset(
+                          AppAssets.profile,
+                          width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                          height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                          fit: BoxFit.cover,
+                        ),
+                        cacheKey: vm.userPhotoUrl,
+                        maxWidthDiskCache: 200,
+                        maxHeightDiskCache: 200,
+                      )
+                    : Image.asset(
                         AppAssets.profile,
                         width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
                         height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
                         fit: BoxFit.cover,
-                      )
-                    : null,
+                      ),
               ),
               SizedBox(width: context.getConditionalSpacing()),
               Expanded(
@@ -269,6 +289,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
   Widget _buildFollowButton(BuildContext context, ProfileViewModel viewModel) {
     return Consumer<ProfileViewModel>(
       builder: (context, vm, child) {
+        // Show loading indicator when loading initial follow status
         if (vm.isLoadingFollowStatus) {
           return SizedBox(
             height: AppDimensions.buttonHeightM,
@@ -285,38 +306,76 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
           );
         }
 
+        // Show professional loading indicator during follow/unfollow operation
+        final isUpdating = vm.isUpdatingFollowStatus;
+        final isFollowing = vm.isFollowing;
+
         return SizedBox(
           height: AppDimensions.buttonHeightM,
           child: ElevatedButton(
-            onPressed: vm.isFollowing
-                ? () => vm.unfollowUser(context)
-                : () => vm.followUser(context),
+            onPressed: isUpdating
+                ? null // Disable button during operation
+                : (isFollowing
+                    ? () => vm.unfollowUser(context)
+                    : () => vm.followUser(context)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: vm.isFollowing
+              backgroundColor: isFollowing
                   ? AppColors.black.withOpacity(0.5)
                   : AppColors.primary,
-              foregroundColor: vm.isFollowing
+              foregroundColor: isFollowing
                   ? AppColors.white
                   : AppColors.black,
+              disabledBackgroundColor: isFollowing
+                  ? AppColors.black.withOpacity(0.3)
+                  : AppColors.primary.withOpacity(0.7),
+              disabledForegroundColor: isFollowing
+                  ? AppColors.white.withOpacity(0.7)
+                  : AppColors.black.withOpacity(0.7),
               padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                 side: BorderSide(
-                  color: vm.isFollowing
+                  color: isFollowing
                       ? AppColors.white.withOpacity(0.5)
                       : Colors.transparent,
                   width: 1,
                 ),
               ),
+              elevation: isUpdating ? 0 : 2,
             ),
-            child: ResponsiveTextWidget(
-              vm.isFollowing ? 'Unfollow' : 'Follow',
-              color: vm.isFollowing
-                  ? AppColors.white
-                  : AppColors.black,
-              fontWeight: FontWeight.bold,
-              fontSize: AppDimensions.textM,
-            ),
+            child: isUpdating
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            isFollowing ? AppColors.white : AppColors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppDimensions.spaceS),
+                      ResponsiveTextWidget(
+                        isFollowing ? 'Unfollowing...' : 'Following...',
+                        color: isFollowing
+                            ? AppColors.white.withOpacity(0.9)
+                            : AppColors.black.withOpacity(0.9),
+                        fontWeight: FontWeight.w600,
+                        fontSize: AppDimensions.textM,
+                      ),
+                    ],
+                  )
+                : ResponsiveTextWidget(
+                    isFollowing ? 'Unfollow' : 'Follow',
+                    color: isFollowing
+                        ? AppColors.white
+                        : AppColors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: AppDimensions.textM,
+                  ),
           ),
         );
       },
@@ -462,6 +521,29 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
       builder: (context, vm, child) {
         final images = vm.userImages;
         
+        // Show loading indicator when initially loading
+        if (images.isEmpty && vm.isLoading) {
+          return Padding(
+            padding: EdgeInsets.all(context.responsivePadding.top * 2),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    color: AppColors.primary,
+                  ),
+                  SizedBox(height: context.responsivePadding.top),
+                  ResponsiveTextWidget(
+                    'Loading posts...',
+                    color: AppColors.white.withOpacity(0.7),
+                    fontSize: AppDimensions.textM,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        
         if (images.isEmpty && !vm.isLoading) {
           return Padding(
             padding: EdgeInsets.all(AppDimensions.spaceXL),
@@ -491,27 +573,119 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                 : null;
             
             return GestureDetector(
-              onTap: () {
-                // Navigate to post detail if needed
-                // For now, just show the image
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.black,
-                ),
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: AppColors.black,
-                      child: Icon(
-                        Icons.error,
-                        color: AppColors.white.withOpacity(0.5),
+              onTap: () async {
+                // Fetch only the tapped post with full details
+                final postInfo = index < vm.imagePostInfos.length
+                    ? vm.imagePostInfos[index]
+                    : null;
+                
+                if (kDebugMode) {
+                  print('🖱️ User tapped on post at index $index');
+                  if (postInfo != null) {
+                    print('   Post ID: ${postInfo['postId']}');
+                    print('   Collection: ${postInfo['collectionName']}');
+                  } else {
+                    print('   ⚠️ No post info available for this index');
+                  }
+                }
+
+                if (postInfo == null) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Post information not available'),
+                        backgroundColor: AppColors.error,
                       ),
                     );
-                  },
-                ),
+                  }
+                  return;
+                }
+                
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                );
+
+                // Fetch only the tapped post with full details
+                final fullPost = await vm.fetchSinglePost(postInfo);
+                
+                // Close loading dialog
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+
+                if (fullPost != null && context.mounted) {
+                  // Navigate to posts view with only the tapped post
+                  final collectionName = postInfo['collectionName'] as String?;
+                  if (kDebugMode) {
+                    print('🚀 Navigating to PostsView with single post');
+                    print('   Collection: $collectionName');
+                  }
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.posts,
+                    arguments: {
+                      'posts': [fullPost], // Single post in a list
+                      'collectionName': collectionName,
+                    },
+                  );
+                } else if (context.mounted) {
+                  // Show error if post not found
+                  if (kDebugMode) {
+                    print('❌ Post not found or failed to load');
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to load post. Please try again.'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+              },
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _SafeCachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.cover,
+                    placeholder: Container(
+                      color: AppColors.black.withOpacity(0.3),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                    errorWidget: Image.asset(
+                      AppAssets.proback,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  // Show icon overlay if post has multiple media
+                  if (postInfo != null && (postInfo['hasMultipleMedia'] as bool? ?? false))
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(
+                          Icons.collections,
+                          color: AppColors.accent, // Yellow color
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             );
           },
@@ -526,6 +700,29 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
       key: key,
       builder: (context, vm, child) {
         final videos = vm.userVideos;
+        
+        // Show loading indicator when initially loading
+        if (videos.isEmpty && vm.isLoading) {
+          return Padding(
+            padding: EdgeInsets.all(context.responsivePadding.top * 2),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    color: AppColors.primary,
+                  ),
+                  SizedBox(height: context.responsivePadding.top),
+                  ResponsiveTextWidget(
+                    'Loading reels...',
+                    color: AppColors.white.withOpacity(0.7),
+                    fontSize: AppDimensions.textM,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
         
         if (videos.isEmpty && !vm.isLoading) {
           return Padding(
@@ -551,20 +748,122 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
           itemCount: videos.length,
           itemBuilder: (context, index) {
             final videoUrl = videos[index];
+            final postInfo = index < vm.videoPostInfos.length
+                ? vm.videoPostInfos[index]
+                : null;
             
-            return Container(
-              decoration: BoxDecoration(
-                color: AppColors.black,
-              ),
+            return GestureDetector(
+              onTap: () async {
+                // Fetch only the tapped video post with full details
+                if (kDebugMode) {
+                  print('🖱️ User tapped on video at index $index');
+                  if (postInfo != null) {
+                    print('   Post ID: ${postInfo['postId']}');
+                    print('   Collection: ${postInfo['collectionName']}');
+                  } else {
+                    print('   ⚠️ No post info available for this index');
+                  }
+                }
+
+                if (postInfo == null) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Post information not available'),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
+                  return;
+                }
+                
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                );
+
+                // Fetch only the tapped post with full details
+                final fullPost = await vm.fetchSinglePost(postInfo);
+                
+                // Close loading dialog
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+
+                if (fullPost != null && context.mounted) {
+                  // Navigate to posts view with only the tapped post
+                  final collectionName = postInfo['collectionName'] as String?;
+                  if (kDebugMode) {
+                    print('🚀 Navigating to PostsView with single post');
+                    print('   Collection: $collectionName');
+                  }
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.posts,
+                    arguments: {
+                      'posts': [fullPost], // Single post in a list
+                      'collectionName': collectionName,
+                    },
+                  );
+                } else if (context.mounted) {
+                  // Show error if post not found
+                  if (kDebugMode) {
+                    print('❌ Post not found or failed to load');
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to load post. Please try again.'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+              },
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Video thumbnail would go here
-                  Center(
+                  // Video thumbnail placeholder
+                  Container(
+                    color: AppColors.black.withOpacity(0.5),
+                    child: Center(
+                      child: Icon(
+                        Icons.play_circle_outline,
+                        color: AppColors.white,
+                        size: context.responsiveIconXL,
+                      ),
+                    ),
+                  ),
+                  // Show icon overlay if post has multiple videos
+                  if (postInfo != null && (postInfo['hasMultipleMedia'] as bool? ?? false))
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Icon(
+                          Icons.collections,
+                          color: AppColors.accent, // Yellow color
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  // Video indicator
+                  Positioned(
+                    bottom: 4,
+                    right: 4,
                     child: Icon(
-                      Icons.play_circle_outline,
-                      color: AppColors.white.withOpacity(0.7),
-                      size: 48,
+                      Icons.videocam,
+                      color: AppColors.white,
+                      size: context.responsiveIconM,
                     ),
                   ),
                 ],
@@ -597,5 +896,76 @@ class _ProfileTabsDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_ProfileTabsDelegate oldDelegate) {
     return child != oldDelegate.child;
+  }
+}
+
+/// Safe CachedNetworkImage wrapper that suppresses 404 exceptions
+/// Prevents app crashes when images are deleted from Firebase Storage
+class _SafeCachedNetworkImage extends StatefulWidget {
+  final String imageUrl;
+  final BoxFit fit;
+  final Widget placeholder;
+  final Widget errorWidget;
+
+  const _SafeCachedNetworkImage({
+    required this.imageUrl,
+    required this.fit,
+    required this.placeholder,
+    required this.errorWidget,
+  });
+
+  @override
+  State<_SafeCachedNetworkImage> createState() => _SafeCachedNetworkImageState();
+}
+
+class _SafeCachedNetworkImageState extends State<_SafeCachedNetworkImage> {
+  bool _hasError = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // If we've already encountered an error, just show the error widget
+    if (_hasError) {
+      return widget.errorWidget;
+    }
+
+    // Wrap in Builder to catch errors at widget level
+    return Builder(
+      builder: (context) {
+        // Use CachedNetworkImage but catch any exceptions
+        try {
+          return CachedNetworkImage(
+            imageUrl: widget.imageUrl,
+            fit: widget.fit,
+            placeholder: (context, url) => widget.placeholder,
+            errorWidget: (context, url, error) {
+              // Mark as error and show error widget
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !_hasError) {
+                  setState(() {
+                    _hasError = true;
+                  });
+                }
+              });
+              return widget.errorWidget;
+            },
+            cacheKey: widget.imageUrl,
+            maxWidthDiskCache: 1000,
+            maxHeightDiskCache: 1000,
+          );
+        } catch (e) {
+          // Catch any exceptions during build
+          if (mounted && !_hasError) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _hasError = true;
+                });
+              }
+            });
+          }
+          return widget.errorWidget;
+        }
+      },
+    );
   }
 }

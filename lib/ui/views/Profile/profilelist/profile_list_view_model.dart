@@ -398,9 +398,9 @@ class ProfileListViewModel extends BaseViewModel {
           print('ℹ️ No favorite festivals found');
         }
         _festivals = [];
-        _applySearchFilter();
         _isLoadingFestivals = false;
-        notifyListeners();
+        _hasLoadedFestivals = true; // Mark as loaded to prevent infinite loop
+        _applySearchFilter(); // This will call notifyListeners() through searchFestivals
         return;
       }
       
@@ -434,16 +434,15 @@ class ProfileListViewModel extends BaseViewModel {
         print('   _festivalsSearch before filter: "$_festivalsSearch"');
       }
       
+      _isLoadingFestivals = false;
+      _hasLoadedFestivals = true; // Mark as loaded BEFORE calling _applySearchFilter to prevent rebuild loop
+      
       // Apply search filter (this will show all if search is empty)
-      _applySearchFilter();
+      _applySearchFilter(); // This will call notifyListeners() through searchFestivals
       
       if (kDebugMode) {
         print('✅ After filter: ${_festivals.length} festivals in _festivals (from ${_allFestivals.length} total)');
       }
-      
-      _isLoadingFestivals = false;
-      _hasLoadedFestivals = true; // Mark as loaded
-      notifyListeners();
     } catch (e, stackTrace) {
       if (kDebugMode) {
         print('❌ Error loading favorite festivals: $e');

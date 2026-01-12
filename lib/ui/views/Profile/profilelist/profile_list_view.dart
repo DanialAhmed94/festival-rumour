@@ -140,7 +140,12 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
                           // Load favorite festivals when festivals tab is selected
                           // Only load if not already loaded (prevents infinite loop on empty search results)
                           WidgetsBinding.instance.addPostFrameCallback((_) {
-                            viewModel.loadFavoriteFestivals(context);
+                            // Double-check conditions before loading to prevent race conditions and loops
+                            if (viewModel.currentTab == 2 && 
+                                !viewModel.hasLoadedFestivals && 
+                                !viewModel.isLoadingFestivals) {
+                              viewModel.loadFavoriteFestivals(context);
+                            }
                           });
                         },
                       ),
