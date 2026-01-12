@@ -66,7 +66,7 @@ class FirestoreService {
   /// 
   /// [userId] - Firebase Auth user ID
   /// [email] - User email
-  /// [password] - User password (will be hashed before storing)
+  /// [password] - User password (will be hashed before storing, can be empty for OAuth users)
   /// [displayName] - User display name
   /// [phoneNumber] - User phone number (optional)
   /// [interests] - User interests list (optional)
@@ -83,19 +83,24 @@ class FirestoreService {
     Map<String, dynamic>? additionalData,
   }) async {
     try {
-      // Hash the password before storing
-      final hashedPassword = _hashPassword(password);
+      // Hash the password before storing (if password is not empty)
+      // For OAuth users, password will be empty string
+      final hashedPassword = password.isNotEmpty ? _hashPassword(password) : null;
 
       // Prepare user data document
       final userData = <String, dynamic>{
         'userId': userId,
         'email': email,
-        'password': hashedPassword, // Store hashed password
         'appIdentifier': 'festivalrumor', // Identify this app's users
         'postCount': 0, // Initialize post count to 0
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
+
+      // Only add password if it exists (OAuth users don't have passwords)
+      if (hashedPassword != null) {
+        userData['password'] = hashedPassword;
+      }
 
       // Add optional fields if provided
       if (displayName != null && displayName.isNotEmpty) {
@@ -196,6 +201,80 @@ class FirestoreService {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(exception, stackTrace, 'FirestoreService.getUserData');
       rethrow;
+    }
+  }
+
+  /// Check if user exists in Firestore by email
+  /// Returns true if user document exists with the given email
+  /// 
+  /// [email] - The email address to check
+  Future<bool> checkUserExistsByEmail(String email) async {
+    try {
+      if (kDebugMode) {
+        print('🔍 Checking if user exists with email: $email');
+      }
+
+      // Query users collection by email
+      Query query = _firestore
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1);
+
+      QuerySnapshot querySnapshot;
+      bool usedFallback = false;
+      
+      try {
+        querySnapshot = await query.get();
+      } catch (e) {
+        // Check if this is a Firestore index error (FAILED_PRECONDITION)
+        final isIndexError = e is FirebaseException && 
+            (e.code == 'failed-precondition' || 
+             e.message?.toLowerCase().contains('index') == true ||
+             e.message?.toLowerCase().contains('requires an index') == true) ||
+            e.toString().toLowerCase().contains('index') ||
+            e.toString().toLowerCase().contains('failed-precondition');
+        
+        if (isIndexError) {
+          // Fall back to querying all and filtering in memory
+          if (kDebugMode) {
+            print('⚠️ Index not found for email query, falling back to query all and filter');
+          }
+          usedFallback = true;
+          querySnapshot = await _firestore.collection('users').limit(100).get();
+        } else {
+          rethrow;
+        }
+      }
+
+      // If we used fallback, filter in memory
+      if (usedFallback) {
+        final userExists = querySnapshot.docs.any((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['email'] == email;
+        });
+        
+        if (kDebugMode) {
+          print('${userExists ? "✅" : "❌"} User ${userExists ? "exists" : "does not exist"} with email: $email (fallback query)');
+        }
+        return userExists;
+      }
+
+      // Normal query result
+      final exists = querySnapshot.docs.isNotEmpty;
+      
+      if (kDebugMode) {
+        print('${exists ? "✅" : "❌"} User ${exists ? "exists" : "does not exist"} with email: $email');
+      }
+      
+      return exists;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.checkUserExistsByEmail');
+      // Return false on error to allow flow to continue (safer than blocking)
+      if (kDebugMode) {
+        print('⚠️ Error checking user existence, assuming new user: $e');
+      }
+      return false;
     }
   }
 

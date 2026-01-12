@@ -67,7 +67,7 @@ class UploadPhotosViews extends BaseView<UploadPhotosViewModel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header with back button
-                _buildHeader(context),
+                _buildHeader(context, viewModel),
                 const SizedBox(height: AppDimensions.spaceM),
 
                 // Title and subtitle
@@ -92,10 +92,14 @@ class UploadPhotosViews extends BaseView<UploadPhotosViewModel> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, UploadPhotosViewModel viewModel) {
     return Row(
       children: [
-        CustomBackButton(onTap: () => context.pop()),
+        CustomBackButton(onTap: () {
+          // Clear signup data if user goes back (cancellation)
+          viewModel.clearSignupData();
+          context.pop();
+        }),
         const SizedBox(width: AppDimensions.spaceS),
         ResponsiveText(
           AppStrings.uploadphoto,
@@ -173,19 +177,49 @@ class UploadPhotosViews extends BaseView<UploadPhotosViewModel> {
                           borderRadius: BorderRadius.circular(
                             AppDimensions.radiusL,
                           ),
-                          child: kIsWeb
+                          child: viewModel.isUsingProviderPhoto
                               ? Image.network(
-                                  viewModel.selectedImage!.path,
+                                  viewModel.providerPhotoURL!,
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   height: double.infinity,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    // If network image fails, show placeholder
+                                    return Container(
+                                      color: AppColors.onPrimary.withOpacity(0.3),
+                                      child: Icon(
+                                        Icons.image_not_supported,
+                                        color: AppColors.primary,
+                                        size: AppDimensions.iconXXL,
+                                      ),
+                                    );
+                                  },
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        value: loadingProgress.expectedTotalBytes != null
+                                            ? loadingProgress.cumulativeBytesLoaded /
+                                                loadingProgress.expectedTotalBytes!
+                                            : null,
+                                        color: AppColors.accent,
+                                      ),
+                                    );
+                                  },
                                 )
-                              : Image.file(
-                                  File(viewModel.selectedImage!.path),
-                                  fit: BoxFit.cover,
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                ),
+                              : kIsWeb
+                                  ? Image.network(
+                                      viewModel.selectedImage!.path,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                    )
+                                  : Image.file(
+                                      File(viewModel.selectedImage!.path),
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                    ),
                         )
                         : null, // no shrink, just background stays
               ),

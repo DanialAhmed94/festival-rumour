@@ -73,6 +73,57 @@ class AuthService {
     }
   }
 
+  /// Get Google credentials without signing in
+  /// Returns map with credential, email, displayName, photoURL
+  Future<Map<String, dynamic>?> getGoogleCredentials() async {
+    try {
+      // Trigger the authentication flow
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) {
+        // User cancelled the sign-in
+        return null;
+      }
+
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      // Create a new credential (but don't sign in yet)
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Extract user information
+      final email = googleUser.email;
+      final displayName = googleUser.displayName;
+      final photoURL = googleUser.photoUrl;
+
+      return {
+        'credential': credential,
+        'email': email,
+        'displayName': displayName,
+        'photoURL': photoURL,
+      };
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.getGoogleCredentials');
+      rethrow;
+    }
+  }
+
+  /// Sign in with stored credential (for Google/Apple OAuth flow)
+  Future<UserCredential> signInWithCredential(AuthCredential credential) async {
+    try {
+      return await _auth.signInWithCredential(credential);
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithCredential');
+      rethrow;
+    }
+  }
+
   /// Sign in with Apple
   Future<UserCredential?> signInWithApple() async {
     try {
@@ -99,6 +150,49 @@ class AuthService {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithApple');
       return null;
+    }
+  }
+
+  /// Get Apple credentials without signing in
+  /// Returns map with credential, email, displayName, photoURL
+  Future<Map<String, dynamic>?> getAppleCredentials() async {
+    try {
+      final rawNonce = _generateNonce();
+      final nonce = _sha256ofString(rawNonce);
+
+      final appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: nonce,
+      );
+
+      final oauthCredential = OAuthProvider("apple.com").credential(
+        idToken: appleCredential.identityToken,
+        rawNonce: rawNonce,
+        accessToken: appleCredential.authorizationCode,
+      );
+
+      // Extract user information
+      // Note: Apple may not provide email/name on subsequent sign-ins
+      final email = appleCredential.email;
+      final displayName = appleCredential.givenName != null || appleCredential.familyName != null
+          ? '${appleCredential.givenName ?? ''} ${appleCredential.familyName ?? ''}'.trim()
+          : null;
+      // Apple doesn't provide photo URL
+      final photoURL = null;
+
+      return {
+        'credential': oauthCredential,
+        'email': email,
+        'displayName': displayName,
+        'photoURL': photoURL,
+      };
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'AuthService.getAppleCredentials');
+      rethrow;
     }
   }
 

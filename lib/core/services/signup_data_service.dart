@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// Service to temporarily store signup data before creating Firebase user
 class SignupDataService {
@@ -15,6 +16,14 @@ class SignupDataService {
   List<String>? _photoUrls;
   dynamic _profileImage; // Store profile image file (File or XFile)
   Map<String, dynamic>? _additionalData;
+
+  // Google/Apple OAuth credentials storage
+  AuthCredential? _googleCredential;
+  AuthCredential? _appleCredential;
+  String? _providerType; // 'google' or 'apple'
+  String? _providerEmail;
+  String? _providerDisplayName;
+  String? _providerPhotoURL;
 
   /// Store email and password (called from signup email screen)
   void setEmailAndPassword(String email, String password) {
@@ -112,6 +121,85 @@ class SignupDataService {
   /// Get all additional data
   Map<String, dynamic>? get additionalData => _additionalData;
 
+  /// Store Google credential and provider data
+  void setGoogleCredential({
+    required AuthCredential credential,
+    required String email,
+    String? displayName,
+    String? photoURL,
+  }) {
+    _googleCredential = credential;
+    _providerType = 'google';
+    _providerEmail = email;
+    _providerDisplayName = displayName;
+    _providerPhotoURL = photoURL;
+    
+    // Also set email and displayName in regular fields for consistency
+    _email = email;
+    if (displayName != null && displayName.isNotEmpty) {
+      _displayName = displayName;
+    }
+    
+    if (kDebugMode) {
+      print('Google credential stored: email=$email, displayName=$displayName');
+    }
+  }
+
+  /// Store Apple credential and provider data
+  void setAppleCredential({
+    required AuthCredential credential,
+    required String email,
+    String? displayName,
+    String? photoURL,
+  }) {
+    _appleCredential = credential;
+    _providerType = 'apple';
+    _providerEmail = email;
+    _providerDisplayName = displayName;
+    _providerPhotoURL = photoURL;
+    
+    // Also set email and displayName in regular fields for consistency
+    _email = email;
+    if (displayName != null && displayName.isNotEmpty) {
+      _displayName = displayName;
+    }
+    
+    if (kDebugMode) {
+      print('Apple credential stored: email=$email, displayName=$displayName');
+    }
+  }
+
+  /// Get stored Google credential
+  AuthCredential? get googleCredential => _googleCredential;
+
+  /// Get stored Apple credential
+  AuthCredential? get appleCredential => _appleCredential;
+
+  /// Get provider type ('google' or 'apple')
+  String? get providerType => _providerType;
+
+  /// Get provider email
+  String? get providerEmail => _providerEmail;
+
+  /// Get provider display name
+  String? get providerDisplayName => _providerDisplayName;
+
+  /// Get provider photo URL
+  String? get providerPhotoURL => _providerPhotoURL;
+
+  /// Check if this is a Google/Apple OAuth flow
+  bool get isOAuthFlow => _providerType != null && (_googleCredential != null || _appleCredential != null);
+
+  /// Get the stored credential based on provider type
+  AuthCredential? get storedCredential {
+    if (_providerType == 'google') {
+      return _googleCredential;
+    } else if (_providerType == 'apple') {
+      return _appleCredential;
+    }
+    return null;
+  }
+
   /// Check if email and password are stored
   bool get hasEmailAndPassword => _email != null && _password != null;
 
@@ -158,8 +246,16 @@ class SignupDataService {
     _email = null;
     _password = null;
     
+    // Also clear OAuth credentials for security
+    _googleCredential = null;
+    _appleCredential = null;
+    _providerType = null;
+    _providerEmail = null;
+    _providerDisplayName = null;
+    _providerPhotoURL = null;
+    
     if (kDebugMode) {
-      print('Credentials cleared');
+      print('Credentials cleared (including OAuth credentials)');
     }
   }
 }

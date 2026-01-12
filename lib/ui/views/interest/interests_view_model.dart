@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:dio/dio.dart';
 import '../../../core/constants/app_durations.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
@@ -134,30 +135,72 @@ class InterestsViewModel extends BaseViewModel {
     final interests = _signupDataService.interests;
     final profileImage = _signupDataService.profileImage;
 
-    // Validate required data - use ValidationException for validation errors
-    if (email == null || password == null) {
-      throw ValidationException(
-        message: 'Email and password are required. Please start signup again.',
-        code: 'MISSING_REQUIRED_FIELDS',
+    // Check if this is Google/Apple OAuth flow
+    final isOAuthFlow = _signupDataService.isOAuthFlow;
+    final storedCredential = _signupDataService.storedCredential;
+    final providerType = _signupDataService.providerType;
+
+    UserCredential? userCredential;
+    User? user;
+
+    if (isOAuthFlow && storedCredential != null) {
+      // Google/Apple OAuth flow - sign in with stored credential
+      if (kDebugMode) {
+        print('🔐 [SIGNUP] Creating user via OAuth flow ($providerType)');
+        print('   Email: $email');
+        print('   Display Name: $displayName');
+      }
+
+      if (email == null || email.isEmpty) {
+        throw ValidationException(
+          message: 'Email is required. Please start signup again.',
+          code: 'MISSING_REQUIRED_FIELDS',
+        );
+      }
+
+      // Sign in to Firebase Auth with stored credential
+      userCredential = await _authService.signInWithCredential(storedCredential);
+      
+      // Validate user creation was successful
+      if (userCredential.user == null) {
+        throw UnknownException(
+          message: 'Failed to create user account. Please try again.',
+        );
+      }
+
+      user = userCredential.user!;
+    } else {
+      // Email/Password flow - create new user
+      if (kDebugMode) {
+        print('🔐 [SIGNUP] Creating user via Email/Password flow');
+        print('   Email: $email');
+      }
+
+      // Validate required data - use ValidationException for validation errors
+      if (email == null || password == null) {
+        throw ValidationException(
+          message: 'Email and password are required. Please start signup again.',
+          code: 'MISSING_REQUIRED_FIELDS',
+        );
+      }
+
+      // Create Firebase user account with email/password
+      // This will throw AppException (mapped by ExceptionMapper) if there's an error
+      // The exception will be handled by handleAsync's centralized error handler
+      userCredential = await _authService.signUpWithEmail(
+        email: email,
+        password: password,
       );
+
+      // Validate user creation was successful
+      if (userCredential?.user == null) {
+        throw UnknownException(
+          message: 'Failed to create user account. Please try again.',
+        );
+      }
+
+      user = userCredential!.user!;
     }
-
-    // Create Firebase user account with email/password
-    // This will throw AppException (mapped by ExceptionMapper) if there's an error
-    // The exception will be handled by handleAsync's centralized error handler
-    final userCredential = await _authService.signUpWithEmail(
-      email: email,
-      password: password,
-    );
-
-    // Validate user creation was successful
-    if (userCredential?.user == null) {
-      throw UnknownException(
-        message: 'Failed to create user account. Please try again.',
-      );
-    }
-
-    final user = userCredential!.user!;
 
     // Update user profile with collected data
     // These operations will throw AppException if they fail
@@ -170,46 +213,108 @@ class InterestsViewModel extends BaseViewModel {
     String? photoUrl;
     if (profileImage != null) {
       try {
-        // Convert dynamic image to File for upload
-        File? imageFile;
-        if (profileImage is File) {
-          imageFile = profileImage as File;
-        } else if (kIsWeb && profileImage is XFile) {
-          // For web, we might need to handle XFile differently
-          // For now, skip upload on web or convert XFile to File
-          // TODO: Handle web image upload
-        }
-        
-        if (imageFile != null) {
+        // Check if profileImage is a URL string (from Google/Apple provider)
+        if (profileImage is String && 
+            (profileImage.startsWith('http://') || profileImage.startsWith('https://'))) {
+          // Provider photo URL - download it first, then upload to Storage
           if (kDebugMode) {
-            final originalSize = await imageFile.length();
-            print('📸 [SIGNUP] Original image size: ${(originalSize / 1024).toStringAsFixed(2)} KB');
+            print('📥 [SIGNUP] Downloading provider photo from URL: $profileImage');
           }
           
-          // Compress image to 70% quality before upload
-          final compressedFile = await _compressImage(imageFile, quality: 70);
-          
-          if (compressedFile != null) {
+          try {
+            // Use dio to download the image (already in dependencies)
+            final dio = Dio();
+            final response = await dio.get<List<int>>(
+              profileImage,
+              options: Options(responseType: ResponseType.bytes),
+            );
+            
+            if (response.data != null) {
+              // Get temporary directory
+              final tempDir = await getTemporaryDirectory();
+              final filePath = '${tempDir.path}/provider_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+              final file = File(filePath);
+              
+              // Write downloaded bytes to file
+              await file.writeAsBytes(response.data!);
+              
+              if (kDebugMode) {
+                print('✅ [SIGNUP] Provider photo downloaded successfully');
+              }
+              
+              // Now upload to Firebase Storage
+              final originalSize = await file.length();
+              if (kDebugMode) {
+                print('📸 [SIGNUP] Original image size: ${(originalSize / 1024).toStringAsFixed(2)} KB');
+              }
+              
+              // Compress image to 70% quality before upload
+              final compressedFile = await _compressImage(file, quality: 70);
+              
+              if (compressedFile != null) {
+                if (kDebugMode) {
+                  final compressedSize = await compressedFile.length();
+                  print('📸 [SIGNUP] Compressed image size: ${(compressedSize / 1024).toStringAsFixed(2)} KB');
+                }
+                photoUrl = await _authService.uploadProfilePhoto(compressedFile);
+              } else {
+                // If compression fails, upload original image
+                photoUrl = await _authService.uploadProfilePhoto(file);
+              }
+              
+              if (photoUrl != null) {
+                await _authService.updateProfilePhoto(photoUrl);
+              }
+            }
+          } catch (e) {
             if (kDebugMode) {
-              final compressedSize = await compressedFile.length();
-              print('📸 [SIGNUP] Compressed image size: ${(compressedSize / 1024).toStringAsFixed(2)} KB');
-              print('   Compression ratio: ${((1 - compressedSize / await imageFile.length()) * 100).toStringAsFixed(1)}%');
+              print('⚠️ [SIGNUP] Error downloading provider photo, will use URL directly: $e');
+            }
+            // If download fails, use the URL directly (store it in Firestore)
+            photoUrl = profileImage as String;
+          }
+        } else {
+          // Regular file upload (from gallery/camera)
+          File? imageFile;
+          if (profileImage is File) {
+            imageFile = profileImage as File;
+          } else if (kIsWeb && profileImage is XFile) {
+            // For web, we might need to handle XFile differently
+            // For now, skip upload on web or convert XFile to File
+            // TODO: Handle web image upload
+          }
+          
+          if (imageFile != null) {
+            if (kDebugMode) {
+              final originalSize = await imageFile.length();
+              print('📸 [SIGNUP] Original image size: ${(originalSize / 1024).toStringAsFixed(2)} KB');
             }
             
-            // Upload compressed profile photo to Firebase Storage
-            photoUrl = await _authService.uploadProfilePhoto(compressedFile);
-            if (photoUrl != null) {
-              // Update user profile with photo URL
-              await _authService.updateProfilePhoto(photoUrl);
-            }
-          } else {
-            // If compression fails, upload original image
-            if (kDebugMode) {
-              print('⚠️ [SIGNUP] Image compression failed, uploading original image');
-            }
-            photoUrl = await _authService.uploadProfilePhoto(imageFile);
-            if (photoUrl != null) {
-              await _authService.updateProfilePhoto(photoUrl);
+            // Compress image to 70% quality before upload
+            final compressedFile = await _compressImage(imageFile, quality: 70);
+            
+            if (compressedFile != null) {
+              if (kDebugMode) {
+                final compressedSize = await compressedFile.length();
+                print('📸 [SIGNUP] Compressed image size: ${(compressedSize / 1024).toStringAsFixed(2)} KB');
+                print('   Compression ratio: ${((1 - compressedSize / await imageFile.length()) * 100).toStringAsFixed(1)}%');
+              }
+              
+              // Upload compressed profile photo to Firebase Storage
+              photoUrl = await _authService.uploadProfilePhoto(compressedFile);
+              if (photoUrl != null) {
+                // Update user profile with photo URL
+                await _authService.updateProfilePhoto(photoUrl);
+              }
+            } else {
+              // If compression fails, upload original image
+              if (kDebugMode) {
+                print('⚠️ [SIGNUP] Image compression failed, uploading original image');
+              }
+              photoUrl = await _authService.uploadProfilePhoto(imageFile);
+              if (photoUrl != null) {
+                await _authService.updateProfilePhoto(photoUrl);
+              }
             }
           }
         }
@@ -245,12 +350,13 @@ class InterestsViewModel extends BaseViewModel {
     }
 
     // Save all user data to Firestore
-    // Password will be hashed automatically in FirestoreService
+    // For OAuth flow, password will be null (not applicable)
     // App identifier 'festivalrumor' will be added to differentiate users
+    // postCount will be initialized to 0
     await _firestoreService.saveUserData(
       userId: user.uid,
-      email: email,
-      password: password, // Will be hashed in FirestoreService
+      email: email!,
+      password: password ?? '', // Will be hashed in FirestoreService (empty string for OAuth)
       displayName: displayName,
       phoneNumber: phoneNumber,
       interests: interests,
