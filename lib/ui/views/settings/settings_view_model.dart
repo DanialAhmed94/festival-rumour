@@ -8,6 +8,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/services/firestore_service.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/di/locator.dart';
 
@@ -20,6 +21,7 @@ class SettingsViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final AuthService _authService = locator<AuthService>();
   final StorageService _storageService = locator<StorageService>();
+  final FirestoreService _firestoreService = locator<FirestoreService>();
 
   /// 🔹 Toggle methods
   void toggleNotifications(bool value) {
@@ -176,6 +178,62 @@ class SettingsViewModel extends BaseViewModel {
       }
 
       try {
+        // Get user ID before deletion
+        final userId = _authService.userUid;
+        
+        if (userId != null) {
+          // Complete cleanup of all user resources
+          // Delete in order: posts (with media), jobs, chat rooms, profile
+          
+          // 1. Delete all user posts (including media from Storage)
+          try {
+            await _firestoreService.deleteAllUserPosts(userId);
+            if (kDebugMode) {
+              print('✅ [Settings] User posts deleted successfully');
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              print('⚠️ [Settings] Error deleting user posts: $e');
+            }
+          }
+
+          // 2. Delete all user jobs
+          try {
+            await _firestoreService.deleteAllUserJobs(userId);
+            if (kDebugMode) {
+              print('✅ [Settings] User jobs deleted successfully');
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              print('⚠️ [Settings] Error deleting user jobs: $e');
+            }
+          }
+
+          // 3. Clean up chat rooms (delete private rooms, remove from others)
+          try {
+            await _firestoreService.cleanupUserChatRooms(userId);
+            if (kDebugMode) {
+              print('✅ [Settings] User chat rooms cleaned up successfully');
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              print('⚠️ [Settings] Error cleaning up chat rooms: $e');
+            }
+          }
+
+          // 4. Delete user profile data
+          try {
+            await _firestoreService.deleteUserProfile(userId);
+            if (kDebugMode) {
+              print('✅ [Settings] User profile deleted successfully');
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              print('⚠️ [Settings] Error deleting user profile: $e');
+            }
+          }
+        }
+
         // Delete user from Firebase Authentication
         await _authService.deleteAccount();
         

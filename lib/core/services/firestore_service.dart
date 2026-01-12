@@ -991,6 +991,461 @@ class FirestoreService {
     }
   }
 
+  /// Delete all posts posted by a user from all collections
+  /// 
+  /// [userId] - The user ID whose posts should be deleted
+  Future<void> deleteAllUserPosts(String userId) async {
+    try {
+      if (kDebugMode) {
+        print('🗑️ Deleting all posts for user: $userId');
+      }
+
+      // Known post collections - add more if needed
+      final collections = [
+        defaultPostsCollection, // 'festivalrumorglobalfeed'
+        // Add festival-specific collections if needed
+        // You can query all collections or maintain a list
+      ];
+
+      int totalDeleted = 0;
+
+      for (final collectionName in collections) {
+        try {
+          // Query all posts by this user in this collection
+          Query query = _firestore
+              .collection(collectionName)
+              .where('userId', isEqualTo: userId);
+
+          List<DocumentSnapshot> postsToDelete = [];
+          
+          try {
+            // PRIMARY APPROACH: Use indexed query (EFFICIENT)
+            // Firestore only returns documents where userId matches
+            // This is FAST even with millions of posts
+            final querySnapshot = await query.get();
+            postsToDelete = querySnapshot.docs;
+            
+            if (kDebugMode) {
+              print('✅ Using indexed query - found ${postsToDelete.length} posts for user');
+            }
+          } catch (e) {
+            // Check if this is a Firestore index error (FAILED_PRECONDITION)
+            final isIndexError = e is FirebaseException && 
+                (e.code == 'failed-precondition' || 
+                 e.message?.toLowerCase().contains('index') == true ||
+                 e.message?.toLowerCase().contains('requires an index') == true) ||
+                e.toString().toLowerCase().contains('index') ||
+                e.toString().toLowerCase().contains('failed-precondition');
+            
+            if (isIndexError) {
+              // FALLBACK APPROACH: Paginated query with in-memory filtering
+              // WARNING: This is INEFFICIENT for large datasets
+              // It queries documents in batches and filters in memory
+              if (kDebugMode) {
+                print('⚠️⚠️⚠️ CRITICAL: Index not found for $collectionName!');
+                print('⚠️ Falling back to paginated query with in-memory filtering');
+                print('⚠️ This will be SLOW for large collections. Please create the index!');
+                print('⚠️ Index needed: userId (Ascending) on collection: $collectionName');
+              }
+              
+              // Use pagination to avoid loading ALL documents at once
+              // Process in batches to reduce memory usage
+              const batchSize = 100; // Process 100 documents at a time
+              DocumentSnapshot? lastDoc;
+              int totalScanned = 0;
+              
+              do {
+                Query paginatedQuery = _firestore.collection(collectionName).limit(batchSize);
+                if (lastDoc != null) {
+                  paginatedQuery = paginatedQuery.startAfterDocument(lastDoc);
+                }
+                
+                final batchSnapshot = await paginatedQuery.get();
+                
+                if (batchSnapshot.docs.isEmpty) {
+                  break;
+                }
+                
+                totalScanned += batchSnapshot.docs.length;
+                
+                // Filter by userId in this batch
+                for (var doc in batchSnapshot.docs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  if (data['userId'] == userId) {
+                    postsToDelete.add(doc);
+                  }
+                }
+                
+                lastDoc = batchSnapshot.docs.last;
+                
+                // Stop if we got less than batchSize (no more documents)
+                if (batchSnapshot.docs.length < batchSize) {
+                  break;
+                }
+              } while (true);
+              
+              if (kDebugMode) {
+                print('⚠️ Scanned $totalScanned documents, found ${postsToDelete.length} matching posts');
+                print('⚠️ Efficiency: ${((postsToDelete.length / totalScanned) * 100).toStringAsFixed(1)}% match rate');
+              }
+            } else {
+              rethrow;
+            }
+          }
+
+          // Delete each post (which handles media and subcollections)
+          for (var postDoc in postsToDelete) {
+            try {
+              final postData = postDoc.data() as Map<String, dynamic>;
+              
+              // Get media paths from the post
+              final mediaPaths = <String>[];
+              
+              // Check for old format (single imagePath)
+              if (postData['imagePath'] != null) {
+                final imagePath = postData['imagePath'] as String?;
+                if (imagePath != null && imagePath.isNotEmpty && 
+                    (imagePath.startsWith('http://') || imagePath.startsWith('https://'))) {
+                  mediaPaths.add(imagePath);
+                }
+              }
+              
+              // Check for new format (mediaPaths array)
+              if (postData['mediaPaths'] != null) {
+                final paths = postData['mediaPaths'] as List<dynamic>?;
+                if (paths != null) {
+                  for (final path in paths) {
+                    if (path is String && path.isNotEmpty &&
+                        (path.startsWith('http://') || path.startsWith('https://'))) {
+                      mediaPaths.add(path);
+                    }
+                  }
+                }
+              }
+
+              // Delete media files from Firebase Storage
+              if (mediaPaths.isNotEmpty) {
+                await _deletePostMediaFromStorage(mediaPaths);
+              }
+
+              // Delete all subcollections (reactions, comments)
+              await _deletePostSubcollections(postDoc.reference);
+
+              // Delete the post document
+              await postDoc.reference.delete();
+              
+              totalDeleted++;
+            } catch (e) {
+              // Log error but continue with other posts
+              if (kDebugMode) {
+                print('⚠️ Error deleting post ${postDoc.id}: $e');
+              }
+            }
+          }
+
+          if (totalDeleted > 0 && kDebugMode) {
+            print('✅ Deleted $totalDeleted posts from collection "$collectionName"');
+          }
+        } catch (e) {
+          // Log error but continue with other collections
+          if (kDebugMode) {
+            print('⚠️ Error deleting posts from $collectionName: $e');
+          }
+          continue;
+        }
+      }
+
+      // Clear profile cache for this user
+      clearProfileCache(userId: userId);
+
+      if (kDebugMode) {
+        print('✅ Deleted total $totalDeleted posts for user: $userId');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.deleteAllUserPosts');
+      rethrow;
+    }
+  }
+
+  /// Delete user profile data from Firestore
+  /// 
+  /// [userId] - The user ID whose profile should be deleted
+  Future<void> deleteUserProfile(String userId) async {
+    try {
+      if (kDebugMode) {
+        print('🗑️ Deleting user profile for: $userId');
+      }
+
+      final userRef = _firestore.collection('users').doc(userId);
+      final userDoc = await userRef.get();
+
+      if (userDoc.exists) {
+        await userRef.delete();
+        if (kDebugMode) {
+          print('✅ User profile deleted successfully');
+        }
+      } else {
+        if (kDebugMode) {
+          print('ℹ️ User profile not found (may already be deleted)');
+        }
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.deleteUserProfile');
+      rethrow;
+    }
+  }
+
+  /// Clean up chat rooms for a user
+  /// - Deletes private chat rooms created by the user
+  /// - Removes user from members list of other chat rooms
+  /// 
+  /// [userId] - The user ID whose chat rooms should be cleaned up
+  Future<void> cleanupUserChatRooms(String userId) async {
+    try {
+      if (kDebugMode) {
+        print('🗑️ Cleaning up chat rooms for user: $userId');
+      }
+
+      int deletedRooms = 0;
+      int removedFromRooms = 0;
+
+      // Get all chat rooms where user is creator or member
+      // Query 1: Private rooms created by user
+      final createdRoomsQuery = _firestore
+          .collection('chatRooms')
+          .where('isPublic', isEqualTo: false)
+          .where('createdBy', isEqualTo: userId);
+
+      // Query 2: Rooms where user is a member (public or private)
+      final memberRoomsQuery = _firestore
+          .collection('chatRooms')
+          .where('members', arrayContains: userId);
+
+      List<DocumentSnapshot> createdRooms = [];
+      List<DocumentSnapshot> memberRooms = [];
+
+      try {
+        final createdSnapshot = await createdRoomsQuery.get();
+        createdRooms = createdSnapshot.docs;
+        
+        final memberSnapshot = await memberRoomsQuery.get();
+        memberRooms = memberSnapshot.docs;
+      } catch (e) {
+        // If index error, fall back to querying all and filtering
+        final isIndexError = e is FirebaseException && 
+            (e.code == 'failed-precondition' || 
+             e.message?.toLowerCase().contains('index') == true);
+        
+        if (isIndexError) {
+          if (kDebugMode) {
+            print('⚠️ Index not found, falling back to query all chat rooms');
+          }
+          final allRoomsSnapshot = await _firestore.collection('chatRooms').get();
+          
+          createdRooms = allRoomsSnapshot.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return (data['isPublic'] == false) && (data['createdBy'] == userId);
+          }).toList();
+          
+          memberRooms = allRoomsSnapshot.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final members = data['members'] as List<dynamic>?;
+            return members != null && members.contains(userId);
+          }).toList();
+        } else {
+          rethrow;
+        }
+      }
+
+      // Process created private rooms - delete them
+      for (var doc in createdRooms) {
+        try {
+          final chatRoomData = doc.data() as Map<String, dynamic>;
+          final isPublic = chatRoomData['isPublic'] as bool? ?? false;
+          
+          // Only delete private rooms
+          if (!isPublic) {
+            // Delete all messages in the messages subcollection
+            final messagesRef = doc.reference.collection('messages');
+            final messagesSnapshot = await messagesRef.get();
+            
+            // Delete messages in batches
+            const batchSize = 500;
+            for (int i = 0; i < messagesSnapshot.docs.length; i += batchSize) {
+              final batch = _firestore.batch();
+              final endIndex = (i + batchSize < messagesSnapshot.docs.length) 
+                  ? i + batchSize 
+                  : messagesSnapshot.docs.length;
+
+              for (int j = i; j < endIndex; j++) {
+                batch.delete(messagesSnapshot.docs[j].reference);
+              }
+
+              await batch.commit();
+            }
+
+            // Delete the chat room document
+            await doc.reference.delete();
+            deletedRooms++;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Error deleting chat room ${doc.id}: $e');
+          }
+        }
+      }
+
+      // Process member rooms - remove user from members list
+      final roomsToUpdate = <DocumentSnapshot>[];
+      for (var doc in memberRooms) {
+        final chatRoomData = doc.data() as Map<String, dynamic>;
+        final createdBy = chatRoomData['createdBy'] as String?;
+        
+        // Skip rooms we already deleted (created by user)
+        final isPublic = chatRoomData['isPublic'] as bool? ?? false;
+        if (createdBy == userId && !isPublic) {
+          continue;
+        }
+        
+        roomsToUpdate.add(doc);
+      }
+
+      // Remove user from members list in batches
+      const batchSize = 500;
+      for (int i = 0; i < roomsToUpdate.length; i += batchSize) {
+        final batch = _firestore.batch();
+        final endIndex = (i + batchSize < roomsToUpdate.length) 
+            ? i + batchSize 
+            : roomsToUpdate.length;
+
+        for (int j = i; j < endIndex; j++) {
+          final doc = roomsToUpdate[j];
+          batch.update(doc.reference, {
+            'members': FieldValue.arrayRemove([userId]),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        await batch.commit();
+        removedFromRooms += (endIndex - i);
+      }
+
+      if (kDebugMode) {
+        print('✅ Deleted $deletedRooms private chat rooms');
+        print('✅ Removed user from $removedFromRooms chat rooms');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.cleanupUserChatRooms');
+      rethrow;
+    }
+  }
+
+  /// Delete all jobs posted by a user from all categories
+  /// 
+  /// [userId] - The user ID whose jobs should be deleted
+  Future<void> deleteAllUserJobs(String userId) async {
+    try {
+      if (kDebugMode) {
+        print('🗑️ Deleting all jobs for user: $userId');
+      }
+
+      // Known categories
+      final categories = ['Festival Gizza', 'Festie Heroes'];
+      int totalDeleted = 0;
+
+      for (final category in categories) {
+        // Sanitize category name for collection name
+        final sanitizedCategory = category
+            .replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '')
+            .replaceAll(RegExp(r'\s+'), '_')
+            .toLowerCase();
+        
+        final collectionName = 'jobs_$sanitizedCategory';
+
+        try {
+          // Query all jobs by this user in this category
+          Query query = _firestore
+              .collection(collectionName)
+              .where('userId', isEqualTo: userId);
+
+          QuerySnapshot querySnapshot;
+          try {
+            querySnapshot = await query.get();
+          } catch (e) {
+            // Check if this is a Firestore index error (FAILED_PRECONDITION)
+            final isIndexError = e is FirebaseException && 
+                (e.code == 'failed-precondition' || 
+                 e.message?.toLowerCase().contains('index') == true ||
+                 e.message?.toLowerCase().contains('requires an index') == true) ||
+                e.toString().toLowerCase().contains('index') ||
+                e.toString().toLowerCase().contains('failed-precondition');
+            
+            if (isIndexError) {
+              // Fall back to querying without index
+              if (kDebugMode) {
+                print('⚠️ Index not found for $collectionName, falling back to query all and filter');
+              }
+              querySnapshot = await _firestore.collection(collectionName).get();
+            } else {
+              rethrow;
+            }
+          }
+
+          // Filter by userId if we queried without where clause
+          final jobsToDelete = <DocumentSnapshot>[];
+          for (var doc in querySnapshot.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            if (data['userId'] == userId) {
+              jobsToDelete.add(doc);
+            }
+          }
+
+          // Delete jobs in batches (Firestore batch limit is 500)
+          const batchSize = 500;
+          int deletedInCategory = 0;
+
+          for (int i = 0; i < jobsToDelete.length; i += batchSize) {
+            final batch = _firestore.batch();
+            final endIndex = (i + batchSize < jobsToDelete.length) 
+                ? i + batchSize 
+                : jobsToDelete.length;
+
+            for (int j = i; j < endIndex; j++) {
+              batch.delete(jobsToDelete[j].reference);
+            }
+
+            await batch.commit();
+            deletedInCategory += (endIndex - i);
+          }
+
+          if (deletedInCategory > 0) {
+            totalDeleted += deletedInCategory;
+            if (kDebugMode) {
+              print('✅ Deleted $deletedInCategory jobs from category "$category"');
+            }
+          }
+        } catch (e) {
+          // Log error but continue with other categories
+          if (kDebugMode) {
+            print('⚠️ Error deleting jobs from $collectionName: $e');
+          }
+          continue;
+        }
+      }
+
+      if (kDebugMode) {
+        print('✅ Deleted total $totalDeleted jobs for user: $userId');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.deleteAllUserJobs');
+      rethrow;
+    }
+  }
+
   /// Increment user's post count in Firestore
   /// Uses atomic increment to safely handle concurrent updates
   /// 

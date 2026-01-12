@@ -566,7 +566,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
             padding: EdgeInsets.all(context.responsivePadding.top),
             child: Center(
               child: ResponsiveTextWidget(
-                'No posts yet',
+                'there is nothing to show',
                 color: AppColors.white,
                 fontSize: AppDimensions.textM,
               ),

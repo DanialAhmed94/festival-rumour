@@ -549,7 +549,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
             padding: EdgeInsets.all(AppDimensions.spaceXL),
             child: Center(
               child: ResponsiveTextWidget(
-                'No posts yet',
+                'there is nothing to show',
                 color: AppColors.white.withOpacity(0.6),
                 fontSize: context.getConditionalSubFont(),
               ),
