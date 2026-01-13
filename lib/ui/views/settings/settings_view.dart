@@ -39,26 +39,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
           color: AppColors.onPrimary,
         ),
         actions: [
-          GestureDetector(
-            onTap: viewModel.goToSubscription,
-            child: Container(
-              margin: const EdgeInsets.only(right: AppDimensions.paddingM),
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimensions.paddingS,
-                vertical: 4,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.accent, // ✅ Changed button color to black
-                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-              ),
-              child: const ResponsiveTextWidget(
-                AppStrings.proLabel,
-                textType: TextType.caption,
-                color: AppColors.onPrimary, // ✅ White text on black background
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+          // Pro label removed
         ],
       ),
       body: SingleChildScrollView(

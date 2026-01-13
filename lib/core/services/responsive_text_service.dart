@@ -9,17 +9,43 @@ class ResponsiveTextService {
   static final ResponsiveTextService _instance = ResponsiveTextService._();
   static ResponsiveTextService get instance => _instance;
 
+  // Cache for responsive font sizes to avoid repeated calculations
+  final Map<String, double> _fontSizeCache = {};
+  Size? _lastScreenSize;
+  
   /// Get responsive font size based on screen size - optimized for high-res phones
+  /// Uses caching to avoid repeated calculations
   double getResponsiveFontSize(BuildContext context, double baseFontSize) {
-    if (context.isHighResolutionPhone) {
-      return baseFontSize * 1.15; // Slightly larger for high-res phones like Pixel 6 Pro
-    } else if (context.isLargeScreen) {
-      return baseFontSize * 1.3; // Larger for desktop
-    } else if (context.isMediumScreen) {
-      return baseFontSize * 1.2; // Medium for tablets
-    } else {
-      return baseFontSize; // Base size for small phones
+    final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
+    final cacheKey = '${screenSize.width}_${screenSize.height}_$baseFontSize';
+    
+    // Check if screen size changed - clear cache if it did
+    if (_lastScreenSize != null && _lastScreenSize != screenSize) {
+      _fontSizeCache.clear();
     }
+    _lastScreenSize = screenSize;
+    
+    // Return cached value if available
+    if (_fontSizeCache.containsKey(cacheKey)) {
+      return _fontSizeCache[cacheKey]!;
+    }
+    
+    // Calculate and cache
+    double fontSize;
+    final screenWidth = screenSize.width;
+    if (screenWidth >= 400 && screenWidth < 600) {
+      fontSize = baseFontSize * 1.15; // High-res phones
+    } else if (screenWidth >= 1200) {
+      fontSize = baseFontSize * 1.3; // Desktop
+    } else if (screenWidth >= 600 && screenWidth < 1200) {
+      fontSize = baseFontSize * 1.2; // Tablets
+    } else {
+      fontSize = baseFontSize; // Small phones
+    }
+    
+    _fontSizeCache[cacheKey] = fontSize;
+    return fontSize;
   }
 
   /// Get responsive text style for headings

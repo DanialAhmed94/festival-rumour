@@ -1,6 +1,7 @@
 import 'package:country_code_picker/country_code_picker.dart';
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../../core/constants/app_assets.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
@@ -21,26 +22,6 @@ class SignupView extends BaseView<SignupViewModel> {
 
   @override
   Widget buildView(BuildContext context, SignupViewModel viewModel) {
-    // Listen for error messages and show snackbar
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (viewModel.errorMessage != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(viewModel.errorMessage!),
-            backgroundColor: AppColors.accent,
-            duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: 'Dismiss',
-              textColor: AppColors.onPrimary,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
-        );
-      }
-    });
-
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: Stack(
@@ -95,6 +76,9 @@ class SignupView extends BaseView<SignupViewModel> {
               alignment: Alignment.center,
               child: const LoadingWidget(color: AppColors.onPrimary),
             ),
+          
+          /// 🔹 Error snackbar handler
+          _ErrorSnackbarHandler(viewModel: viewModel),
         ],
       ),
     );
@@ -250,6 +234,45 @@ class SignupView extends BaseView<SignupViewModel> {
                   color: AppColors.onPrimary,
                 ),
       ),
+    );
+  }
+}
+
+/// Error snackbar handler widget - only shows when error changes
+class _ErrorSnackbarHandler extends StatelessWidget {
+  final SignupViewModel viewModel;
+  
+  const _ErrorSnackbarHandler({required this.viewModel});
+  
+  @override
+  Widget build(BuildContext context) {
+    return Selector<SignupViewModel, String?>(
+      selector: (_, vm) => vm.snackbarError,
+      builder: (context, snackbarError, child) {
+        if (snackbarError != null && snackbarError.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted && snackbarError == viewModel.snackbarError) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(snackbarError),
+                  backgroundColor: AppColors.accent,
+                  duration: const Duration(seconds: 3),
+                  action: SnackBarAction(
+                    label: 'Dismiss',
+                    textColor: AppColors.onPrimary,
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      viewModel.clearSnackbarError();
+                    },
+                  ),
+                ),
+              );
+              viewModel.clearSnackbarError();
+            }
+          });
+        }
+        return const SizedBox.shrink();
+      },
     );
   }
 }

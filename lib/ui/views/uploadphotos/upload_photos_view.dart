@@ -167,8 +167,10 @@ class UploadPhotosViews extends BaseView<UploadPhotosViewModel> {
                     AppDimensions.imageXXL * 2.4, // ✅ fixed height (same whether empty or with image)
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-                   color: AppColors.onPrimary.withOpacity(0.4),
-                   // 🔥 light layer background
+                  color: viewModel.isUsingProviderPhoto 
+                      ? Colors.transparent // No background blur for provider photos
+                      : AppColors.onPrimary.withOpacity(0.4),
+                  // 🔥 light layer background
                   //color: AppColors.black.withOpacity(0.9),
                 ),
                 child:
@@ -178,34 +180,39 @@ class UploadPhotosViews extends BaseView<UploadPhotosViewModel> {
                             AppDimensions.radiusL,
                           ),
                           child: viewModel.isUsingProviderPhoto
-                              ? Image.network(
-                                  viewModel.providerPhotoURL!,
-                                  fit: BoxFit.cover,
+                              ? Container(
                                   width: double.infinity,
                                   height: double.infinity,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    // If network image fails, show placeholder
-                                    return Container(
-                                      color: AppColors.onPrimary.withOpacity(0.3),
-                                      child: Icon(
-                                        Icons.image_not_supported,
-                                        color: AppColors.primary,
-                                        size: AppDimensions.iconXXL,
-                                      ),
-                                    );
-                                  },
-                                  loadingBuilder: (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return Center(
-                                      child: CircularProgressIndicator(
-                                        value: loadingProgress.expectedTotalBytes != null
-                                            ? loadingProgress.cumulativeBytesLoaded /
-                                                loadingProgress.expectedTotalBytes!
-                                            : null,
-                                        color: AppColors.accent,
-                                      ),
-                                    );
-                                  },
+                                  color: Colors.transparent, // No background blur for provider photos
+                                  child: Image.network(
+                                    viewModel.providerPhotoURL!,
+                                    fit: BoxFit.contain, // Better fit for provider photos
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      // If network image fails, show placeholder
+                                      return Container(
+                                        color: AppColors.onPrimary.withOpacity(0.3),
+                                        child: Icon(
+                                          Icons.image_not_supported,
+                                          color: AppColors.primary,
+                                          size: AppDimensions.iconXXL,
+                                        ),
+                                      );
+                                    },
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Center(
+                                        child: CircularProgressIndicator(
+                                          value: loadingProgress.expectedTotalBytes != null
+                                              ? loadingProgress.cumulativeBytesLoaded /
+                                                  loadingProgress.expectedTotalBytes!
+                                              : null,
+                                          color: AppColors.accent,
+                                        ),
+                                      );
+                                    },
+                                  ),
                                 )
                               : kIsWeb
                                   ? Image.network(

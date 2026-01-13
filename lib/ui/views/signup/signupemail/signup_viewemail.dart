@@ -1,5 +1,6 @@
 import 'package:festival_rumour/shared/widgets/responsive_text_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:festival_rumour/ui/views/signup/signupemail/signup_viewemail_model.dart';
 
 import '../../../../core/constants/app_assets.dart';
@@ -28,42 +29,6 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
 
   @override
   Widget buildView(BuildContext context, SignupViewEmailModel viewModel) {
-    // Show snackbar for Firebase exceptions and other errors
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final snackbarError = viewModel.snackbarError;
-      if (snackbarError != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    snackbarError,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'Dismiss',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                viewModel.clearSnackbarError();
-              },
-            ),
-          ),
-        );
-        // Clear the error after showing
-        viewModel.clearSnackbarError();
-      }
-    });
-
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: Stack(
@@ -117,6 +82,9 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
               alignment: Alignment.center,
               child: const LoadingWidget(color: AppColors.onPrimary),
             ),
+          
+          /// 🔹 Error snackbar handler
+          _ErrorSnackbarHandler(viewModel: viewModel),
         ],
       ),
     );
@@ -310,6 +278,57 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Error snackbar handler widget - only shows when error changes
+class _ErrorSnackbarHandler extends StatelessWidget {
+  final SignupViewEmailModel viewModel;
+  
+  const _ErrorSnackbarHandler({required this.viewModel});
+  
+  @override
+  Widget build(BuildContext context) {
+    return Selector<SignupViewEmailModel, String?>(
+      selector: (_, vm) => vm.snackbarError,
+      builder: (context, snackbarError, child) {
+        if (snackbarError != null && snackbarError.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted && snackbarError == viewModel.snackbarError) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.white),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          snackbarError,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                  behavior: SnackBarBehavior.floating,
+                  action: SnackBarAction(
+                    label: 'Dismiss',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      viewModel.clearSnackbarError();
+                    },
+                  ),
+                ),
+              );
+              viewModel.clearSnackbarError();
+            }
+          });
+        }
+        return const SizedBox.shrink();
+      },
     );
   }
 }

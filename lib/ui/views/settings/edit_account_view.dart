@@ -73,7 +73,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
               onPressed: vm.goBack,
             ),
             title: const ResponsiveTextWidget(
-              AppStrings.editAccountDetails,
+              'Edit Account',
               textType: TextType.title,
               fontWeight: FontWeight.bold,
               color: AppColors.onPrimary,

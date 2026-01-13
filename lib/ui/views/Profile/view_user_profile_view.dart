@@ -384,17 +384,21 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
 
   Widget _buildStatItem(BuildContext context, String count, String label) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         ResponsiveTextWidget(
           count,
           color: AppColors.white,
           fontWeight: FontWeight.bold,
           fontSize: AppDimensions.textM,
+          textAlign: TextAlign.center,
         ),
         ResponsiveTextWidget(
           label,
           color: AppColors.white.withOpacity(0.7),
           fontSize: AppDimensions.textS,
+          textAlign: TextAlign.center,
         ),
       ],
     );
@@ -418,18 +422,20 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             ResponsiveTextWidget(
               count,
               color: AppColors.white,
               fontWeight: FontWeight.bold,
               fontSize: AppDimensions.textM,
+              textAlign: TextAlign.center,
             ),
             ResponsiveTextWidget(
               label,
               color: AppColors.white.withOpacity(0.7),
               fontSize: AppDimensions.textS,
+              textAlign: TextAlign.center,
             ),
           ],
         ),

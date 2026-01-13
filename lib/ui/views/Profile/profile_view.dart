@@ -27,35 +27,97 @@ class ProfileView extends BaseView<ProfileViewModel> {
 
   @override
   Widget buildView(BuildContext context, ProfileViewModel viewModel) {
-    // Initialize and load user profile data on first build
-    // Always call initialize - it will handle userId changes internally
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!viewModel.isLoading) {
-        viewModel.initialize(context, userId: userId, fromRoute: fromRoute);
-      }
-    });
-    
-    // Refresh user profile info when view becomes visible again
-    // This handles the case when returning from edit profile screen or after following/unfollowing
-    // Only refresh if viewing own profile (refreshUserProfileInfo checks this)
-    if (viewModel.isInitialized && userId == null) {
+    return _ProfileViewContent(
+      viewModel: viewModel,
+      userId: userId,
+      fromRoute: fromRoute,
+      onBack: onBack,
+      onNavigateToSub: onNavigateToSub,
+    );
+  }
+}
+
+/// Stateful widget to manage initialization and keep-alive
+class _ProfileViewContent extends StatefulWidget {
+  final ProfileViewModel viewModel;
+  final String? userId;
+  final String? fromRoute;
+  final VoidCallback? onBack;
+  final Function(String)? onNavigateToSub;
+  
+  const _ProfileViewContent({
+    required this.viewModel,
+    this.userId,
+    this.fromRoute,
+    this.onBack,
+    this.onNavigateToSub,
+  });
+  
+  @override
+  State<_ProfileViewContent> createState() => _ProfileViewContentState();
+}
+
+class _ProfileViewContentState extends State<_ProfileViewContent> with AutomaticKeepAliveClientMixin {
+  bool _isInitialized = false;
+  String? _lastUserId;
+  
+  @override
+  bool get wantKeepAlive => true; // Keep alive when switching tabs
+  
+  @override
+  void initState() {
+    super.initState();
+    _lastUserId = widget.userId;
+    // Initialize only once or when userId changes
+    if (!_isInitialized || _lastUserId != widget.userId) {
+      _isInitialized = true;
+      _lastUserId = widget.userId;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Refresh profile info and counts when returning to own profile
-        viewModel.refreshUserProfileInfo();
+        if (mounted && !widget.viewModel.isLoading) {
+          widget.viewModel.initialize(context, userId: widget.userId, fromRoute: widget.fromRoute);
+        }
       });
     }
+  }
+  
+  @override
+  void didUpdateWidget(_ProfileViewContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Re-initialize if userId changed
+    if (oldWidget.userId != widget.userId) {
+      _isInitialized = false;
+      _lastUserId = widget.userId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !widget.viewModel.isLoading) {
+          widget.viewModel.initialize(context, userId: widget.userId, fromRoute: widget.fromRoute);
+        }
+      });
+    }
+    // Refresh profile info when returning to own profile
+    else if (widget.viewModel.isInitialized && widget.userId == null && oldWidget.userId == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.viewModel.refreshUserProfileInfo();
+        }
+      });
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return WillPopScope(
       onWillPop: () async {
-        print("🔙 Profile screen back button pressed (userId: $userId, fromRoute: $fromRoute)");
-        if (onBack != null) {
-          onBack!(); // Navigate to home tab
+        print("🔙 Profile screen back button pressed (userId: ${widget.userId}, fromRoute: ${widget.fromRoute})");
+        if (widget.onBack != null) {
+          widget.onBack!(); // Navigate to home tab
           return false; // Prevent default back behavior
         }
         // If we have a fromRoute and are viewing another user's profile, pop until we reach it
-        if (fromRoute != null && userId != null) {
+        if (widget.fromRoute != null && widget.userId != null) {
           Navigator.popUntil(context, (route) {
             final routeName = route.settings.name;
-            final matches = routeName == fromRoute;
+            final matches = routeName == widget.fromRoute;
             if (matches || route.isFirst) {
               return true; // Stop at matching route or first route
             }
@@ -92,7 +154,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
 
                   /// 🔹 Top Bar as Sliver
                   SliverToBoxAdapter(
-                    child: _profileTopBarWidget(context, viewModel),
+                    child: _profileTopBarWidget(context, widget.viewModel),
                   ),
                   
                   /// 🔹 Divider after app bar
@@ -116,7 +178,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
                     elevation: 0,
                     automaticallyImplyLeading: false,
                     flexibleSpace: FlexibleSpaceBar(
-                      background: _buildProfileHeader(context, viewModel),
+                      background: _buildProfileHeader(context, widget.viewModel),
                     ),
                   ),
 
@@ -128,7 +190,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
                       child: Container(
                         height: AppDimensions.buttonHeightXL,
                         color: AppColors.black.withOpacity(0.8),
-                        child: _profileTabs(context, viewModel),
+                        child: _profileTabs(context, widget.viewModel),
                       ),
                     ),
                   ),
@@ -137,7 +199,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
                   SliverToBoxAdapter(
                     child: Container(
                       color: AppColors.black.withOpacity(0.8),
-                      child: _buildDynamicContent(context, viewModel),
+                      child: _buildDynamicContent(context, widget.viewModel),
                     ),
                   ),
                 ],
@@ -166,209 +228,195 @@ class ProfileView extends BaseView<ProfileViewModel> {
 
         /// ---------------- INSTAGRAM-LIKE PROFILE HEADER ---------------- 
   Widget _buildProfileHeader(BuildContext context, ProfileViewModel viewModel) {
-    return Container(
-      padding: context.responsivePadding,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          /// Profile info (Username & followers left — Picture right)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipOval(
-                child: viewModel.userPhotoUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: viewModel.userPhotoUrl!,
-                        width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
-                        height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
-                          height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
-                          color: AppColors.black.withOpacity(0.3),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.primary,
-                              strokeWidth: 2,
-                            ),
-                          ),
-                        ),
-                        errorWidget: (context, url, error) => Image.asset(
-                          AppAssets.profile,
-                          width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
-                          height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
-                          fit: BoxFit.cover,
-                        ),
-                        // Enable offline caching
-                        cacheKey: viewModel.userPhotoUrl,
-                        maxWidthDiskCache: 200,
-                        maxHeightDiskCache: 200,
-                      )
-                    : Image.asset(
-                        AppAssets.profile,
-                        width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
-                        height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
-                        fit: BoxFit.cover,
+    return Selector<ProfileViewModel, String?>(
+      selector: (_, vm) => vm.userPhotoUrl,
+      builder: (context, userPhotoUrl, child) {
+        return Selector<ProfileViewModel, String?>(
+          selector: (_, vm) => vm.userDisplayName,
+          builder: (context, userDisplayName, child) {
+            return Container(
+              padding: context.responsivePadding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  /// Profile info (Username & followers left — Picture right)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipOval(
+                        child: userPhotoUrl != null
+                            ? CachedNetworkImage(
+                                imageUrl: userPhotoUrl,
+                                width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                                height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                                  height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                                  color: AppColors.black.withOpacity(0.3),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      color: AppColors.primary,
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Image.asset(
+                                  AppAssets.profile,
+                                  width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                                  height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                                  fit: BoxFit.cover,
+                                ),
+                                cacheKey: userPhotoUrl,
+                                maxWidthDiskCache: 200,
+                                maxHeightDiskCache: 200,
+                              )
+                            : Image.asset(
+                                AppAssets.profile,
+                                width: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                                height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
+                                fit: BoxFit.cover,
+                              ),
                       ),
+                      SizedBox(width: context.getConditionalSpacing()),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Username
+                            ResponsiveTextWidget(
+                              userDisplayName ?? 'User',
+                              color: AppColors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: AppDimensions.textL,
+                            ),
+                            SizedBox(height: AppDimensions.spaceS),
+                            // Stats aligned with profile picture width
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                Consumer<ProfileViewModel>(
+                                  builder: (context, vm, child) {
+                                    return _buildClickableStat(
+                                      context,
+                                      vm.postCount.toString(),
+                                      AppStrings.posts,
+                                      () {
+                                        if (widget.onNavigateToSub != null) {
+                                          widget.onNavigateToSub!('posts');
+                                        } else {
+                                          Navigator.pushNamed(context, AppRoutes.posts);
+                                        }
+                                      },
+                                    );
+                                  },
+                                ),
+                                SizedBox(width: context.getConditionalSpacing()),
+                                Consumer<ProfileViewModel>(
+                                  builder: (context, vm, child) {
+                                    return _buildClickableStat(
+                                      context,
+                                      '${vm.followersCount}',
+                                      AppStrings.followers,
+                                      () {
+                                        if (widget.onNavigateToSub != null) {
+                                          widget.onNavigateToSub!('followers');
+                                        } else {
+                                          final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
+                                          Navigator.pushNamed(
+                                            context,
+                                            AppRoutes.profileList,
+                                            arguments: {
+                                              'initialTab': 0,
+                                              'username': vm.userDisplayName ?? 'User',
+                                              'userId': currentUserId,
+                                            },
+                                          );
+                                        }
+                                      },
+                                    );
+                                  },
+                                ),
+                                SizedBox(width: context.getConditionalSpacing()),
+                                Consumer<ProfileViewModel>(
+                                  builder: (context, vm, child) {
+                                    return _buildClickableStat(
+                                      context,
+                                      '${vm.followingCount}',
+                                      AppStrings.following,
+                                      () {
+                                        if (widget.onNavigateToSub != null) {
+                                          widget.onNavigateToSub!('following');
+                                        } else {
+                                          final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
+                                          Navigator.pushNamed(
+                                            context,
+                                            AppRoutes.profileList,
+                                            arguments: {
+                                              'initialTab': 1,
+                                              'username': vm.userDisplayName ?? 'User',
+                                              'userId': currentUserId,
+                                            },
+                                          );
+                                        }
+                                      },
+                                    );
+                                  },
+                                ),
+                                SizedBox(width: context.getConditionalSpacing()),
+                                Consumer<ProfileViewModel>(
+                                  builder: (context, vm, child) {
+                                    return _buildClickableStat(
+                                      context,
+                                      '${vm.favoriteFestivalsCount}',
+                                      AppStrings.festivals,
+                                      () {
+                                        if (widget.onNavigateToSub != null) {
+                                          widget.onNavigateToSub!('festivals');
+                                        } else {
+                                          Navigator.pushNamed(
+                                            context,
+                                            AppRoutes.profileList,
+                                            arguments: {
+                                              'initialTab': 2,
+                                              'username': vm.userDisplayName ?? 'User',
+                                            },
+                                          );
+                                        }
+                                      },
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.getConditionalSpacing()),
+                  /// Bio / Description below profile picture
+                  Selector<ProfileViewModel, String?>(
+                    selector: (_, vm) => vm.userBio,
+                    builder: (context, userBio, child) {
+                      final bioText = userBio?.isNotEmpty == true 
+                          ? userBio! 
+                          : AppStrings.bioDescription;
+                      return ResponsiveTextWidget(
+                        bioText,
+                        color: AppColors.white,
+                        fontSize: context.getConditionalFont(),
+                        textAlign: TextAlign.left,
+                      );
+                    },
+                  ),
+                ],
               ),
-              SizedBox(width: context.getConditionalSpacing()),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Username
-                    ResponsiveTextWidget(
-                      viewModel.userDisplayName ?? 'User',
-                    //  textType: TextType.title,
-                      color: AppColors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: AppDimensions.textL,
-                    ),
-                    SizedBox(height: AppDimensions.spaceS),
-                    // Stats aligned with profile picture width
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      //crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Consumer<ProfileViewModel>(
-                          builder: (context, vm, child) {
-                            return _buildClickableStat(
-                              context,
-                              vm.postCount.toString(),
-                              AppStrings.posts,
-                              () {
-                                if (onNavigateToSub != null) {
-                                  onNavigateToSub!('posts');
-                                } else {
-                                  Navigator.pushNamed(context, AppRoutes.posts);
-                                }
-                              },
-                            );
-                          },
-                        ),
-                        SizedBox(width: context.getConditionalSpacing()),
-                        Consumer<ProfileViewModel>(
-                          builder: (context, vm, child) {
-                            return _buildClickableStat(
-                              context,
-                              '${vm.followersCount}',
-                              AppStrings.followers,
-                              () {
-                                if (onNavigateToSub != null) {
-                                  onNavigateToSub!('followers');
-                                } else {
-                                  // Try to get userId, but don't block navigation if null
-                                  // ProfileListViewModel will handle fallback
-                                  final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
-                                  if (kDebugMode) {
-                                    print('🔍 [ProfileView] Navigating to followers list');
-                                    print('   vm.authService.userUid: ${vm.authService.userUid}');
-                                    print('   vm.authService.currentUser?.uid: ${vm.authService.currentUser?.uid}');
-                                    print('   currentUserId: $currentUserId');
-                                  }
-                                  
-                                  // Always navigate - ProfileListViewModel will use fallback if userId is null
-                                  Navigator.pushNamed(
-                                    context,
-                                    AppRoutes.profileList,
-                                    arguments: {
-                                      'initialTab': 0,
-                                      'username': vm.userDisplayName ?? 'User',
-                                      'userId': currentUserId, // May be null, but that's okay
-                                    },
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
-                        SizedBox(width: context.getConditionalSpacing()),
-                        Consumer<ProfileViewModel>(
-                          builder: (context, vm, child) {
-                            return _buildClickableStat(
-                              context,
-                              '${vm.followingCount}',
-                              AppStrings.following,
-                              () {
-                                if (onNavigateToSub != null) {
-                                  onNavigateToSub!('following');
-                                } else {
-                                  // Try to get userId, but don't block navigation if null
-                                  // ProfileListViewModel will handle fallback
-                                  final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
-                                  if (kDebugMode) {
-                                    print('🔍 [ProfileView] Navigating to following list');
-                                    print('   vm.authService.userUid: ${vm.authService.userUid}');
-                                    print('   vm.authService.currentUser?.uid: ${vm.authService.currentUser?.uid}');
-                                    print('   currentUserId: $currentUserId');
-                                  }
-                                  
-                                  // Always navigate - ProfileListViewModel will use fallback if userId is null
-                                  Navigator.pushNamed(
-                                    context,
-                                    AppRoutes.profileList,
-                                    arguments: {
-                                      'initialTab': 1,
-                                      'username': vm.userDisplayName ?? 'User',
-                                      'userId': currentUserId, // May be null, but that's okay
-                                    },
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
-                        SizedBox(width: context.getConditionalSpacing()),
-                        Consumer<ProfileViewModel>(
-                          builder: (context, vm, child) {
-                            return _buildClickableStat(
-                              context,
-                              '${vm.favoriteFestivalsCount}',
-                              AppStrings.festivals,
-                              () {
-                                if (onNavigateToSub != null) {
-                                  onNavigateToSub!('festivals');
-                                } else {
-                                  Navigator.pushNamed(
-                                    context,
-                                    AppRoutes.profileList,
-                                    arguments: {
-                                      'initialTab': 2,
-                                      'username': vm.userDisplayName ?? 'User',
-                                    },
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          SizedBox(height: context.getConditionalSpacing()),
-
-          /// Bio / Description below profile picture
-          Consumer<ProfileViewModel>(
-            builder: (context, vm, child) {
-              final bioText = vm.userBio?.isNotEmpty == true 
-                  ? vm.userBio! 
-                  : AppStrings.bioDescription;
-              return ResponsiveTextWidget(
-                bioText,
-                color: AppColors.white,
-                fontSize: context.getConditionalFont(),
-                textAlign: TextAlign.left,
-              );
-            },
-          ),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -400,17 +448,17 @@ class ProfileView extends BaseView<ProfileViewModel> {
           /// Back button
           CustomBackButton(
             onTap: () {
-              if (onBack != null) {
-                onBack!();
+        if (widget.onBack != null) {
+          widget.onBack!();
               } else {
                 // Handle back navigation based on where we came from
-                if (fromRoute != null) {
+                if (widget.fromRoute != null) {
                   // If viewing another user's profile, pop until we reach the original route
-                  if (userId != null) {
+                  if (widget.userId != null) {
                     // Pop until we reach the route we came from (e.g., search screen)
                     Navigator.popUntil(context, (route) {
                       final routeName = route.settings.name;
-                      final matches = routeName == fromRoute;
+                      final matches = routeName == widget.fromRoute;
                       if (matches || route.isFirst) {
                         return true; // Stop at matching route or first route
                       }
@@ -446,6 +494,22 @@ class ProfileView extends BaseView<ProfileViewModel> {
           Row(
             mainAxisSize: MainAxisSize.max,
             children: [
+              IconButton(
+                onPressed: () async {
+                  // Refresh posts only
+                  await viewModel.refreshPostsOnly(context);
+                },
+                icon: Icon(
+                  Icons.refresh,
+                  color: AppColors.white, 
+                  size: AppDimensions.iconL,
+                ),
+                padding: context.responsivePadding,
+                constraints: BoxConstraints(
+                  minWidth: context.getConditionalIconSize(),
+                  minHeight: context.getConditionalIconSize(),
+                ),
+              ),
               IconButton(
                 onPressed: () {
                   // Navigate to search users screen
@@ -487,18 +551,20 @@ class ProfileView extends BaseView<ProfileViewModel> {
                 ),
               ),
               IconButton(
-                onPressed: () async {
-                  // Navigate to settings and wait for return
-                  await Navigator.pushNamed(context, AppRoutes.settings);
-                  // When returning from settings, refresh profile info
-                  // Add a small delay to ensure route is fully active
-                  await Future.delayed(const Duration(milliseconds: 100));
-                  if (context.mounted && viewModel.isInitialized && userId == null) {
-                    // Reset refresh flags to allow refresh
-                    viewModel.resetRefreshFlags();
-                    // Refresh profile info to show updated changes
-                    await viewModel.refreshUserProfileInfo();
-                  }
+                onPressed: () {
+                  // Navigate to settings immediately
+                  Navigator.pushNamed(context, AppRoutes.settings).then((_) {
+                    // When returning from settings, refresh profile info
+                    // Use then() instead of await for non-blocking navigation
+                    Future.delayed(const Duration(milliseconds: 100), () {
+                      if (context.mounted && widget.viewModel.isInitialized && widget.userId == null) {
+                        // Reset refresh flags to allow refresh
+                        widget.viewModel.resetRefreshFlags();
+                        // Refresh profile info to show updated changes
+                        widget.viewModel.refreshUserProfileInfo();
+                      }
+                    });
+                  });
                 },
                 icon: Icon(Icons.settings,
                     color: AppColors.white, 
@@ -641,11 +707,11 @@ class ProfileView extends BaseView<ProfileViewModel> {
 
                     if (fullPost != null && context.mounted) {
                       // Navigate to posts view with only the tapped post
-                      if (onNavigateToSub != null) {
+                      if (widget.onNavigateToSub != null) {
                         if (kDebugMode) {
                           print('🚀 Using onNavigateToSub callback');
                         }
-                        onNavigateToSub!('posts');
+                        widget.onNavigateToSub!('posts');
                       } else {
                         final collectionName = postInfo['collectionName'] as String?;
                         if (kDebugMode) {
@@ -866,8 +932,8 @@ class ProfileView extends BaseView<ProfileViewModel> {
 
                     if (fullPost != null && context.mounted) {
                       // Navigate to posts view with only the tapped post
-                      if (onNavigateToSub != null) {
-                        onNavigateToSub!('posts');
+                      if (widget.onNavigateToSub != null) {
+                        widget.onNavigateToSub!('posts');
                       } else {
                         final collectionName = postInfo['collectionName'] as String?;
                         if (kDebugMode) {
@@ -988,7 +1054,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
   Widget _buildStat(BuildContext context, String count, String label) {
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         ResponsiveTextWidget(
           count,
@@ -999,6 +1065,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
           fontSize: context.isHighResolutionPhone ? 16 : 12,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
         ),
         ResponsiveTextWidget(
           label,
@@ -1008,6 +1075,7 @@ class ProfileView extends BaseView<ProfileViewModel> {
           fontSize: context.isHighResolutionPhone ? 10 : 8,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
         ),
       ],
     );

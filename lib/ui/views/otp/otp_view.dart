@@ -75,10 +75,12 @@ class OtpView extends BaseView<OtpViewModel> {
                         fit: BoxFit.cover,
                       ),
                     ),
-                    child: Consumer<OtpViewModel>(
-                      builder: (context, viewModel, child) {
+                    child: Selector<OtpViewModel, String?>(
+                      selector: (_, vm) => vm.errorText,
+                      builder: (context, errorText, child) {
+                        final viewModel = Provider.of<OtpViewModel>(context, listen: false);
+                        
                         // Show snackbar when errorText changes
-                        final errorText = viewModel.errorText;
                         if (errorText != null && 
                             errorText.isNotEmpty && 
                             errorText != _lastShownError &&
@@ -135,6 +137,7 @@ class OtpView extends BaseView<OtpViewModel> {
                           ),
                         );
                       },
+                      child: const SizedBox.shrink(),
                     ),
                   ),
                 ),

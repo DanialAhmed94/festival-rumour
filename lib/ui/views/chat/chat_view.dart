@@ -512,7 +512,7 @@ class ChatView extends BaseView<ChatViewModel> {
                         child: const Icon(
                           Icons.delete_outline,
                           size: 16,
-                          color: AppColors.white,
+                          color: AppColors.black,
                         ),
                       ),
                     ),
@@ -536,14 +536,14 @@ class ChatView extends BaseView<ChatViewModel> {
                         Icon(
                           isCreatedByUser ? Icons.star : Icons.person_add,
                           size: 12,
-                          color: AppColors.white,
+                          color: AppColors.black,
                         ),
                         const SizedBox(width: 4),
                         ResponsiveTextWidget(
                           isCreatedByUser ? 'Created' : 'Joined',
                           textType: TextType.caption,
                           fontSize: 10,
-                          color: AppColors.white,
+                          color: AppColors.black,
                           fontWeight: FontWeight.w600,
                         ),
                       ],
@@ -1163,16 +1163,6 @@ class ChatView extends BaseView<ChatViewModel> {
           // Input field row
           Row(
             children: [
-              Container(
-                width: AppDimensions.iconM,
-                height: AppDimensions.iconM,
-                decoration: const BoxDecoration(
-                  color: AppColors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.add, color: AppColors.black, size: 20),
-              ),
-              const SizedBox(width: AppDimensions.paddingS),
               Expanded(
                 child: Container(
                   height: AppDimensions.imageS,

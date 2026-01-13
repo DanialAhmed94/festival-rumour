@@ -254,9 +254,25 @@ class DiscoverViewModel extends BaseViewModel {
       return;
     }
 
-    try {
-      setBusy(true);
+    // Navigate immediately for instant response
+    _navigationService.navigateTo(
+      AppRoutes.chatRoom,
+      // Don't pass chatRoomId - let user select from list
+    );
 
+    // Create chat room in background (non-blocking)
+    // This allows the screen to open instantly while chat room is being created
+    _ensureChatRoomExists(selectedFestival).catchError((e) {
+      if (kDebugMode) {
+        print('❌ Error creating chat room in background: $e');
+      }
+      // Error is handled silently - user can still use the chat screen
+    });
+  }
+
+  /// Ensure chat room exists - runs in background after navigation
+  Future<void> _ensureChatRoomExists(FestivalModel selectedFestival) async {
+    try {
       // Generate chat room ID
       final chatRoomId = FirestoreService.getFestivalChatRoomId(
         selectedFestival.id,
@@ -300,25 +316,11 @@ class DiscoverViewModel extends BaseViewModel {
           print('✅ Chat room already exists: $chatRoomId');
         }
       }
-
-      // Navigate to chat list view (without chatRoomId argument)
-      // This will show the chat list where user can select the chat room
-      _navigationService.navigateTo(
-        AppRoutes.chatRoom,
-        // Don't pass chatRoomId - let user select from list
-      );
-    } catch (e, stackTrace) {
+    } catch (e) {
       if (kDebugMode) {
-        print('❌ Error creating/navigating to chat room: $e');
+        print('❌ Error ensuring chat room exists: $e');
       }
-      // Show error to user
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-        ),
-      );
-    } finally {
-      setBusy(false);
+      rethrow;
     }
   }
 

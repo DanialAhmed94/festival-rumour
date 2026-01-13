@@ -77,7 +77,10 @@ class AuthService {
   /// Returns map with credential, email, displayName, photoURL
   Future<Map<String, dynamic>?> getGoogleCredentials() async {
     try {
-      // Trigger the authentication flow
+      // Sign out any cached account to force account picker to show
+      await _googleSignIn.signOut();
+      
+      // Trigger the authentication flow (will show account picker)
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {

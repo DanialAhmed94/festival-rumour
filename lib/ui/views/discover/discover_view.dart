@@ -34,17 +34,54 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
 
   @override
   Widget buildView(BuildContext context, DiscoverViewModel viewModel) {
-    // Load favorite status when view is built
-    // The viewModel has internal flags (_hasLoadedFavorite, _isLoadingFavorite) 
-    // to prevent multiple calls, so it's safe to call this on every rebuild
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      viewModel.loadFavoriteStatus(context);
-    });
+    return _DiscoverViewContent(viewModel: viewModel, onBack: onBack, onNavigateToSub: onNavigateToSub);
+  }
+}
+
+/// Stateful widget to manage initialization and keep-alive
+class _DiscoverViewContent extends StatefulWidget {
+  final DiscoverViewModel viewModel;
+  final VoidCallback? onBack;
+  final Function(String)? onNavigateToSub;
+  
+  const _DiscoverViewContent({
+    required this.viewModel,
+    this.onBack,
+    this.onNavigateToSub,
+  });
+  
+  @override
+  State<_DiscoverViewContent> createState() => _DiscoverViewContentState();
+}
+
+class _DiscoverViewContentState extends State<_DiscoverViewContent> with AutomaticKeepAliveClientMixin {
+  bool _isInitialized = false;
+  
+  @override
+  bool get wantKeepAlive => true; // Keep alive when switching tabs
+  
+  @override
+  void initState() {
+    super.initState();
+    // Initialize only once
+    if (!_isInitialized) {
+      _isInitialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.viewModel.loadFavoriteStatus(context);
+        }
+      });
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return WillPopScope(
       onWillPop: () async {
         print("🔙 Discover screen back button pressed");
-        if (onBack != null) {
-          onBack!();
+        if (widget.onBack != null) {
+          widget.onBack!();
           return false;
         }
         return true;
@@ -52,7 +89,7 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
       child: GestureDetector(
         onTap: () {
           // Dismiss keyboard when tapping outside
-          viewModel.unfocusSearch();
+          widget.viewModel.unfocusSearch();
         },
       child: Scaffold(
         extendBodyBehindAppBar: true,
@@ -73,9 +110,9 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildTopBar(context, viewModel),
+                        _buildTopBar(context, widget.viewModel),
                         _divider(),
-                        _buildSearchBarWithDropdown(context, viewModel),
+                        _buildSearchBarWithDropdown(context, widget.viewModel),
                         SizedBox(height: AppDimensions.spaceS),
                         const EventHeaderCard(),
                         SizedBox(height: AppDimensions.spaceS),
@@ -83,7 +120,7 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
                         SizedBox(height: AppDimensions.spaceS),
                         _buildActionTiles(context),
                         SizedBox(height: AppDimensions.spaceS),
-                        _buildGridOptions(context, viewModel),
+                        _buildGridOptions(context, widget.viewModel),
                       ],
                     ),
                   ),
@@ -111,7 +148,7 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
   Widget _buildTopBar(BuildContext context, DiscoverViewModel viewModel) {
     return Row(
       children: [
-        CustomBackButton(onTap: onBack ?? () {}),
+        CustomBackButton(onTap: widget.onBack ?? () {}),
         SizedBox(width: context.getConditionalSpacing()),
         ResponsiveTextWidget(
           AppStrings.overview,
@@ -129,11 +166,11 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
   Widget _buildFavoriteButton(BuildContext context, DiscoverViewModel viewModel) {
     return GestureDetector(
       onTap: () async {
-        final wasFavorited = viewModel.isFavorited;
+        final wasFavorited = widget.viewModel.isFavorited;
         try {
-          await viewModel.toggleFavorite(context);
+          await widget.viewModel.toggleFavorite(context);
           // Show snackbar after successful toggle
-          if (viewModel.isFavorited) {
+          if (widget.viewModel.isFavorited) {
             SnackbarUtil.showSuccessSnackBar(
               context,
               AppStrings.addedToFavorites,
@@ -210,22 +247,22 @@ class DiscoverView extends BaseView<DiscoverViewModel> {
         GridOption(
           title: AppStrings.location,
           icon: AppAssets.mapicon,
-          onNavigateToSub: onNavigateToSub,
+          onNavigateToSub: widget.onNavigateToSub,
         ),
         GridOption(
           title: AppStrings.chatRooms,
           icon: AppAssets.chaticon,
-          onTap: () => viewModel.goToChatRooms(context),
+          onTap: () => widget.viewModel.goToChatRooms(context),
         ),
         GridOption(
           title: AppStrings.rumors,
           icon: AppAssets.rumors,
-          onTap: () => viewModel.goToRumors(context),
+          onTap: () => widget.viewModel.goToRumors(context),
         ),
         GridOption(
           title: AppStrings.detail,
           icon: AppAssets.detailicon,
-          onNavigateToSub: onNavigateToSub,
+          onNavigateToSub: widget.onNavigateToSub,
         ),
       ],
     );

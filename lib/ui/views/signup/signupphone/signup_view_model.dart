@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -166,30 +167,32 @@ class SignupViewModel extends BaseViewModel {
     final exception = ExceptionMapper.mapToAppException(e);
 
     // Handle specific error codes
+    String errorMsg;
     if (exception is AuthException) {
       switch (exception.code) {
         case 'too-many-requests':
         case 'TOO_MANY_REQUESTS':
-          _errorMessage = 'Too many requests. Please try again later.';
+          errorMsg = 'Too many requests. Please try again later.';
           break;
         case 'invalid-phone-number':
         case 'INVALID_PHONE_NUMBER':
-          _errorMessage = 'Invalid phone number. Please check and try again.';
+          errorMsg = 'Invalid phone number. Please check and try again.';
           break;
         case 'quota-exceeded':
         case 'QUOTA_EXCEEDED':
-          _errorMessage = 'SMS quota exceeded. Please try again later.';
+          errorMsg = 'SMS quota exceeded. Please try again later.';
           break;
         default:
-          _errorMessage = exception.message;
+          errorMsg = exception.message;
       }
     } else if (exception is NetworkException) {
-      _errorMessage = exception.message;
+      errorMsg = exception.message;
     } else {
-      _errorMessage = exception.message;
+      errorMsg = exception.message;
     }
 
-    _showErrorSnackBar();
+    _errorMessage = errorMsg;
+    _updateErrorWithDebounce(errorMsg);
   }
 
   void _onCodeSent(String verificationId, int? resendToken) {
@@ -251,26 +254,19 @@ class SignupViewModel extends BaseViewModel {
         return true;
       } else {
         _errorMessage = result.errorMessage;
-        _showErrorSnackBar();
+        _updateErrorWithDebounce(_errorMessage);
         return false;
       }
     } catch (e) {
       if (kDebugMode) print('Error verifying OTP: $e');
       _errorMessage = 'Failed to verify code. Please try again.';
-      _showErrorSnackBar();
+      _updateErrorWithDebounce(_errorMessage);
       return false;
     } finally {
       setLoading(false);
     }
   }
 
-  /// 🔹 Show error message
-  void _showErrorSnackBar() {
-    if (_errorMessage != null) {
-      // You can implement a snackbar or dialog here
-      if (kDebugMode) print('Error: $_errorMessage');
-    }
-  }
 
   /// 🔹 Get verification ID for OTP screen
   String? get verificationId => _verificationId;
@@ -280,9 +276,35 @@ class SignupViewModel extends BaseViewModel {
 
   /// 🔹 Get error message
   String? get errorMessage => _errorMessage;
+  
+  /// 🔹 Snackbar error for UI display (debounced)
+  String? _snackbarError;
+  String? _lastShownError;
+  Timer? _errorDebounceTimer;
+  
+  String? get snackbarError => _snackbarError;
+  
+  /// Update error message with debouncing
+  void _updateErrorWithDebounce(String? error) {
+    if (error == _lastShownError) return;
+    
+    _errorDebounceTimer?.cancel();
+    _errorDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (isDisposed) return;
+      _snackbarError = error;
+      _lastShownError = error;
+      notifyListeners();
+    });
+  }
+  
+  void clearSnackbarError() {
+    _snackbarError = null;
+    notifyListeners();
+  }
 
   @override
   void onDispose() {
+    _errorDebounceTimer?.cancel();
     phoneNumberController.dispose();
     _phoneFocus.dispose();
     super.onDispose();

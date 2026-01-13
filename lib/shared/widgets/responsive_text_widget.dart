@@ -30,6 +30,8 @@ class ResponsiveTextWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Cache MediaQuery to avoid repeated calls
+    final mediaQuery = MediaQuery.of(context);
     final responsiveService = ResponsiveTextService.instance;
     TextStyle? responsiveStyle;
 

@@ -624,6 +624,90 @@ class ProfileViewModel extends BaseViewModel {
     }
   }
 
+  /// Refresh only posts (images and videos) without reloading profile info
+  /// This is called when user taps the refresh button in the appbar
+  Future<void> refreshPostsOnly(BuildContext context) async {
+    final targetUserId = _targetUserId;
+    if (targetUserId == null) return;
+
+    // Clear only posts data
+    _userImages.clear();
+    _userVideos.clear();
+    _imagePostInfos.clear();
+    _videoPostInfos.clear();
+    _imagesLastDocuments = null;
+    _videosLastDocuments = null;
+    _hasMoreImages = true;
+    _hasMoreVideos = true;
+
+    notifyListeners();
+
+    try {
+      final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+      final allFestivals = festivalProvider.allFestivals;
+      final festivalCollectionNames = allFestivals
+          .map((festival) => FirestoreService.getFestivalCollectionName(
+                festival.id,
+                festival.title,
+              ))
+          .toList();
+
+      // Reload images
+      try {
+        final imagesResult = await _firestoreService.getUserImagesPaginated(
+          targetUserId,
+          festivalCollectionNames: festivalCollectionNames,
+          limit: 20,
+          useCache: false, // Force fresh data
+        );
+        _userImages = List<String>.from(imagesResult['images'] as List);
+        _imagePostInfos = imagesResult['postInfos'] != null
+            ? List<Map<String, dynamic>>.from(imagesResult['postInfos'] as List)
+            : <Map<String, dynamic>>[];
+        _imagesLastDocuments = imagesResult['lastDocuments'] as Map<String, DocumentSnapshot?>?;
+        _hasMoreImages = imagesResult['hasMore'] as bool? ?? false;
+
+        if (kDebugMode) {
+          print('✅ Refreshed images: ${_userImages.length}');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ Could not refresh images: $e');
+        }
+      }
+
+      // Reload videos
+      try {
+        final videosResult = await _firestoreService.getUserVideosPaginated(
+          targetUserId,
+          festivalCollectionNames: festivalCollectionNames,
+          limit: 20,
+          useCache: false, // Force fresh data
+        );
+        _userVideos = List<String>.from(videosResult['videos'] as List);
+        _videoPostInfos = videosResult['postInfos'] != null
+            ? List<Map<String, dynamic>>.from(videosResult['postInfos'] as List)
+            : <Map<String, dynamic>>[];
+        _videosLastDocuments = videosResult['lastDocuments'] as Map<String, DocumentSnapshot?>?;
+        _hasMoreVideos = videosResult['hasMore'] as bool? ?? false;
+
+        if (kDebugMode) {
+          print('✅ Refreshed videos: ${_userVideos.length}');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ Could not refresh videos: $e');
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error refreshing posts: $e');
+      }
+    }
+  }
+
   /// Refresh only user profile info (name, bio, profile picture) without reloading posts
   /// This is called when returning from edit profile screen
   /// Only refreshes if viewing own profile, not when viewing another user's profile

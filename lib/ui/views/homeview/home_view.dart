@@ -24,8 +24,7 @@ class HomeView extends BaseView<HomeViewModel> {
   @override
   void onViewModelReady(HomeViewModel viewModel) {
     super.onViewModelReady(viewModel);
-    // Start real-time posts listener
-    viewModel.initialize();
+    // Initialization moved to _HomeViewContentState.initState to prevent re-initialization
   }
 
   @override
@@ -44,15 +43,28 @@ class _HomeViewContent extends StatefulWidget {
   State<_HomeViewContent> createState() => _HomeViewContentState();
 }
 
-class _HomeViewContentState extends State<_HomeViewContent> {
+class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAliveClientMixin {
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey<State<PostWidget>>> _postKeys = {};
   Timer? _scrollDebounceTimer;
+  bool _isInitialized = false;
+
+  @override
+  bool get wantKeepAlive => true; // Keep alive when switching tabs
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    // Initialize only once
+    if (!_isInitialized) {
+      _isInitialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.viewModel.initialize();
+        }
+      });
+    }
   }
 
   @override
@@ -109,6 +121,7 @@ class _HomeViewContentState extends State<_HomeViewContent> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return GestureDetector(
       onTap: () {
         // Dismiss keyboard when tapping outside
@@ -224,27 +237,6 @@ class _HomeViewContentState extends State<_HomeViewContent> {
             onPressed: () {
               Navigator.pushNamed(context, AppRoutes.allJobs);
             },
-          ),
-          
-          // Conditional spacing before Pro label
-          
-          // Pro Label - Aligned with search bar dropdown position
-          GestureDetector(
-            onTap: viewModel.goToSubscription,
-            child: Container(
-              padding: const EdgeInsets.all(AppDimensions.paddingS),
-              decoration: BoxDecoration(
-                color: AppColors.accent,
-                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-              ),
-              child: ResponsiveTextWidget(
-                AppStrings.proLabel,
-                textType: TextType.label,
-                fontSize: AppDimensions.textS,
-                color: AppColors.proLabelText,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
           ),
         ],
       ),
