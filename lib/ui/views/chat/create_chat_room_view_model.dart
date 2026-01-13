@@ -11,7 +11,6 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 import 'package:share_plus/share_plus.dart';
 
-
 class CreateChatRoomViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
@@ -26,7 +25,7 @@ class CreateChatRoomViewModel extends BaseViewModel {
   // Contact data for UI
   List<Map<String, dynamic>> _festivalContactData = [];
   List<Map<String, dynamic>> _nonFestivalContactData = [];
-  
+
   // Map to store contact phone -> userId mapping
   Map<String, String> _phoneToUserIdMap = {};
 
@@ -45,7 +44,8 @@ class CreateChatRoomViewModel extends BaseViewModel {
   Set<String> get selectedContacts => _selectedContacts;
 
   List<Map<String, dynamic>> get festivalContactData => _festivalContactData;
-  List<Map<String, dynamic>> get nonFestivalContactData => _nonFestivalContactData;
+  List<Map<String, dynamic>> get nonFestivalContactData =>
+      _nonFestivalContactData;
 
   @override
   void init() {
@@ -62,33 +62,29 @@ class CreateChatRoomViewModel extends BaseViewModel {
   /// Load contacts from device or create mock contacts if unavailable
   Future<void> _loadContacts() async {
     await handleAsync(() async {
-      final permission = await Permission.contacts.request();
+      // ✅ flutter_contacts handles permission on iOS correctly
+      final granted = await FlutterContacts.requestPermission();
 
-      if (permission.isGranted) {
-        print("✅ Contacts permission granted");
-
-        final contacts = await FlutterContacts.getContacts(
-          withProperties: true,
-          withPhoto: true,
-        );
-
-        if (contacts.isNotEmpty) {
-          _allContacts = contacts;
-          print("📇 Loaded ${contacts.length} contacts from device");
-        } else {
-          // Fallback to mock if device has no contacts
-          print("⚠️ No device contacts found, using mock contacts");
-          _createMockContacts();
-        }
-
-        _filterContacts();
-        // Match contacts with Firestore users
-        await _matchContactsWithUsers();
-        notifyListeners();
-      } else {
-        print("❌ Contacts permission denied");
+      if (!granted) {
         setError(AppStrings.contactsPermissionDenied);
+        return;
       }
+
+      final contacts = await FlutterContacts.getContacts(
+        withProperties: true,
+        withPhoto: true,
+      );
+
+      if (contacts.isNotEmpty) {
+        _allContacts = contacts;
+        print("📇 Loaded ${contacts.length} contacts");
+      } else {
+        _createMockContacts();
+      }
+
+      _filterContacts();
+      await _matchContactsWithUsers();
+      notifyListeners();
     }, errorMessage: AppStrings.failedToLoadContacts);
   }
 
@@ -113,11 +109,13 @@ class CreateChatRoomViewModel extends BaseViewModel {
       }
 
       // Get users by phone numbers from Firestore
-      _phoneToUserIdMap = await _firestoreService.getUsersByPhoneNumbers(phoneNumbers);
+      _phoneToUserIdMap = await _firestoreService.getUsersByPhoneNumbers(
+        phoneNumbers,
+      );
 
       // Update contact data to mark which contacts are app users
       _updateContactDataWithUserInfo();
-      
+
       if (kDebugMode) {
         print('✅ Matched ${_phoneToUserIdMap.length} contacts with app users');
       }
@@ -138,17 +136,19 @@ class CreateChatRoomViewModel extends BaseViewModel {
 
     for (final contact in _allContacts) {
       final displayName = contact.displayName ?? '';
-      final phoneNumber = contact.phones.isNotEmpty ? contact.phones.first.number : '';
-      
+      final phoneNumber =
+          contact.phones.isNotEmpty ? contact.phones.first.number : '';
+
       // The _phoneToUserIdMap uses original phone numbers as keys
       // So we can directly look up using the original phone number
       final userId = _phoneToUserIdMap[phoneNumber];
-      
+
       final contactData = {
         'id': contact.id,
         'name': displayName,
         'phone': phoneNumber,
-        'isFestival': userId != null, // Mark as festival user if found in Firestore
+        'isFestival':
+            userId != null, // Mark as festival user if found in Firestore
         'userId': userId, // Store userId if matched
       };
 
@@ -163,7 +163,9 @@ class CreateChatRoomViewModel extends BaseViewModel {
 
     if (kDebugMode) {
       print('📱 Festival Contacts (app users): ${_festivalContactData.length}');
-      print('📱 Non-Festival Contacts (not in app): ${_nonFestivalContactData.length}');
+      print(
+        '📱 Non-Festival Contacts (not in app): ${_nonFestivalContactData.length}',
+      );
     }
   }
 
@@ -221,7 +223,7 @@ class CreateChatRoomViewModel extends BaseViewModel {
 
     await handleAsync(() async {
       final chatRoomName = titleController.text.trim();
-      
+
       // Check if a private chat room with the same name already exists
       final nameExists = await _firestoreService.privateChatRoomNameExists(
         chatRoomName,
@@ -229,20 +231,22 @@ class CreateChatRoomViewModel extends BaseViewModel {
       );
 
       if (nameExists) {
-        setError('A private chat room with this name already exists. Please choose a different name.');
+        setError(
+          'A private chat room with this name already exists. Please choose a different name.',
+        );
         return;
       }
 
       // Get selected contact IDs and find their user IDs
       final selectedMemberIds = <String>[];
-      
+
       for (final contactId in _selectedContacts) {
         // Find contact data
         final contactData = _festivalContactData.firstWhere(
           (data) => data['id'] == contactId,
           orElse: () => {},
         );
-        
+
         final userId = contactData['userId'] as String?;
         if (userId != null && userId.isNotEmpty) {
           selectedMemberIds.add(userId);
@@ -250,7 +254,9 @@ class CreateChatRoomViewModel extends BaseViewModel {
       }
 
       if (selectedMemberIds.isEmpty) {
-        setError('No app users selected. Please select contacts who are using the app.');
+        setError(
+          'No app users selected. Please select contacts who are using the app.',
+        );
         return;
       }
 
@@ -268,7 +274,7 @@ class CreateChatRoomViewModel extends BaseViewModel {
       }
 
       setError(null);
-      
+
       // Navigate back to chat room list
       _navigationService.pop();
     }, errorMessage: 'Failed to create chat room');
@@ -277,6 +283,7 @@ class CreateChatRoomViewModel extends BaseViewModel {
   void refreshContacts() {
     _loadContacts();
   }
+
   void inviteContact(String contactName, String phoneNumber) async {
     try {
       final inviteMessage = '''
@@ -287,10 +294,7 @@ Join me here 👉 [https://festivalrumour.com]
 
 ''';
 
-      await Share.share(
-        inviteMessage,
-        subject: 'Join me on LunaFest 🎊',
-      );
+      await Share.share(inviteMessage, subject: 'Join me on LunaFest 🎊');
 
       print('✅ Invite sent to $contactName');
       setError(null);

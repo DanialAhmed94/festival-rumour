@@ -37,14 +37,15 @@ class ChatView extends BaseView<ChatViewModel> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // Double-check to prevent race conditions
         if (viewModel.chatRoomId == null && !viewModel.isInChatRoom) {
-          final chatRoomId = ModalRoute.of(context)?.settings.arguments as String?;
+          final chatRoomId =
+              ModalRoute.of(context)?.settings.arguments as String?;
           if (chatRoomId != null && chatRoomId.isNotEmpty) {
             viewModel.initializeChatRoom(chatRoomId);
           }
         }
       });
     }
-    
+
     return WillPopScope(
       onWillPop: () async {
         if (onBack != null) {
@@ -56,44 +57,41 @@ class ChatView extends BaseView<ChatViewModel> {
       child: Scaffold(
         backgroundColor: AppColors.black,
         body: Stack(
-        children: [
-          // Background image
-          Positioned.fill(
-            child: Image.asset(
-              viewModel.isInChatRoom 
-                  ? AppAssets.privatebackground
-                  : (viewModel.selectedTab == 0
-                      ? AppAssets.publicbackground  // Public
-                      : AppAssets.privatebackground), // Private
-              fit: BoxFit.cover,
-            ),
-          ),
-          
-          // Dark overlay
-          Positioned.fill(
-            child: Container(color: AppColors.overlayBlack45),
-          ),
-          
-          // Main content
-          if (viewModel.isInChatRoom)
-            _buildChatRoomView(context, viewModel)
-          else
-            _buildChatListView(context, viewModel),
-        ],
-      ),
-      floatingActionButton: !viewModel.isInChatRoom && viewModel.selectedTab == 1 
-          ? FloatingActionButton(
-              onPressed: () {
-                Navigator.pushNamed(context, AppRoutes.createChatRoom);
-              },
-              backgroundColor: AppColors.accent,
-              child: const Icon(
-                Icons.chat,
-                color: AppColors.black,
+          children: [
+            // Background image
+            Positioned.fill(
+              child: Image.asset(
+                viewModel.isInChatRoom
+                    ? AppAssets.privatebackground
+                    : (viewModel.selectedTab == 0
+                        ? AppAssets
+                            .publicbackground // Public
+                        : AppAssets.privatebackground), // Private
+                fit: BoxFit.cover,
               ),
-            )
-          : null,
-    ),
+            ),
+
+            // Dark overlay
+            Positioned.fill(child: Container(color: AppColors.overlayBlack45)),
+
+            // Main content
+            if (viewModel.isInChatRoom)
+              _buildChatRoomView(context, viewModel)
+            else
+              _buildChatListView(context, viewModel),
+          ],
+        ),
+        floatingActionButton:
+            !viewModel.isInChatRoom && viewModel.selectedTab == 1
+                ? FloatingActionButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, AppRoutes.createChatRoom);
+                  },
+                  backgroundColor: AppColors.accent,
+                  child: const Icon(Icons.chat, color: AppColors.black),
+                )
+                : null,
+      ),
     );
   }
 
@@ -102,10 +100,12 @@ class ChatView extends BaseView<ChatViewModel> {
       children: [
         // App bar (extends into status bar)
         _buildAppBar(context, viewModel),
-        
+
         // Main content (below app bar)
         Positioned(
-          top: MediaQuery.of(context).padding.top + 70, // Status bar + app bar height
+          top:
+              MediaQuery.of(context).padding.top +
+              70, // Status bar + app bar height
           left: 0,
           right: 0,
           bottom: 0,
@@ -113,9 +113,7 @@ class ChatView extends BaseView<ChatViewModel> {
             children: [
               _buildSegmentedControl(context, viewModel),
               const SizedBox(height: AppDimensions.spaceL),
-              Expanded(
-                child: _buildChatRooms(context, viewModel),
-              ),
+              Expanded(child: _buildChatRooms(context, viewModel)),
             ],
           ),
         ),
@@ -128,9 +126,7 @@ class ChatView extends BaseView<ChatViewModel> {
       child: Column(
         children: [
           _buildChatRoomAppBar(context, viewModel),
-          Expanded(
-            child: _buildChatContent(context, viewModel),
-          ),
+          Expanded(child: _buildChatContent(context, viewModel)),
           _buildInputSection(context, viewModel),
         ],
       ),
@@ -149,16 +145,16 @@ class ChatView extends BaseView<ChatViewModel> {
           right: 16,
           bottom: 12,
         ),
-        decoration: BoxDecoration(
-          color: AppColors.black.withOpacity(0.5),
-        ),
+        decoration: BoxDecoration(color: AppColors.black.withOpacity(0.5)),
         child: Row(
           children: [
             CustomBackButton(
-              onTap: onBack ?? () {
-                // Navigate back to discover screen using ViewModel
-                viewModel.navigateBack(context);
-              },
+              onTap:
+                  onBack ??
+                  () {
+                    // Navigate back to discover screen using ViewModel
+                    viewModel.navigateBack(context);
+                  },
             ),
             Expanded(
               child: ResponsiveTextWidget(
@@ -188,9 +184,15 @@ class ChatView extends BaseView<ChatViewModel> {
             child: GestureDetector(
               onTap: () => viewModel.setSelectedTab(0),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingS, horizontal: AppDimensions.paddingM),
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppDimensions.paddingS,
+                  horizontal: AppDimensions.paddingM,
+                ),
                 decoration: BoxDecoration(
-                  color: viewModel.selectedTab == 0 ? AppColors.accent : Colors.transparent,
+                  color:
+                      viewModel.selectedTab == 0
+                          ? AppColors.accent
+                          : Colors.transparent,
                   borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
                 ),
                 child: Row(
@@ -206,7 +208,10 @@ class ChatView extends BaseView<ChatViewModel> {
                     ResponsiveTextWidget(
                       AppStrings.public,
                       textType: TextType.body,
-                      color: viewModel.selectedTab == 0 ? AppColors.black : AppColors.white,
+                      color:
+                          viewModel.selectedTab == 0
+                              ? AppColors.black
+                              : AppColors.white,
                       fontWeight: FontWeight.w600,
                     ),
                   ],
@@ -218,9 +223,15 @@ class ChatView extends BaseView<ChatViewModel> {
             child: GestureDetector(
               onTap: () => viewModel.setSelectedTab(1),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingS, horizontal: AppDimensions.paddingM),
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppDimensions.paddingS,
+                  horizontal: AppDimensions.paddingM,
+                ),
                 decoration: BoxDecoration(
-                  color: viewModel.selectedTab == 1 ? AppColors.accent : Colors.transparent,
+                  color:
+                      viewModel.selectedTab == 1
+                          ? AppColors.accent
+                          : Colors.transparent,
                   borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
                 ),
                 child: Row(
@@ -236,7 +247,10 @@ class ChatView extends BaseView<ChatViewModel> {
                     ResponsiveTextWidget(
                       AppStrings.private,
                       textType: TextType.body,
-                      color: viewModel.selectedTab == 1 ? AppColors.black : AppColors.white,
+                      color:
+                          viewModel.selectedTab == 1
+                              ? AppColors.black
+                              : AppColors.white,
                       fontWeight: FontWeight.w600,
                     ),
                   ],
@@ -257,7 +271,10 @@ class ChatView extends BaseView<ChatViewModel> {
       // Public chat rooms - show grid view
       final publicChatRooms = viewModel.getPublicChatRooms(context);
       return GridView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL, vertical: AppDimensions.paddingS),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingL,
+          vertical: AppDimensions.paddingS,
+        ),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2, // 2 cards per row
           crossAxisSpacing: 10,
@@ -270,9 +287,12 @@ class ChatView extends BaseView<ChatViewModel> {
           return GestureDetector(
             onTap: () {
               // Get chat room ID from festival provider
-              final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+              final festivalProvider = Provider.of<FestivalProvider>(
+                context,
+                listen: false,
+              );
               final selectedFestival = festivalProvider.selectedFestival;
-              
+
               if (selectedFestival != null) {
                 // Generate chat room ID
                 final chatRoomId = FirestoreService.getFestivalChatRoomId(
@@ -308,7 +328,9 @@ class ChatView extends BaseView<ChatViewModel> {
                   // Image section
                   Expanded(
                     child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(16),
+                      ),
                       child: Image.asset(
                         room['image'] ?? AppAssets.post,
                         fit: BoxFit.cover,
@@ -340,7 +362,10 @@ class ChatView extends BaseView<ChatViewModel> {
 
   Widget _buildPrivateChatList(BuildContext context, ChatViewModel viewModel) {
     return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL, vertical: AppDimensions.paddingS),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingL,
+        vertical: AppDimensions.paddingS,
+      ),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2, // 2 cards per row
         crossAxisSpacing: 15,
@@ -355,10 +380,13 @@ class ChatView extends BaseView<ChatViewModel> {
     );
   }
 
-
-  Widget _buildPrivateChatItem(BuildContext context, ChatViewModel viewModel, Map<String, dynamic> chat) {
+  Widget _buildPrivateChatItem(
+    BuildContext context,
+    ChatViewModel viewModel,
+    Map<String, dynamic> chat,
+  ) {
     final isCreatedByUser = viewModel.isChatRoomCreatedByUser(chat);
-    
+
     return GestureDetector(
       onTap: () {
         // Navigate to private chat room using chatRoomId
@@ -370,19 +398,23 @@ class ChatView extends BaseView<ChatViewModel> {
           viewModel.enterChatRoom(chat);
         }
       },
-      onLongPress: isCreatedByUser ? () {
-        // Show delete confirmation dialog for groups created by user
-        _showDeleteGroupDialog(context, viewModel, chat);
-      } : null,
+      onLongPress:
+          isCreatedByUser
+              ? () {
+                // Show delete confirmation dialog for groups created by user
+                _showDeleteGroupDialog(context, viewModel, chat);
+              }
+              : null,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           color: AppColors.onPrimary.withOpacity(0.3),
           border: Border.all(
             // Different border color for created vs joined groups
-            color: isCreatedByUser 
-                ? AppColors.accent.withOpacity(0.5) 
-                : AppColors.white.withOpacity(0.2),
+            color:
+                isCreatedByUser
+                    ? AppColors.accent.withOpacity(0.5)
+                    : AppColors.white.withOpacity(0.2),
             width: isCreatedByUser ? 2 : AppDimensions.dividerThickness,
           ),
           boxShadow: [
@@ -403,15 +435,21 @@ class ChatView extends BaseView<ChatViewModel> {
                   child: Container(
                     decoration: BoxDecoration(
                       // Different background color for created vs joined
-                      color: isCreatedByUser 
-                          ? AppColors.accent.withOpacity(0.2) 
-                          : AppColors.primary.withOpacity(0.2),
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      color:
+                          isCreatedByUser
+                              ? AppColors.accent.withOpacity(0.2)
+                              : AppColors.primary.withOpacity(0.2),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(16),
+                      ),
                     ),
                     child: Center(
                       child: Icon(
                         isCreatedByUser ? Icons.group_add : Icons.group,
-                        color: isCreatedByUser ? AppColors.accent : AppColors.primary,
+                        color:
+                            isCreatedByUser
+                                ? AppColors.accent
+                                : AppColors.primary,
                         size: 40,
                       ),
                     ),
@@ -433,7 +471,8 @@ class ChatView extends BaseView<ChatViewModel> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (chat['lastMessage'] != null && (chat['lastMessage'] as String).isNotEmpty) ...[
+                      if (chat['lastMessage'] != null &&
+                          (chat['lastMessage'] as String).isNotEmpty) ...[
                         const SizedBox(height: AppDimensions.spaceXS),
                         ResponsiveTextWidget(
                           chat['lastMessage'] as String,
@@ -450,7 +489,7 @@ class ChatView extends BaseView<ChatViewModel> {
                 ),
               ],
             ),
-            
+
             // Badge indicator in top-right corner
             Positioned(
               top: 8,
@@ -461,7 +500,9 @@ class ChatView extends BaseView<ChatViewModel> {
                   // Delete button for created groups
                   if (isCreatedByUser)
                     GestureDetector(
-                      onTap: () => _showDeleteGroupDialog(context, viewModel, chat),
+                      onTap:
+                          () =>
+                              _showDeleteGroupDialog(context, viewModel, chat),
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
@@ -483,9 +524,10 @@ class ChatView extends BaseView<ChatViewModel> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: isCreatedByUser 
-                          ? AppColors.accent 
-                          : AppColors.primary.withOpacity(0.7),
+                      color:
+                          isCreatedByUser
+                              ? AppColors.accent
+                              : AppColors.primary.withOpacity(0.7),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
@@ -516,7 +558,6 @@ class ChatView extends BaseView<ChatViewModel> {
     );
   }
 
-
   Widget _buildCommunityCards(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
@@ -534,21 +575,20 @@ class ChatView extends BaseView<ChatViewModel> {
                 ),
               ),
               const SizedBox(width: AppDimensions.spaceM),
-
+            ],
+          ),
         ],
       ),
-    ],
-      )
     );
   }
 
   Widget _buildCard(
-      BuildContext context,
-      String title,
-      String imagePath, {
-        bool isFullWidth = false,
-        VoidCallback? onTap,
-      }) {
+    BuildContext context,
+    String title,
+    String imagePath, {
+    bool isFullWidth = false,
+    VoidCallback? onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -568,12 +608,7 @@ class ChatView extends BaseView<ChatViewModel> {
           child: Stack(
             children: [
               // Background image
-              Positioned.fill(
-                child: Image.asset(
-                  imagePath,
-                  fit: BoxFit.cover,
-                ),
-              ),
+              Positioned.fill(child: Image.asset(imagePath, fit: BoxFit.cover)),
 
               // Background layer at the bottom (30% height)
               Positioned(
@@ -614,7 +649,10 @@ class ChatView extends BaseView<ChatViewModel> {
     return Container(
       height: AppDimensions.buttonHeightM,
       color: Colors.transparent,
-      padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingM, vertical: AppDimensions.spaceS),
+      padding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingM,
+        vertical: AppDimensions.spaceS,
+      ),
       child: Row(
         children: [
           IconButton(
@@ -627,7 +665,8 @@ class ChatView extends BaseView<ChatViewModel> {
           Expanded(
             child: Center(
               child: ResponsiveTextWidget(
-                viewModel.currentChatRoom?['name'] ?? AppStrings.lunaCommunityRoom,
+                viewModel.currentChatRoom?['name'] ??
+                    AppStrings.lunaCommunityRoom,
                 textType: TextType.body,
                 color: AppColors.white,
                 fontWeight: FontWeight.w600,
@@ -684,7 +723,7 @@ class ChatView extends BaseView<ChatViewModel> {
                 ),
               ),
               const SizedBox(height: AppDimensions.paddingL),
-              
+
               // Title
               const ResponsiveTextWidget(
                 'No messages yet',
@@ -694,7 +733,7 @@ class ChatView extends BaseView<ChatViewModel> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppDimensions.spaceS),
-              
+
               // Description
               const ResponsiveTextWidget(
                 'Start the conversation by sending a message',
@@ -703,7 +742,7 @@ class ChatView extends BaseView<ChatViewModel> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppDimensions.paddingXL),
-              
+
               // Decorative dots
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -744,7 +783,7 @@ class ChatView extends BaseView<ChatViewModel> {
   ) {
     // Check if message is from current user
     final isCurrentUser = viewModel.isMessageFromCurrentUser(message);
-    
+
     return GestureDetector(
       onLongPress: () {
         _showDeleteOptions(context, viewModel, message, isCurrentUser);
@@ -752,103 +791,112 @@ class ChatView extends BaseView<ChatViewModel> {
       child: Padding(
         padding: const EdgeInsets.only(bottom: AppDimensions.spaceM),
         child: Row(
-        mainAxisAlignment: isCurrentUser 
-            ? MainAxisAlignment.end 
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isCurrentUser) ...[
-            // User avatar (only for other users)
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.primary.withOpacity(0.3),
-              backgroundImage: message.userPhotoUrl != null && message.userPhotoUrl!.isNotEmpty
-                  ? NetworkImage(message.userPhotoUrl!)
-                  : null,
-              child: message.userPhotoUrl == null || message.userPhotoUrl!.isEmpty
-                  ? Text(
-                      message.username.isNotEmpty 
-                          ? message.username[0].toUpperCase() 
-                          : 'U',
-                      style: const TextStyle(
-                        color: AppColors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: AppDimensions.spaceS),
-          ],
-          
-          // Message bubble
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimensions.paddingM,
-                vertical: AppDimensions.paddingS,
+          mainAxisAlignment:
+              isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isCurrentUser) ...[
+              // User avatar (only for other users)
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: AppColors.primary.withOpacity(0.3),
+                backgroundImage:
+                    message.userPhotoUrl != null &&
+                            message.userPhotoUrl!.isNotEmpty
+                        ? NetworkImage(message.userPhotoUrl!)
+                        : null,
+                child:
+                    message.userPhotoUrl == null ||
+                            message.userPhotoUrl!.isEmpty
+                        ? Text(
+                          message.username.isNotEmpty
+                              ? message.username[0].toUpperCase()
+                              : 'U',
+                          style: const TextStyle(
+                            color: AppColors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                        : null,
               ),
-              decoration: BoxDecoration(
-                color: AppColors.white.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!isCurrentUser)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: AppDimensions.spaceXS),
-                      child: ResponsiveTextWidget(
-                        message.username,
-                        textType: TextType.caption,
-                        fontSize: 12,
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w600,
+              const SizedBox(width: AppDimensions.spaceS),
+            ],
+
+            // Message bubble
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppDimensions.paddingM,
+                  vertical: AppDimensions.paddingS,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isCurrentUser)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: AppDimensions.spaceXS,
+                        ),
+                        child: ResponsiveTextWidget(
+                          message.username,
+                          textType: TextType.caption,
+                          fontSize: 12,
+                          color: Colors.black,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
+                    ResponsiveTextWidget(
+                      message.content,
+                      textType: TextType.body,
+                      fontSize: 14,
+                      color: AppColors.black,
                     ),
-                  ResponsiveTextWidget(
-                    message.content,
-                    textType: TextType.body,
-                    fontSize: 14,
-                    color: AppColors.black,
-                  ),
-                  const SizedBox(height: AppDimensions.spaceXS),
-                  ResponsiveTextWidget(
-                    message.timeAgo,
-                    textType: TextType.caption,
-                    fontSize: 10,
-                    color: AppColors.grey600,
-                  ),
-                ],
+                    const SizedBox(height: AppDimensions.spaceXS),
+                    ResponsiveTextWidget(
+                      message.timeAgo,
+                      textType: TextType.caption,
+                      fontSize: 10,
+                      color: AppColors.grey600,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          
-          if (isCurrentUser) ...[
-            const SizedBox(width: AppDimensions.spaceS),
-            // User avatar (only for current user)
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.primary.withOpacity(0.3),
-              backgroundImage: message.userPhotoUrl != null && message.userPhotoUrl!.isNotEmpty
-                  ? NetworkImage(message.userPhotoUrl!)
-                  : null,
-              child: message.userPhotoUrl == null || message.userPhotoUrl!.isEmpty
-                  ? Text(
-                      message.username.isNotEmpty 
-                          ? message.username[0].toUpperCase() 
-                          : 'U',
-                      style: const TextStyle(
-                        color: AppColors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                  : null,
-            ),
+
+            if (isCurrentUser) ...[
+              const SizedBox(width: AppDimensions.spaceS),
+              // User avatar (only for current user)
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: AppColors.primary.withOpacity(0.3),
+                backgroundImage:
+                    message.userPhotoUrl != null &&
+                            message.userPhotoUrl!.isNotEmpty
+                        ? NetworkImage(message.userPhotoUrl!)
+                        : null,
+                child:
+                    message.userPhotoUrl == null ||
+                            message.userPhotoUrl!.isEmpty
+                        ? Text(
+                          message.username.isNotEmpty
+                              ? message.username[0].toUpperCase()
+                              : 'U',
+                          style: const TextStyle(
+                            color: AppColors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                        : null,
+              ),
+            ],
           ],
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -859,9 +907,7 @@ class ChatView extends BaseView<ChatViewModel> {
       width: 8,
       height: 8,
       decoration: BoxDecoration(
-        color: isActive 
-            ? AppColors.primary 
-            : AppColors.white.withOpacity(0.3),
+        color: isActive ? AppColors.primary : AppColors.white.withOpacity(0.3),
         shape: BoxShape.circle,
       ),
     );
@@ -887,7 +933,9 @@ class ChatView extends BaseView<ChatViewModel> {
             children: [
               // Handle bar
               Container(
-                margin: const EdgeInsets.symmetric(vertical: AppDimensions.spaceS),
+                margin: const EdgeInsets.symmetric(
+                  vertical: AppDimensions.spaceS,
+                ),
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
@@ -895,10 +943,13 @@ class ChatView extends BaseView<ChatViewModel> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              
+
               // Delete for me option (always available)
               ListTile(
-                leading: const Icon(Icons.delete_outline, color: AppColors.white),
+                leading: const Icon(
+                  Icons.delete_outline,
+                  color: AppColors.white,
+                ),
                 title: const ResponsiveTextWidget(
                   'Delete for me',
                   textType: TextType.body,
@@ -910,11 +961,14 @@ class ChatView extends BaseView<ChatViewModel> {
                   viewModel.deleteMessageForMe(message.messageId ?? '');
                 },
               ),
-              
+
               // Delete for everyone option (only for own messages)
               if (isCurrentUser)
                 ListTile(
-                  leading: const Icon(Icons.delete_forever, color: AppColors.white),
+                  leading: const Icon(
+                    Icons.delete_forever,
+                    color: AppColors.white,
+                  ),
                   title: const ResponsiveTextWidget(
                     'Delete for everyone',
                     textType: TextType.body,
@@ -923,20 +977,25 @@ class ChatView extends BaseView<ChatViewModel> {
                   ),
                   onTap: () async {
                     Navigator.pop(context);
-                    final success = await viewModel.deleteMessageForEveryone(message.messageId ?? '');
+                    final success = await viewModel.deleteMessageForEveryone(
+                      message.messageId ?? '',
+                    );
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(success 
-                              ? 'Message deleted for everyone' 
-                              : 'Failed to delete message'),
-                          backgroundColor: success ? AppColors.primary : AppColors.error,
+                          content: Text(
+                            success
+                                ? 'Message deleted for everyone'
+                                : 'Failed to delete message',
+                          ),
+                          backgroundColor:
+                              success ? AppColors.primary : AppColors.error,
                         ),
                       );
                     }
                   },
                 ),
-              
+
               // Cancel option
               ListTile(
                 leading: const Icon(Icons.close, color: AppColors.white),
@@ -947,7 +1006,7 @@ class ChatView extends BaseView<ChatViewModel> {
                 ),
                 onTap: () => Navigator.pop(context),
               ),
-              
+
               SizedBox(height: MediaQuery.of(context).padding.bottom),
             ],
           ),
@@ -964,7 +1023,7 @@ class ChatView extends BaseView<ChatViewModel> {
   ) {
     final chatRoomId = chat['chatRoomId'] as String?;
     final chatName = chat['name'] as String? ?? 'this group';
-    
+
     if (chatRoomId == null || chatRoomId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1006,7 +1065,7 @@ class ChatView extends BaseView<ChatViewModel> {
             TextButton(
               onPressed: () async {
                 Navigator.pop(dialogContext);
-                
+
                 // Show loading indicator
                 if (context.mounted) {
                   showDialog(
@@ -1022,11 +1081,13 @@ class ChatView extends BaseView<ChatViewModel> {
                   );
                 }
 
-                final success = await viewModel.deletePrivateChatRoom(chatRoomId);
+                final success = await viewModel.deletePrivateChatRoom(
+                  chatRoomId,
+                );
 
                 if (context.mounted) {
                   Navigator.pop(context); // Close loading dialog
-                  
+
                   if (success) {
                     // Show toast-style snackbar with light green color
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -1109,17 +1170,15 @@ class ChatView extends BaseView<ChatViewModel> {
                   color: AppColors.white,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.add,
-                  color: AppColors.black,
-                  size: 20,
-                ),
+                child: const Icon(Icons.add, color: AppColors.black, size: 20),
               ),
               const SizedBox(width: AppDimensions.paddingS),
               Expanded(
                 child: Container(
                   height: AppDimensions.imageS,
-                  padding: EdgeInsets.symmetric(horizontal: AppDimensions.spaceM),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: AppDimensions.spaceM,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.white,
                     borderRadius: BorderRadius.circular(AppDimensions.radiusL),
@@ -1161,5 +1220,3 @@ class ChatView extends BaseView<ChatViewModel> {
     );
   }
 }
-
-

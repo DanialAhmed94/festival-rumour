@@ -24,25 +24,20 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
         children: [
           // Background image
           Positioned.fill(
-            child: Image.asset(
-              AppAssets.bottomsheet,
-              fit: BoxFit.cover,
-            ),
+            child: Image.asset(AppAssets.bottomsheet, fit: BoxFit.cover),
           ),
-          
+
           // Dark overlay
           Positioned.fill(
             child: Container(color: Colors.black.withOpacity(0.3)),
           ),
-          
+
           // Main content
           SafeArea(
             child: Column(
               children: [
                 _buildAppBar(context),
-                Expanded(
-                  child: _buildContent(context, viewModel),
-                ),
+                Expanded(child: _buildContent(context, viewModel)),
               ],
             ),
           ),
@@ -74,15 +69,18 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
               textType: TextType.title,
               color: AppColors.white,
               fontWeight: FontWeight.bold,
-              ),
             ),
+          ),
           const SizedBox(width: 40), // Balance the back button
         ],
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context, CreateChatRoomViewModel viewModel) {
+  Widget _buildContent(
+    BuildContext context,
+    CreateChatRoomViewModel viewModel,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -92,9 +90,7 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
           const SizedBox(height: 20),
           _buildContactsHeader(),
           const SizedBox(height: 16),
-          Expanded(
-            child: _buildContactsList(context, viewModel),
-          ),
+          Expanded(child: _buildContactsList(context, viewModel)),
           const SizedBox(height: 20),
           _buildSaveButton(context, viewModel),
           const SizedBox(height: 20),
@@ -103,7 +99,10 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
     );
   }
 
-  Widget _buildTitleSection(BuildContext context, CreateChatRoomViewModel viewModel) {
+  Widget _buildTitleSection(
+    BuildContext context,
+    CreateChatRoomViewModel viewModel,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -120,26 +119,18 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
               color: AppColors.black,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.group,
-              color: AppColors.white,
-              size: 20,
-            ),
+            child: const Icon(Icons.group, color: AppColors.white, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: TextField(
               controller: viewModel.titleController,
-              style: const TextStyle(
-                color: AppColors.white,
-              ),
+              style: const TextStyle(color: AppColors.white),
               decoration: const InputDecoration(
                 hintText: AppStrings.addTitle,
-                hintStyle: TextStyle(
-                  color: AppColors.grey400,
-                ),
+                hintStyle: TextStyle(color: AppColors.grey400),
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
+                contentPadding: EdgeInsets.only(left: 8), // 👈 left padding
               ),
             ),
           ),
@@ -152,40 +143,48 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
     return const ResponsiveTextWidget(
       AppStrings.peopleFromContacts,
       textType: TextType.body, //_OLD_STYLE_
-        color: AppColors.white,
-        fontWeight: FontWeight.w500,
-      );
+      color: AppColors.white,
+      fontWeight: FontWeight.w500,
+    );
   }
 
-  Widget _buildContactsList(BuildContext context, CreateChatRoomViewModel viewModel) {
+  Widget _buildContactsList(
+    BuildContext context,
+    CreateChatRoomViewModel viewModel,
+  ) {
     if (viewModel.isLoading) {
       return const Center(
-        child: CircularProgressIndicator(
-          color: AppColors.accent,
-        ),
+        child: CircularProgressIndicator(color: AppColors.accent),
       );
     }
 
     return ListView(
       children: [
         // Festival contacts
-        ...viewModel.festivalContactData.map((contactData) => 
-          _buildContactItem(context, viewModel, contactData, true)
+        ...viewModel.festivalContactData.map(
+          (contactData) =>
+              _buildContactItem(context, viewModel, contactData, true),
         ),
-        
+
         // Non-festival contacts
-        ...viewModel.nonFestivalContactData.map((contactData) => 
-          _buildContactItem(context, viewModel, contactData, false)
+        ...viewModel.nonFestivalContactData.map(
+          (contactData) =>
+              _buildContactItem(context, viewModel, contactData, false),
         ),
       ],
     );
   }
 
-  Widget _buildContactItem(BuildContext context, CreateChatRoomViewModel viewModel, Map<String, dynamic> contactData, bool isFestivalContact) {
+  Widget _buildContactItem(
+    BuildContext context,
+    CreateChatRoomViewModel viewModel,
+    Map<String, dynamic> contactData,
+    bool isFestivalContact,
+  ) {
     final contactId = contactData['id'] ?? '';
     final displayName = contactData['name'] ?? AppStrings.unknown;
     final phoneNumber = contactData['phone'] ?? '';
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -204,17 +203,18 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
               children: [
                 ResponsiveTextWidget(
                   displayName,
-                    style: const TextStyle(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  style: const TextStyle(
+                    color: AppColors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 ResponsiveTextWidget(
                   isFestivalContact ? AppStrings.iAmUsingLuna : phoneNumber,
                   textType: TextType.body, //_OLD_STYLE_
-                    color: isFestivalContact ? AppColors.grey400 : AppColors.grey300,
-                  ),
+                  color:
+                      isFestivalContact ? AppColors.grey400 : AppColors.grey300,
+                ),
               ],
             ),
           ),
@@ -236,10 +236,10 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
       AppColors.avatarBlue,
       AppColors.avatarPink,
     ];
-    
+
     final colorIndex = name.hashCode % colors.length;
     final color = colors[colorIndex];
-    
+
     return Container(
       width: 50,
       height: 50,
@@ -251,18 +251,22 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
       child: Center(
         child: ResponsiveTextWidget(
           name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(
-              color: AppColors.white,
-              fontWeight: FontWeight.bold,
-            ),
+          style: const TextStyle(
+            color: AppColors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSelectionButton(BuildContext context, CreateChatRoomViewModel viewModel, String contactId) {
+  Widget _buildSelectionButton(
+    BuildContext context,
+    CreateChatRoomViewModel viewModel,
+    String contactId,
+  ) {
     final isSelected = viewModel.isContactSelected(contactId);
-    
+
     return GestureDetector(
       onTap: () => viewModel.toggleContactSelection(contactId),
       child: Container(
@@ -276,18 +280,20 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
             width: 2,
           ),
         ),
-        child: isSelected
-            ? const Icon(
-                Icons.check,
-                color: AppColors.black,
-                size: 16,
-              )
-            : null,
+        child:
+            isSelected
+                ? const Icon(Icons.check, color: AppColors.black, size: 16)
+                : null,
       ),
     );
   }
 
-  Widget _buildInviteButton(BuildContext context, CreateChatRoomViewModel viewModel, String name, String phoneNumber) {
+  Widget _buildInviteButton(
+    BuildContext context,
+    CreateChatRoomViewModel viewModel,
+    String name,
+    String phoneNumber,
+  ) {
     return GestureDetector(
       onTap: () => viewModel.inviteContact(name, phoneNumber),
       child: Container(
@@ -299,15 +305,18 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
         ),
         child: const ResponsiveTextWidget(
           AppStrings.invite,
-            textType: TextType.caption,
-            color: AppColors.primary,
-            fontWeight: FontWeight.bold,
-          ),
+          textType: TextType.caption,
+          color: AppColors.primary,
+          fontWeight: FontWeight.bold,
         ),
-      );
+      ),
+    );
   }
 
-  Widget _buildSaveButton(BuildContext context, CreateChatRoomViewModel viewModel) {
+  Widget _buildSaveButton(
+    BuildContext context,
+    CreateChatRoomViewModel viewModel,
+  ) {
     return SizedBox(
       width: double.infinity,
       height: 50,
@@ -322,11 +331,11 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
         ),
         child: const ResponsiveTextWidget(
           AppStrings.save,
-            textType: TextType.body,
-            color: AppColors.black,
-            fontWeight: FontWeight.bold,
-          ),
+          textType: TextType.body,
+          color: AppColors.black,
+          fontWeight: FontWeight.bold,
         ),
-      );
+      ),
+    );
   }
 }

@@ -159,8 +159,10 @@ class InterestsViewModel extends BaseViewModel {
       }
 
       // Sign in to Firebase Auth with stored credential
-      userCredential = await _authService.signInWithCredential(storedCredential);
-      
+      userCredential = await _authService.signInWithCredential(
+        storedCredential,
+      );
+
       // Validate user creation was successful
       if (userCredential.user == null) {
         throw UnknownException(
@@ -179,7 +181,8 @@ class InterestsViewModel extends BaseViewModel {
       // Validate required data - use ValidationException for validation errors
       if (email == null || password == null) {
         throw ValidationException(
-          message: 'Email and password are required. Please start signup again.',
+          message:
+              'Email and password are required. Please start signup again.',
           code: 'MISSING_REQUIRED_FIELDS',
         );
       }
@@ -214,13 +217,16 @@ class InterestsViewModel extends BaseViewModel {
     if (profileImage != null) {
       try {
         // Check if profileImage is a URL string (from Google/Apple provider)
-        if (profileImage is String && 
-            (profileImage.startsWith('http://') || profileImage.startsWith('https://'))) {
+        if (profileImage is String &&
+            (profileImage.startsWith('http://') ||
+                profileImage.startsWith('https://'))) {
           // Provider photo URL - download it first, then upload to Storage
           if (kDebugMode) {
-            print('📥 [SIGNUP] Downloading provider photo from URL: $profileImage');
+            print(
+              '📥 [SIGNUP] Downloading provider photo from URL: $profileImage',
+            );
           }
-          
+
           try {
             // Use dio to download the image (already in dependencies)
             final dio = Dio();
@@ -228,47 +234,56 @@ class InterestsViewModel extends BaseViewModel {
               profileImage,
               options: Options(responseType: ResponseType.bytes),
             );
-            
+
             if (response.data != null) {
               // Get temporary directory
               final tempDir = await getTemporaryDirectory();
-              final filePath = '${tempDir.path}/provider_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+              final filePath =
+                  '${tempDir.path}/provider_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
               final file = File(filePath);
-              
+
               // Write downloaded bytes to file
               await file.writeAsBytes(response.data!);
-              
+
               if (kDebugMode) {
                 print('✅ [SIGNUP] Provider photo downloaded successfully');
               }
-              
+
               // Now upload to Firebase Storage
               final originalSize = await file.length();
               if (kDebugMode) {
-                print('📸 [SIGNUP] Original image size: ${(originalSize / 1024).toStringAsFixed(2)} KB');
+                print(
+                  '📸 [SIGNUP] Original image size: ${(originalSize / 1024).toStringAsFixed(2)} KB',
+                );
               }
-              
+
               // Compress image to 70% quality before upload
               final compressedFile = await _compressImage(file, quality: 70);
-              
+
               if (compressedFile != null) {
                 if (kDebugMode) {
                   final compressedSize = await compressedFile.length();
-                  print('📸 [SIGNUP] Compressed image size: ${(compressedSize / 1024).toStringAsFixed(2)} KB');
+                  print(
+                    '📸 [SIGNUP] Compressed image size: ${(compressedSize / 1024).toStringAsFixed(2)} KB',
+                  );
                 }
-                photoUrl = await _authService.uploadProfilePhoto(compressedFile);
+                photoUrl = await _authService.uploadProfilePhoto(
+                  compressedFile,
+                );
               } else {
                 // If compression fails, upload original image
                 photoUrl = await _authService.uploadProfilePhoto(file);
               }
-              
+
               if (photoUrl != null) {
                 await _authService.updateProfilePhoto(photoUrl);
               }
             }
           } catch (e) {
             if (kDebugMode) {
-              print('⚠️ [SIGNUP] Error downloading provider photo, will use URL directly: $e');
+              print(
+                '⚠️ [SIGNUP] Error downloading provider photo, will use URL directly: $e',
+              );
             }
             // If download fails, use the URL directly (store it in Firestore)
             photoUrl = profileImage as String;
@@ -283,23 +298,29 @@ class InterestsViewModel extends BaseViewModel {
             // For now, skip upload on web or convert XFile to File
             // TODO: Handle web image upload
           }
-          
+
           if (imageFile != null) {
             if (kDebugMode) {
               final originalSize = await imageFile.length();
-              print('📸 [SIGNUP] Original image size: ${(originalSize / 1024).toStringAsFixed(2)} KB');
+              print(
+                '📸 [SIGNUP] Original image size: ${(originalSize / 1024).toStringAsFixed(2)} KB',
+              );
             }
-            
+
             // Compress image to 70% quality before upload
             final compressedFile = await _compressImage(imageFile, quality: 70);
-            
+
             if (compressedFile != null) {
               if (kDebugMode) {
                 final compressedSize = await compressedFile.length();
-                print('📸 [SIGNUP] Compressed image size: ${(compressedSize / 1024).toStringAsFixed(2)} KB');
-                print('   Compression ratio: ${((1 - compressedSize / await imageFile.length()) * 100).toStringAsFixed(1)}%');
+                print(
+                  '📸 [SIGNUP] Compressed image size: ${(compressedSize / 1024).toStringAsFixed(2)} KB',
+                );
+                print(
+                  '   Compression ratio: ${((1 - compressedSize / await imageFile.length()) * 100).toStringAsFixed(1)}%',
+                );
               }
-              
+
               // Upload compressed profile photo to Firebase Storage
               photoUrl = await _authService.uploadProfilePhoto(compressedFile);
               if (photoUrl != null) {
@@ -309,7 +330,9 @@ class InterestsViewModel extends BaseViewModel {
             } else {
               // If compression fails, upload original image
               if (kDebugMode) {
-                print('⚠️ [SIGNUP] Image compression failed, uploading original image');
+                print(
+                  '⚠️ [SIGNUP] Image compression failed, uploading original image',
+                );
               }
               photoUrl = await _authService.uploadProfilePhoto(imageFile);
               if (photoUrl != null) {
@@ -356,7 +379,9 @@ class InterestsViewModel extends BaseViewModel {
     await _firestoreService.saveUserData(
       userId: user.uid,
       email: email!,
-      password: password ?? '', // Will be hashed in FirestoreService (empty string for OAuth)
+      password:
+          password ??
+          '', // Will be hashed in FirestoreService (empty string for OAuth)
       displayName: displayName,
       phoneNumber: phoneNumber,
       interests: interests,
@@ -390,32 +415,46 @@ class InterestsViewModel extends BaseViewModel {
       // Read original image bytes
       final Uint8List originalBytes = await imageFile.readAsBytes();
       final originalSize = originalBytes.length;
-      
+
       if (kDebugMode) {
         print('📸 [COMPRESSION] Starting image compression');
-        print('   Original size: ${(originalSize / 1024).toStringAsFixed(2)} KB');
-        print('   Target compression: $quality% (reduce to ${100 - quality}% of original)');
+        print(
+          '   Original size: ${(originalSize / 1024).toStringAsFixed(2)} KB',
+        );
+        print(
+          '   Target compression: $quality% (reduce to ${100 - quality}% of original)',
+        );
       }
 
       // Decode original image to get dimensions
       final originalCodec = await ui.instantiateImageCodec(originalBytes);
       final originalFrame = await originalCodec.getNextFrame();
       final originalImage = originalFrame.image;
-      
+
       // Calculate target dimensions to achieve ~70% compression
       // Compression ratio: For 70% compression, we want ~30% of original file size
       // Resizing to ~55% of original dimensions typically achieves this
       final compressionRatio = (100 - quality) / 100; // 0.3 for 70% compression
-      final dimensionScale = compressionRatio.clamp(0.4, 0.9); // Scale between 40% and 90%
-      
-      final targetWidth = (originalImage.width * dimensionScale).round().clamp(400, 1200);
-      final targetHeight = (originalImage.height * dimensionScale).round().clamp(400, 1200);
-      
+      final dimensionScale = compressionRatio.clamp(
+        0.4,
+        0.9,
+      ); // Scale between 40% and 90%
+
+      final targetWidth = (originalImage.width * dimensionScale).round().clamp(
+        400,
+        1200,
+      );
+      final targetHeight = (originalImage.height * dimensionScale)
+          .round()
+          .clamp(400, 1200);
+
       if (kDebugMode) {
-        print('   Original dimensions: ${originalImage.width}x${originalImage.height}');
+        print(
+          '   Original dimensions: ${originalImage.width}x${originalImage.height}',
+        );
         print('   Target dimensions: ${targetWidth}x${targetHeight}');
       }
-      
+
       // Decode and resize image
       final codec = await ui.instantiateImageCodec(
         originalBytes,
@@ -427,11 +466,14 @@ class InterestsViewModel extends BaseViewModel {
 
       // Get temporary directory for compressed file
       final tempDir = await getTemporaryDirectory();
-      final compressedPath = '${tempDir.path}/compressed_profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final compressedPath =
+          '${tempDir.path}/compressed_profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final compressedFile = File(compressedPath);
-      
+
       // Convert resized image to PNG format (good compression)
-      final byteData = await resizedImage.toByteData(format: ui.ImageByteFormat.png);
+      final byteData = await resizedImage.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
       if (byteData == null) {
         if (kDebugMode) {
           print('⚠️ Failed to convert image to byte data');
@@ -441,21 +483,27 @@ class InterestsViewModel extends BaseViewModel {
 
       final compressedBytes = byteData.buffer.asUint8List();
       await compressedFile.writeAsBytes(compressedBytes);
-      
+
       final compressedSize = compressedBytes.length;
       final actualCompression = ((1 - compressedSize / originalSize) * 100);
-      
+
       if (kDebugMode) {
         print('✅ [COMPRESSION] Image compression completed');
-        print('   Compressed size: ${(compressedSize / 1024).toStringAsFixed(2)} KB');
-        print('   Actual compression: ${actualCompression.toStringAsFixed(1)}%');
-        print('   Size reduction: ${((originalSize - compressedSize) / 1024).toStringAsFixed(2)} KB');
+        print(
+          '   Compressed size: ${(compressedSize / 1024).toStringAsFixed(2)} KB',
+        );
+        print(
+          '   Actual compression: ${actualCompression.toStringAsFixed(1)}%',
+        );
+        print(
+          '   Size reduction: ${((originalSize - compressedSize) / 1024).toStringAsFixed(2)} KB',
+        );
       }
-      
+
       // Clean up original image resources
       originalImage.dispose();
       resizedImage.dispose();
-      
+
       return compressedFile;
     } catch (e, stackTrace) {
       if (kDebugMode) {
@@ -470,13 +518,13 @@ class InterestsViewModel extends BaseViewModel {
   void _handleUserCreationException(AppException exception) {
     // The centralized error handler has already logged the error
     // Here we can add specific handling if needed (e.g., show specific UI, retry logic, etc.)
-    
+
     // All exceptions are already handled by handleAsync:
     // - NetworkException -> Shows network error message
     // - AuthException -> Shows auth error message (email-already-in-use, weak-password, etc.)
     // - ValidationException -> Shows validation error message
     // - UnknownException -> Shows generic error message
-    
+
     // Additional specific handling can be added here if needed
     // For example, you might want to show a different message for specific error codes
     if (exception is AuthException) {

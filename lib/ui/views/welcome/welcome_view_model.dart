@@ -31,7 +31,7 @@ class WelcomeViewModel extends BaseViewModel {
     try {
       // Get Google credentials WITHOUT signing in
       final credentialsData = await _authService.getGoogleCredentials();
-      
+
       if (credentialsData == null) {
         // User cancelled the sign-in
         if (kDebugMode) {
@@ -54,23 +54,27 @@ class WelcomeViewModel extends BaseViewModel {
 
       // At this point, email is guaranteed to be non-null
       final userEmail = email;
-      
+
       if (kDebugMode) {
         print("🔍 [LOGIN] Checking if user exists with email: $userEmail");
       }
 
       // Check if user already exists in Firestore
-      final userExists = await _firestoreService.checkUserExistsByEmail(userEmail);
+      final userExists = await _firestoreService.checkUserExistsByEmail(
+        userEmail,
+      );
 
       if (userExists) {
         // Returning user - sign in and navigate to Festivals
         if (kDebugMode) {
           print("✅ [LOGIN] Returning user found, signing in...");
         }
-        
-        final userCredential = await _authService.signInWithCredential(credential);
+
+        final userCredential = await _authService.signInWithCredential(
+          credential,
+        );
         final user = userCredential.user;
-        
+
         if (user != null) {
           // Save login state to storage
           await _storageService.setLoggedIn(true, userId: user.uid);
@@ -80,7 +84,7 @@ class WelcomeViewModel extends BaseViewModel {
             print('   Email: ${user.email}');
             print('   Navigating to: ${AppRoutes.festivals}');
           }
-          
+
           // Navigate to festival screen
           _navigationService.navigateTo(AppRoutes.festivals);
         }
@@ -128,7 +132,7 @@ class WelcomeViewModel extends BaseViewModel {
     try {
       // Get Apple credentials WITHOUT signing in
       final credentialsData = await _authService.getAppleCredentials();
-      
+
       if (credentialsData == null) {
         // User cancelled the sign-in
         if (kDebugMode) {
@@ -149,13 +153,17 @@ class WelcomeViewModel extends BaseViewModel {
         // Try to sign in to get email from Firebase Auth
         // This happens when user has already signed in with Apple before
         try {
-          final userCredential = await _authService.signInWithCredential(credential);
+          final userCredential = await _authService.signInWithCredential(
+            credential,
+          );
           final user = userCredential.user;
-          
+
           if (user != null && user.email != null) {
             // Check if user exists in Firestore
-            final userExists = await _firestoreService.checkUserExistsByEmail(user.email!);
-            
+            final userExists = await _firestoreService.checkUserExistsByEmail(
+              user.email!,
+            );
+
             if (userExists) {
               // Returning user
               await _storageService.setLoggedIn(true, userId: user.uid);
@@ -171,7 +179,9 @@ class WelcomeViewModel extends BaseViewModel {
               // New user but email not provided by Apple
               // Sign out and show error
               await _authService.signOut();
-              setError('Unable to get email from Apple account. Please try again or use email signup.');
+              setError(
+                'Unable to get email from Apple account. Please try again or use email signup.',
+              );
               setLoading(false);
               return;
             }
@@ -189,23 +199,27 @@ class WelcomeViewModel extends BaseViewModel {
       // At this point, email is guaranteed to be non-null
       // (we would have returned earlier if it was null)
       final userEmail = email!;
-      
+
       if (kDebugMode) {
         print("🔍 [LOGIN] Checking if user exists with email: $userEmail");
       }
 
       // Check if user already exists in Firestore
-      final userExists = await _firestoreService.checkUserExistsByEmail(userEmail);
+      final userExists = await _firestoreService.checkUserExistsByEmail(
+        userEmail,
+      );
 
       if (userExists) {
         // Returning user - sign in and navigate to Festivals
         if (kDebugMode) {
           print("✅ [LOGIN] Returning user found, signing in...");
         }
-        
-        final userCredential = await _authService.signInWithCredential(credential);
+
+        final userCredential = await _authService.signInWithCredential(
+          credential,
+        );
         final user = userCredential.user;
-        
+
         if (user != null) {
           // Save login state to storage
           await _storageService.setLoggedIn(true, userId: user.uid);
@@ -215,7 +229,7 @@ class WelcomeViewModel extends BaseViewModel {
             print('   Email: ${user.email}');
             print('   Navigating to: ${AppRoutes.festivals}');
           }
-          
+
           // Navigate to festival screen
           _navigationService.navigateTo(AppRoutes.festivals);
         }

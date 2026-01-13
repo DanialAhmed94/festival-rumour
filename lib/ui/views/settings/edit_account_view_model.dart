@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
@@ -11,6 +12,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/exceptions/app_exception.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/constants/app_strings.dart';
+import 'package:http/http.dart' as http;
 
 class EditAccountViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
@@ -24,23 +26,27 @@ class EditAccountViewModel extends BaseViewModel {
   final TextEditingController bioController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
-  final TextEditingController currentPasswordController = TextEditingController();
+  final TextEditingController currentPasswordController =
+      TextEditingController();
   final TextEditingController newPasswordController = TextEditingController();
-  final TextEditingController confirmPasswordController = TextEditingController();
+  final TextEditingController confirmPasswordController =
+      TextEditingController();
 
   // Focus nodes for personal information fields
   final FocusNode nameFocus = FocusNode();
   final FocusNode bioFocus = FocusNode();
-  
+
   // Focus nodes for password fields
   final FocusNode currentPasswordFocus = FocusNode();
   final FocusNode newPasswordFocus = FocusNode();
   final FocusNode confirmPasswordFocus = FocusNode();
 
   // Form validation
-  final GlobalKey<FormState> formKey = GlobalKey<FormState>(); // For personal information
-  final GlobalKey<FormState> passwordFormKey = GlobalKey<FormState>(); // For password section
-  
+  final GlobalKey<FormState> formKey =
+      GlobalKey<FormState>(); // For personal information
+  final GlobalKey<FormState> passwordFormKey =
+      GlobalKey<FormState>(); // For password section
+
   // UI state
   bool isPasswordVisible = false;
   bool isNewPasswordVisible = false;
@@ -59,7 +65,7 @@ class EditAccountViewModel extends BaseViewModel {
   // Success message for snackbar
   String? _successMessage;
   String? get successMessage => _successMessage;
-  
+
   /// Clear success message
   void clearSuccessMessage() {
     _successMessage = null;
@@ -105,7 +111,7 @@ class EditAccountViewModel extends BaseViewModel {
 
       // Load user data from Firestore
       final userData = await _firestoreService.getUserData(currentUser.uid);
-      
+
       // Set name and store original
       if (userData != null && userData['displayName'] != null) {
         nameController.text = userData['displayName'] as String;
@@ -167,12 +173,12 @@ class EditAccountViewModel extends BaseViewModel {
     }
     return null;
   }
-  
+
   // Focus navigation methods
   void handleNameSubmitted() {
     bioFocus.requestFocus();
   }
-  
+
   void handleBioSubmitted() {
     bioFocus.unfocus();
   }
@@ -290,45 +296,49 @@ class EditAccountViewModel extends BaseViewModel {
 
   // Action methods
   Future<void> pickProfileImageFromCamera() async {
-    await handleAsync(() async {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
-      );
+    await handleAsync(
+      () async {
+        final XFile? pickedFile = await _picker.pickImage(
+          source: ImageSource.camera,
+          imageQuality: 85,
+        );
 
-      if (pickedFile != null) {
-        profileImageFile = File(pickedFile.path);
-        profileImagePath = pickedFile.path; // For backward compatibility
-        notifyListeners();
-        // Don't upload immediately - wait for save button
-      } else {
-        // User cancelled - not an error, just return
-        return;
-      }
-    }, 
-    showLoading: false, // Don't show loading for image picker
-    errorMessage: 'Failed to pick image from camera. Please try again.');
+        if (pickedFile != null) {
+          profileImageFile = File(pickedFile.path);
+          profileImagePath = pickedFile.path; // For backward compatibility
+          notifyListeners();
+          // Don't upload immediately - wait for save button
+        } else {
+          // User cancelled - not an error, just return
+          return;
+        }
+      },
+      showLoading: false, // Don't show loading for image picker
+      errorMessage: 'Failed to pick image from camera. Please try again.',
+    );
   }
 
   Future<void> pickProfileImageFromGallery() async {
-    await handleAsync(() async {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
+    await handleAsync(
+      () async {
+        final XFile? pickedFile = await _picker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 85,
+        );
 
-      if (pickedFile != null) {
-        profileImageFile = File(pickedFile.path);
-        profileImagePath = pickedFile.path; // For backward compatibility
-        notifyListeners();
-        // Don't upload immediately - wait for save button
-      } else {
-        // User cancelled - not an error, just return
-        return;
-      }
-    }, 
-    showLoading: false, // Don't show loading for image picker
-    errorMessage: 'Failed to pick image from gallery. Please try again.');
+        if (pickedFile != null) {
+          profileImageFile = File(pickedFile.path);
+          profileImagePath = pickedFile.path; // For backward compatibility
+          notifyListeners();
+          // Don't upload immediately - wait for save button
+        } else {
+          // User cancelled - not an error, just return
+          return;
+        }
+      },
+      showLoading: false, // Don't show loading for image picker
+      errorMessage: 'Failed to pick image from gallery. Please try again.',
+    );
   }
 
   Future<void> uploadProfilePicture() async {
@@ -341,14 +351,14 @@ class EditAccountViewModel extends BaseViewModel {
 
     // Upload to Firebase Storage
     final photoUrl = await _authService.uploadProfilePhoto(profileImageFile!);
-    
+
     if (photoUrl == null) {
       throw Exception('Failed to upload profile picture. Please try again.');
     }
 
     // Update Firebase Auth profile
     await _authService.updateProfilePhoto(photoUrl);
-    
+
     // Update Firestore user data
     await _firestoreService.updateUserData(
       userId: currentUser.uid,
@@ -375,7 +385,7 @@ class EditAccountViewModel extends BaseViewModel {
       setError('Please fix the validation errors before saving');
       return;
     }
-    
+
     // Additional validation check (backup)
     if (nameController.text.isNotEmpty) {
       final nameError = validateName(nameController.text);
@@ -389,75 +399,83 @@ class EditAccountViewModel extends BaseViewModel {
     }
 
     // Use original name if field is empty
-    final nameToSave = nameController.text.isEmpty && _originalName != null 
-        ? _originalName! 
-        : nameController.text;
-    
+    final nameToSave =
+        nameController.text.isEmpty && _originalName != null
+            ? _originalName!
+            : nameController.text;
+
     if (kDebugMode) {
       print('📝 [EditAccount] Proceeding with save, nameToSave: "$nameToSave"');
     }
 
-    await handleAsync(() async {
-      final currentUser = _authService.currentUser;
-      if (currentUser == null) {
-        throw Exception('No user logged in. Please sign in again.');
-      }
+    await handleAsync(
+      () async {
+        final currentUser = _authService.currentUser;
+        if (currentUser == null) {
+          throw Exception('No user logged in. Please sign in again.');
+        }
 
-      // Upload profile picture if there's a new one
-      if (profileImageFile != null) {
+        // Upload profile picture if there's a new one
+        if (profileImageFile != null) {
+          try {
+            await uploadProfilePicture();
+          } catch (e) {
+            // Re-throw with more context
+            throw Exception(
+              'Failed to upload profile picture: ${e.toString()}',
+            );
+          }
+        }
+
+        // Update display name in Firebase Auth
+        if (nameToSave.isNotEmpty) {
+          try {
+            await _authService.updateDisplayName(nameToSave);
+          } catch (e) {
+            // Re-throw with more context
+            throw Exception('Failed to update display name: ${e.toString()}');
+          }
+        }
+
+        // Update user data in Firestore
         try {
-          await uploadProfilePicture();
+          await _firestoreService.updateUserData(
+            userId: currentUser.uid,
+            displayName: nameToSave.isNotEmpty ? nameToSave : null,
+            phoneNumber:
+                phoneController.text.isNotEmpty ? phoneController.text : null,
+            additionalData: {
+              'bio': bioController.text.isNotEmpty ? bioController.text : null,
+            },
+          );
         } catch (e) {
           // Re-throw with more context
-          throw Exception('Failed to upload profile picture: ${e.toString()}');
+          throw Exception('Failed to update user data: ${e.toString()}');
         }
-      }
 
-      // Update display name in Firebase Auth
-      if (nameToSave.isNotEmpty) {
-        try {
-          await _authService.updateDisplayName(nameToSave);
-        } catch (e) {
-          // Re-throw with more context
-          throw Exception('Failed to update display name: ${e.toString()}');
+        // Update original values after successful save
+        _originalName = nameToSave;
+        _originalBio = bioController.text;
+        _originalPhone = phoneController.text;
+
+        // Set success message
+        _successMessage = 'Profile updated successfully';
+        notifyListeners();
+
+        if (kDebugMode) {
+          print('✅ User data saved successfully');
         }
-      }
-
-      // Update user data in Firestore
-      try {
-        await _firestoreService.updateUserData(
-          userId: currentUser.uid,
-          displayName: nameToSave.isNotEmpty ? nameToSave : null,
-          phoneNumber: phoneController.text.isNotEmpty ? phoneController.text : null,
-          additionalData: {
-            'bio': bioController.text.isNotEmpty ? bioController.text : null,
-          },
-        );
-      } catch (e) {
-        // Re-throw with more context
-        throw Exception('Failed to update user data: ${e.toString()}');
-      }
-
-      // Update original values after successful save
-      _originalName = nameToSave;
-      _originalBio = bioController.text;
-      _originalPhone = phoneController.text;
-
-      // Set success message
-      _successMessage = 'Profile updated successfully';
-      notifyListeners();
-
-      if (kDebugMode) {
-        print('✅ User data saved successfully');
-      }
-    }, errorMessage: 'Failed to save changes. Please check your connection and try again.');
+      },
+      errorMessage:
+          'Failed to save changes. Please check your connection and try again.',
+    );
   }
 
   Future<void> changePassword() async {
     // Form validation is already done in the view before calling this method
     // Additional validation checks
-    if (currentPasswordController.text.isEmpty || 
-        newPasswordController.text.isEmpty || 
+    if (currentPasswordController.text.isEmpty ||
+        newPasswordController.text.isEmpty ||
         confirmPasswordController.text.isEmpty) {
       setError('Please fill in all password fields');
       // Trigger form validation to show errors on screen
@@ -500,7 +518,9 @@ class EditAccountViewModel extends BaseViewModel {
       );
 
       if (!hasEmailPassword) {
-        throw Exception('Password change is only available for users who signed up with email and password. You signed up with a social account (Google/Apple).');
+        throw Exception(
+          'Password change is only available for users who signed up with email and password. You signed up with a social account (Google/Apple).',
+        );
       }
 
       // Get user email for re-authentication
@@ -512,7 +532,9 @@ class EditAccountViewModel extends BaseViewModel {
 
       if (kDebugMode) {
         print('🔐 [Password Change] Re-authenticating with email: $userEmail');
-        print('   User providers: ${currentUser.providerData.map((p) => p.providerId).toList()}');
+        print(
+          '   User providers: ${currentUser.providerData.map((p) => p.providerId).toList()}',
+        );
       }
 
       // Step 1: Re-authenticate user with current password
@@ -523,7 +545,7 @@ class EditAccountViewModel extends BaseViewModel {
           email: userEmail.trim(), // Trim to handle any whitespace
           password: currentPasswordController.text,
         );
-        
+
         if (kDebugMode) {
           print('✅ User re-authenticated successfully');
         }
@@ -537,14 +559,16 @@ class EditAccountViewModel extends BaseViewModel {
         if (e is AppException) {
           final errorCode = (e.code ?? '').toUpperCase();
           final errorMessage = e.message.toLowerCase();
-          
+
           if (kDebugMode) {
-            print('🔍 [Password Change] AppException - code: $errorCode, message: ${e.message}');
+            print(
+              '🔍 [Password Change] AppException - code: $errorCode, message: ${e.message}',
+            );
           }
-          
+
           // Check for wrong password or invalid credential errors
           // Firebase Auth codes: WRONG_PASSWORD, INVALID_CREDENTIAL, etc.
-          if (errorCode == 'WRONG_PASSWORD' || 
+          if (errorCode == 'WRONG_PASSWORD' ||
               errorCode == 'INVALID_CREDENTIAL' ||
               errorCode == 'WRONG-PASSWORD' ||
               errorCode == 'INVALID-CREDENTIAL' ||
@@ -557,7 +581,9 @@ class EditAccountViewModel extends BaseViewModel {
               errorMessage.contains('password is incorrect')) {
             // Re-throw with clear error message - this will be caught by handleAsync
             if (kDebugMode) {
-              print('🚫 [Password Change] Wrong password detected - throwing error');
+              print(
+                '🚫 [Password Change] Wrong password detected - throwing error',
+              );
             }
             throw AuthException(
               message: 'Current password is incorrect. Please try again.',
@@ -565,10 +591,10 @@ class EditAccountViewModel extends BaseViewModel {
             );
           }
         }
-        
+
         // Check string representation as fallback (for any non-AppException errors)
         final errorString = e.toString().toLowerCase();
-        if (errorString.contains('wrong-password') || 
+        if (errorString.contains('wrong-password') ||
             errorString.contains('invalid-credential') ||
             errorString.contains('user-mismatch') ||
             errorString.contains('incorrect password') ||
@@ -577,27 +603,33 @@ class EditAccountViewModel extends BaseViewModel {
             errorString.contains('the password is invalid') ||
             errorString.contains('password is incorrect')) {
           if (kDebugMode) {
-            print('🚫 [Password Change] Wrong password detected from string - throwing error');
+            print(
+              '🚫 [Password Change] Wrong password detected from string - throwing error',
+            );
           }
           throw AuthException(
             message: 'Current password is incorrect. Please try again.',
             code: 'WRONG_PASSWORD',
           );
         }
-        
+
         // Re-throw with user-friendly message for other errors
         // This ensures the error is displayed to the user
         if (kDebugMode) {
-          print('⚠️ [Password Change] Other error - re-throwing with generic message');
+          print(
+            '⚠️ [Password Change] Other error - re-throwing with generic message',
+          );
         }
-        throw Exception('Failed to verify current password. Please check your connection and try again.');
+        throw Exception(
+          'Failed to verify current password. Please check your connection and try again.',
+        );
       }
 
       // Step 2: Update password to new password
       // Only after successful re-authentication
       try {
         await _authService.updatePassword(newPasswordController.text);
-        
+
         if (kDebugMode) {
           print('✅ Password updated successfully');
         }
@@ -610,7 +642,7 @@ class EditAccountViewModel extends BaseViewModel {
         // Set success message
         _successMessage = '✅ Password updated successfully';
         notifyListeners();
-        
+
         // Clear success message after a delay
         Future.delayed(const Duration(milliseconds: 100), () {
           _successMessage = null;
@@ -619,63 +651,119 @@ class EditAccountViewModel extends BaseViewModel {
       } catch (e) {
         // Re-throw with user-friendly message
         if (e.toString().contains('weak-password')) {
-          throw Exception('New password is too weak. Please choose a stronger password.');
+          throw Exception(
+            'New password is too weak. Please choose a stronger password.',
+          );
         }
         throw Exception('Failed to update password: ${e.toString()}');
       }
     }, errorMessage: 'Failed to change password. Please try again.');
   }
 
+  Future<void> deleteAccountFromServer() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+
+    final idToken = await user.getIdToken(true);
+
+    final url = Uri.parse(
+      'https://us-central1-crapapps-65472.cloudfunctions.net/deleteAuthAccount',
+    );
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $idToken',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete account: ${response.body}');
+    }
+  }
+
+  /// Delete user account with proper error handling
   Future<void> deleteAccount() async {
     await handleAsync(() async {
       if (kDebugMode) {
-        print('🗑️ [EditAccount] Starting account deletion process...');
+        print('🗑️ [Settings] Starting account deletion process...');
       }
 
-      final currentUser = _authService.currentUser;
-      if (currentUser == null) {
-        throw Exception('No user logged in. Please sign in again.');
-      }
+      // 🔐 Get user ID BEFORE deletion
+      final userId = _authService.userUid;
 
-      // Delete user from Firebase Authentication
-      try {
-        await _authService.deleteAccount();
-        
-        if (kDebugMode) {
-          print('✅ [EditAccount] Firebase account deletion successful');
+      if (userId != null) {
+        // 1️⃣ Delete all user posts
+        try {
+          await _firestoreService.deleteAllUserPosts(userId);
+          if (kDebugMode) {
+            print('✅ [Settings] User posts deleted');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ [Settings] Error deleting posts: $e');
+          }
         }
-      } catch (e) {
-        // Re-throw with more context
-        throw Exception('Failed to delete account from authentication: ${e.toString()}');
+
+        // 2️⃣ Delete all user jobs
+        try {
+          await _firestoreService.deleteAllUserJobs(userId);
+          if (kDebugMode) {
+            print('✅ [Settings] User jobs deleted');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ [Settings] Error deleting jobs: $e');
+          }
+        }
+
+        // 3️⃣ Cleanup chat rooms
+        try {
+          await _firestoreService.cleanupUserChatRooms(userId);
+          if (kDebugMode) {
+            print('✅ [Settings] Chat rooms cleaned');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ [Settings] Error cleaning chats: $e');
+          }
+        }
+
+        // 4️⃣ Delete user profile
+        try {
+          await _firestoreService.deleteUserProfile(userId);
+          if (kDebugMode) {
+            print('✅ [Settings] User profile deleted');
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ [Settings] Error deleting profile: $e');
+          }
+        }
       }
 
-      // Clear local storage (logged in state, user ID, etc.)
-      try {
-        await _storageService.clearAll();
-        
-        if (kDebugMode) {
-          print('✅ [EditAccount] Storage cleared successfully');
-        }
-      } catch (e) {
-        // Log but don't fail - storage clearing is not critical
-        if (kDebugMode) {
-          print('⚠️ [EditAccount] Warning: Failed to clear storage: $e');
-        }
+      // 5️⃣ 🔥 DELETE AUTH VIA CLOUD FUNCTION
+      await deleteAccountFromServer();
+
+      if (kDebugMode) {
+        print('✅ [Settings] Firebase Auth deleted via Cloud Function');
       }
 
-      // Navigate to welcome screen and clear navigation stack
-      // This removes all previous routes from the stack
-      try {
-        await _navigationService.navigateToLogin();
+      // 6️⃣ Clear local storage
+      await _storageService.clearAll();
 
-        if (kDebugMode) {
-          print('✅ [EditAccount] Account deletion completed successfully');
-        }
-      } catch (e) {
-        // Re-throw with more context
-        throw Exception('Account deleted but failed to navigate. Please restart the app.');
+      if (kDebugMode) {
+        print('✅ [Settings] Local storage cleared');
       }
-    }, errorMessage: 'Failed to delete account. Please check your connection and try again.');
+
+      // 7️⃣ Navigate to login
+      await _navigationService.navigateToLogin();
+
+      if (kDebugMode) {
+        print('✅ [Settings] Account deletion completed');
+      }
+    }, errorMessage: 'Failed to delete account. Please try again.');
   }
 
   void goBack() {

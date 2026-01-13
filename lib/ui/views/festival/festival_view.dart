@@ -34,10 +34,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            error,
-            style: const TextStyle(color: AppColors.white),
-          ),
+          content: Text(error, style: const TextStyle(color: AppColors.white)),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
@@ -70,55 +67,66 @@ class FestivalView extends BaseView<FestivalViewModel> {
           viewModel.unfocusSearch();
         },
         child: Scaffold(
-        resizeToAvoidBottomInset: false,
-      body: Stack(
-        children: [
-          /// 🖼 Background image
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage(AppAssets.bottomsheet),
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-
-          /// 🎨 Overlay layer (white or black tint)
-          Container(
-            color: AppColors.primary.withOpacity(0.3), // You can tweak opacity (0.1–0.4)
-          ),
-
-          /// 🧱 Foreground content
-          SafeArea(
-            child: ResponsiveContainer(
-              mobileMaxWidth: double.infinity,
-              tabletMaxWidth: AppDimensions.tabletWidth,
-              desktopMaxWidth: AppDimensions.desktopWidth,
-              child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(height: AppDimensions.spaceS),
-                _buildTopBarWithSearch(context, viewModel),
-                SizedBox(height: AppDimensions.spaceS),
-              //   SizedBox(height: context.getConditionalSpacing()),
-                _titleHeadline(context),
-                SizedBox(height: AppDimensions.spaceS),
-                _buildLogosSection(context),
-                SizedBox(height: AppDimensions.spaceS),
-                _buildAnimatedGlobalFeedRow(context, viewModel),
-                SizedBox(height: context.isSmallScreen ? AppDimensions.spaceM : AppDimensions.spaceL),
-                Expanded(
-                    child: _buildFestivalsSlider(context, viewModel, pageController),
+          resizeToAvoidBottomInset: false,
+          body: Stack(
+            children: [
+              /// 🖼 Background image
+              Container(
+                decoration: const BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage(AppAssets.bottomsheet),
+                    fit: BoxFit.cover,
+                  ),
                 ),
-                SizedBox(height: AppDimensions.spaceS),
-                _buildBottomIcon(context),
-              ],
               ),
-            ),
+
+              /// 🎨 Overlay layer (white or black tint)
+              Container(
+                color: AppColors.primary.withOpacity(
+                  0.3,
+                ), // You can tweak opacity (0.1–0.4)
+              ),
+
+              /// 🧱 Foreground content
+              SafeArea(
+                child: ResponsiveContainer(
+                  mobileMaxWidth: double.infinity,
+                  tabletMaxWidth: AppDimensions.tabletWidth,
+                  desktopMaxWidth: AppDimensions.desktopWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(height: AppDimensions.spaceS),
+                      _buildTopBarWithSearch(context, viewModel),
+                      SizedBox(height: AppDimensions.spaceS),
+                      //   SizedBox(height: context.getConditionalSpacing()),
+                      _titleHeadline(context),
+                      SizedBox(height: AppDimensions.spaceS),
+                      _buildLogosSection(context, viewModel),
+                      SizedBox(height: AppDimensions.spaceS),
+                      _buildAnimatedGlobalFeedRow(context, viewModel),
+                      SizedBox(
+                        height:
+                            context.isSmallScreen
+                                ? AppDimensions.spaceM
+                                : AppDimensions.spaceL,
+                      ),
+                      Expanded(
+                        child: _buildFestivalsSlider(
+                          context,
+                          viewModel,
+                          pageController,
+                        ),
+                      ),
+                      SizedBox(height: AppDimensions.spaceS),
+                      _buildBottomIcon(context),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
         ),
-      ),
       ),
     );
   }
@@ -130,30 +138,51 @@ class FestivalView extends BaseView<FestivalViewModel> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Filter Festivals',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
+      builder:
+          (context) => Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Filter Festivals',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _buildFilterOption(
+                  context,
+                  viewModel,
+                  AppStrings.live,
+                  Icons.live_tv,
+                ),
+                _buildFilterOption(
+                  context,
+                  viewModel,
+                  AppStrings.upcoming,
+                  Icons.schedule,
+                ),
+                _buildFilterOption(
+                  context,
+                  viewModel,
+                  AppStrings.past,
+                  Icons.history,
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            _buildFilterOption(context, viewModel, AppStrings.live, Icons.live_tv),
-            _buildFilterOption(context, viewModel, AppStrings.upcoming, Icons.schedule),
-            _buildFilterOption(context, viewModel, AppStrings.past, Icons.history),
-          ],
-        ),
-      ),
+          ),
     );
   }
 
-  Widget _buildFilterOption(BuildContext context, FestivalViewModel viewModel, String filter, IconData icon) {
+  Widget _buildFilterOption(
+    BuildContext context,
+    FestivalViewModel viewModel,
+    String filter,
+    IconData icon,
+  ) {
     final isSelected = viewModel.currentFilter == filter;
     return ListTile(
       leading: Icon(
@@ -174,137 +203,145 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
-
-  Widget _buildTopBarWithSearch(BuildContext context, FestivalViewModel viewModel) {
+  Widget _buildTopBarWithSearch(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingS),
       child: Row(
-      children: [
+        children: [
           // Logo
-        Container(
-          height: context.getConditionalLogoSize(),
-          width: context.getConditionalLogoSize(),
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.transparent,
-          ),
-          child: SvgPicture.asset(
-            AppAssets.logo,
-            color: AppColors.primary,
-          ),
-        ),
-         SizedBox(width: AppDimensions.spaceM ),
-          
-          // Search Bar (same design as home view)
-        Expanded(
-          child: Container(
-            height: context.isSmallScreen 
-                ? AppDimensions.searchBarHeight * 0.8
-                : context.isMediumScreen 
-                    ? AppDimensions.searchBarHeight * 0.9
-                    : AppDimensions.searchBarHeight * 0.9,
-            margin: context.responsiveMargin,
-            padding: context.responsivePadding,
-            decoration: BoxDecoration(
-              color: AppColors.onPrimary,
-              borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
+          Container(
+            height: context.getConditionalLogoSize(),
+            width: context.getConditionalLogoSize(),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.transparent,
             ),
-            child: Row(
-              children: [
-                SizedBox(width: context.getConditionalSpacing()),
-                Icon(
-                  Icons.search, 
-                  color: AppColors.onSurfaceVariant, 
-                  size: context.getConditionalIconSize(),
-                ),
-                SizedBox(width: context.getConditionalSpacing()),
+            child: SvgPicture.asset(AppAssets.logo, color: AppColors.primary),
+          ),
+          SizedBox(width: AppDimensions.spaceM),
 
-                /// 🔹 Search Field
-                Expanded(
-                  child: TextField(
-                    controller: viewModel.searchController,
-                        focusNode: viewModel.searchFocusNode,
-                        textAlignVertical: TextAlignVertical.center,
-                        decoration: InputDecoration(
-                          hintText: AppStrings.searchFestivals,
-                          hintStyle: const TextStyle(
-                        color: AppColors.grey600,
-                            fontWeight: FontWeight.w600,
-                            fontSize: AppDimensions.textM,
-                          ),
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          disabledBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          isDense: true,
-                          filled: false,
-                          fillColor: Colors.transparent,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        style: const TextStyle(
-                          color: AppColors.primary,
+          // Search Bar (same design as home view)
+          Expanded(
+            child: Container(
+              height:
+                  context.isSmallScreen
+                      ? AppDimensions.searchBarHeight * 0.8
+                      : context.isMediumScreen
+                      ? AppDimensions.searchBarHeight * 0.9
+                      : AppDimensions.searchBarHeight * 0.9,
+              margin: context.responsiveMargin,
+              padding: context.responsivePadding,
+              decoration: BoxDecoration(
+                color: AppColors.onPrimary,
+                borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(width: context.getConditionalSpacing()),
+                  Icon(
+                    Icons.search,
+                    color: AppColors.onSurfaceVariant,
+                    size: context.getConditionalIconSize(),
+                  ),
+                  SizedBox(width: context.getConditionalSpacing()),
+
+                  /// 🔹 Search Field
+                  Expanded(
+                    child: TextField(
+                      controller: viewModel.searchController,
+                      focusNode: viewModel.searchFocusNode,
+                      textAlignVertical: TextAlignVertical.center,
+                      decoration: InputDecoration(
+                        hintText: AppStrings.searchFestivals,
+                        hintStyle: const TextStyle(
+                          color: AppColors.grey600,
                           fontWeight: FontWeight.w600,
                           fontSize: AppDimensions.textM,
-                          height: AppDimensions.searchBarTextHeight,
                         ),
-                    cursorColor: AppColors.primary,
-                    onChanged: (value) {
-                      viewModel.setSearchQuery(value);
-                    },
-                    onSubmitted: (value) {
-                      viewModel.unfocusSearch();
-                    },
-                   textInputAction: TextInputAction.search,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        isDense: true,
+                        filled: false,
+                        fillColor: Colors.transparent,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: AppDimensions.textM,
+                        height: AppDimensions.searchBarTextHeight,
+                      ),
+                      cursorColor: AppColors.primary,
+                      onChanged: (value) {
+                        viewModel.setSearchQuery(value);
+                      },
+                      onSubmitted: (value) {
+                        viewModel.unfocusSearch();
+                      },
+                      textInputAction: TextInputAction.search,
+                    ),
                   ),
-                ),
 
-                /// 🔹 Search Clear Button - Always reserve space
-                SizedBox(
-                  width: AppDimensions.searchBarClearButtonWidth,
-                  child: viewModel.currentSearchQuery.isNotEmpty
-                      ? IconButton(
-                    icon: const Icon(Icons.clear, color: AppColors.primary, size: AppDimensions.searchBarIconSize),
-                    onPressed: () {
-                      // ✅ Clear search and hide keyboard
-                      viewModel.clearSearch();
-                      FocusScope.of(context).unfocus();
-                    },
-                  )
-                      : const SizedBox.shrink(),
-                ),
-              ],
+                  /// 🔹 Search Clear Button - Always reserve space
+                  SizedBox(
+                    width: AppDimensions.searchBarClearButtonWidth,
+                    child:
+                        viewModel.currentSearchQuery.isNotEmpty
+                            ? IconButton(
+                              icon: const Icon(
+                                Icons.clear,
+                                color: AppColors.primary,
+                                size: AppDimensions.searchBarIconSize,
+                              ),
+                              onPressed: () {
+                                // ✅ Clear search and hide keyboard
+                                viewModel.clearSearch();
+                                FocusScope.of(context).unfocus();
+                              },
+                            )
+                            : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
       ),
     );
   }
 
-  Widget _buildFestivalsSlider(BuildContext context, FestivalViewModel viewModel, PageController pageController) {
+  Widget _buildFestivalsSlider(
+    BuildContext context,
+    FestivalViewModel viewModel,
+    PageController pageController,
+  ) {
     if (viewModel.isLoading && viewModel.festivals.isEmpty) {
       return LoadingWidget(message: AppStrings.loadingfestivals);
     }
 
     // Show filtered festivals if there's a search query, otherwise show all festivals
-    final festivalsToShow = viewModel.searchQuery.isNotEmpty ? viewModel.filteredFestivals : viewModel.festivals;
+    final festivalsToShow =
+        viewModel.searchQuery.isNotEmpty
+            ? viewModel.filteredFestivals
+            : viewModel.festivals;
 
     if (festivalsToShow.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.search_off,
-              size: 64,
-              color: AppColors.white,
-            ),
+            const Icon(Icons.search_off, size: 64, color: AppColors.white),
             const SizedBox(height: AppDimensions.spaceM),
             ResponsiveTextWidget(
-              viewModel.searchQuery.isNotEmpty 
-                ? "${AppStrings.noFestivalsAvailable} for '${viewModel.searchQuery}'"
-                : AppStrings.noFestivalsAvailable,
+              viewModel.searchQuery.isNotEmpty
+                  ? "${AppStrings.noFestivalsAvailable} for '${viewModel.searchQuery}'"
+                  : AppStrings.noFestivalsAvailable,
               textType: TextType.body,
               color: AppColors.white,
               textAlign: TextAlign.center,
@@ -315,7 +352,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
                 onPressed: () => viewModel.clearSearch(),
                 child: const ResponsiveTextWidget(
                   AppStrings.clearSearch,
-                  textType: TextType.body, 
+                  textType: TextType.body,
                   color: AppColors.white,
                 ),
               ),
@@ -336,9 +373,15 @@ class FestivalView extends BaseView<FestivalViewModel> {
         return SizedBox(
           width: double.infinity,
           child: ResponsivePadding(
-            mobilePadding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingS),
-            tabletPadding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
-            desktopPadding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
+            mobilePadding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.paddingS,
+            ),
+            tabletPadding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.paddingM,
+            ),
+            desktopPadding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.paddingL,
+            ),
             child: FestivalCard(
               festival: festival,
               onBack: viewModel.goBack,
@@ -353,14 +396,14 @@ class FestivalView extends BaseView<FestivalViewModel> {
 
   Widget _buildBottomIcon(BuildContext context) {
     return Center(
-        child: Container(
-          height: AppDimensions.buttonHeightXL,
-          width: AppDimensions.buttonHeightXL,
-          child: SvgPicture.asset(
-            AppAssets.note,
-            width: AppDimensions.iconM,
-            height: AppDimensions.iconM,
-            color: AppColors.primary,
+      child: Container(
+        height: AppDimensions.buttonHeightXL,
+        width: AppDimensions.buttonHeightXL,
+        child: SvgPicture.asset(
+          AppAssets.note,
+          width: AppDimensions.iconM,
+          height: AppDimensions.iconM,
+          color: AppColors.primary,
         ),
       ),
     );
@@ -369,47 +412,47 @@ class FestivalView extends BaseView<FestivalViewModel> {
   Widget _titleHeadline(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: context.isSmallScreen 
-            ? AppDimensions.paddingXS
-            : context.isMediumScreen 
+        horizontal:
+            context.isSmallScreen
+                ? AppDimensions.paddingXS
+                : context.isMediumScreen
                 ? AppDimensions.paddingS
                 : AppDimensions.paddingS,
-        vertical: context.isSmallScreen
-            ? AppDimensions.paddingXS
-            : context.isMediumScreen 
+        vertical:
+            context.isSmallScreen
+                ? AppDimensions.paddingXS
+                : context.isMediumScreen
                 ? AppDimensions.paddingS
-                : AppDimensions.paddingS
+                : AppDimensions.paddingS,
       ),
-      decoration: BoxDecoration(
-        color: AppColors.headlineBackground,
-      ),
+      decoration: BoxDecoration(color: AppColors.headlineBackground),
       child: ResponsiveTextWidget(
         AppStrings.headlineText,
         textAlign: TextAlign.center,
         fontSize: AppDimensions.textL,
-      //  fontWeight: FontWeight.bold,
+        //  fontWeight: FontWeight.bold,
         color: AppColors.primary,
       ),
     );
   }
 
-  Widget _buildLogosSection(BuildContext context) {
+  Widget _buildLogosSection(BuildContext context, FestivalViewModel viewModel) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: context.isSmallScreen 
-            ? AppDimensions.paddingS
-            : context.isMediumScreen 
+        horizontal:
+            context.isSmallScreen
+                ? AppDimensions.paddingS
+                : context.isMediumScreen
                 ? AppDimensions.paddingM
                 : AppDimensions.paddingL,
-        vertical: context.isSmallScreen
-            ? AppDimensions.paddingS
-            : context.isMediumScreen 
+        vertical:
+            context.isSmallScreen
+                ? AppDimensions.paddingS
+                : context.isMediumScreen
                 ? AppDimensions.paddingM
                 : AppDimensions.paddingM,
       ),
-      decoration: BoxDecoration(
-        color: AppColors.headlineBackground,
-      ),
+      decoration: BoxDecoration(color: AppColors.headlineBackground),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisSize: MainAxisSize.max,
@@ -422,14 +465,20 @@ class FestivalView extends BaseView<FestivalViewModel> {
               textType: TextType.body,
               color: AppColors.white,
               fontWeight: FontWeight.bold,
-              fontSize: context.isSmallScreen 
-                  ? AppDimensions.textM 
-                  : AppDimensions.textL,
+              fontSize:
+                  context.isSmallScreen
+                      ? AppDimensions.textM
+                      : AppDimensions.textL,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          SizedBox(width: context.isSmallScreen ? AppDimensions.spaceM : AppDimensions.spaceL),
+          SizedBox(
+            width:
+                context.isSmallScreen
+                    ? AppDimensions.spaceM
+                    : AppDimensions.spaceL,
+          ),
           // Right side: Three logos in white rounded containers
           Flexible(
             flex: 1,
@@ -442,16 +491,22 @@ class FestivalView extends BaseView<FestivalViewModel> {
                   _buildLogoContainer(
                     context,
                     AppAssets.caLogo,
+                    onTap: () => viewModel.openAppStoreIOS(caAppStoreUrl),
                   ),
-                  SizedBox(width: context.isSmallScreen ? AppDimensions.spaceS : AppDimensions.spaceM),
+                  SizedBox(width: 16.0),
                   _buildLogoContainer(
                     context,
                     AppAssets.festivalResourceLogo,
+                    onTap:
+                        () => viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
                   ),
-                  SizedBox(width: context.isSmallScreen ? AppDimensions.spaceS : AppDimensions.spaceM),
+                  SizedBox(width: 16.0),
                   _buildLogoContainer(
                     context,
                     AppAssets.fetiefoodieLogo,
+                    onTap:
+                        () =>
+                            viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
                   ),
                 ],
               ),
@@ -462,34 +517,50 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
-  Widget _buildLogoContainer(BuildContext context, String assetPath) {
-    final logoSize = context.isSmallScreen ? 50.0 : context.isMediumScreen ? 60.0 : 70.0;
-    return Container(
-      width: logoSize,
-      height: logoSize,
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(8),
-      child: Image.asset(
-        assetPath,
-        fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) {
-          // Show a placeholder if image fails to load
-          return Center(
-            child: Icon(
-              Icons.image_not_supported,
-              color: AppColors.grey600,
-              size: logoSize * 0.5,
-            ),
-          );
-        },
+  Widget _buildLogoContainer(
+    BuildContext context,
+    String assetPath, {
+    VoidCallback? onTap,
+  }) {
+    final logoSize =
+        context.isSmallScreen
+            ? 50.0
+            : context.isMediumScreen
+            ? 60.0
+            : 70.0;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: logoSize,
+        height: logoSize,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Image.asset(
+          assetPath,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return Center(
+              child: Icon(
+                Icons.image_not_supported,
+                color: AppColors.grey600,
+                size: logoSize * 0.5,
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 
-  Widget _buildAnimatedGlobalFeedRow(BuildContext context, FestivalViewModel viewModel) {
+  Widget _buildAnimatedGlobalFeedRow(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
     return _AnimatedGlobalFeedRow(
       onTap: () => viewModel.navigateToGlobalFeed(context),
     );
@@ -501,9 +572,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
 class _AnimatedGlobalFeedRow extends StatefulWidget {
   final VoidCallback onTap;
 
-  const _AnimatedGlobalFeedRow({
-    required this.onTap,
-  });
+  const _AnimatedGlobalFeedRow({required this.onTap});
 
   @override
   State<_AnimatedGlobalFeedRow> createState() => _AnimatedGlobalFeedRowState();
@@ -527,18 +596,12 @@ class _AnimatedGlobalFeedRowState extends State<_AnimatedGlobalFeedRow>
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     _slideAnimation = Tween<double>(
       begin: 20.0,
       end: 0.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     // Delay animation by 400ms after screen load
     Future.delayed(const Duration(milliseconds: 400), () {
@@ -565,20 +628,23 @@ class _AnimatedGlobalFeedRowState extends State<_AnimatedGlobalFeedRow>
           onTap: widget.onTap,
           child: Container(
             margin: EdgeInsets.symmetric(
-              horizontal: context.isSmallScreen 
-                  ? AppDimensions.paddingS
-                  : context.isMediumScreen 
+              horizontal:
+                  context.isSmallScreen
+                      ? AppDimensions.paddingS
+                      : context.isMediumScreen
                       ? AppDimensions.paddingM
                       : AppDimensions.paddingL,
               vertical: AppDimensions.spaceS,
             ),
             padding: EdgeInsets.symmetric(
-              horizontal: context.isSmallScreen 
-                  ? AppDimensions.paddingM
-                  : AppDimensions.paddingL,
-              vertical: context.isSmallScreen 
-                  ? AppDimensions.paddingS
-                  : AppDimensions.paddingM,
+              horizontal:
+                  context.isSmallScreen
+                      ? AppDimensions.paddingM
+                      : AppDimensions.paddingL,
+              vertical:
+                  context.isSmallScreen
+                      ? AppDimensions.paddingS
+                      : AppDimensions.paddingM,
             ),
             decoration: BoxDecoration(
               color: AppColors.black.withOpacity(0.3),
@@ -592,18 +658,30 @@ class _AnimatedGlobalFeedRowState extends State<_AnimatedGlobalFeedRow>
                     textType: TextType.body,
                     color: AppColors.white.withOpacity(0.9),
                     fontWeight: FontWeight.bold,
-                    fontSize: context.isSmallScreen 
-                        ? AppDimensions.textM 
-                        : AppDimensions.textL,
+                    fontSize:
+                        context.isSmallScreen
+                            ? AppDimensions.textM
+                            : AppDimensions.textL,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                SizedBox(width: context.isSmallScreen ? AppDimensions.spaceS : AppDimensions.spaceM),
+                SizedBox(
+                  width:
+                      context.isSmallScreen
+                          ? AppDimensions.spaceS
+                          : AppDimensions.spaceM,
+                ),
                 Container(
                   padding: EdgeInsets.symmetric(
-                    horizontal: context.isSmallScreen ? AppDimensions.paddingS : AppDimensions.paddingM,
-                    vertical: context.isSmallScreen ? AppDimensions.paddingXS : AppDimensions.paddingS,
+                    horizontal:
+                        context.isSmallScreen
+                            ? AppDimensions.paddingS
+                            : AppDimensions.paddingM,
+                    vertical:
+                        context.isSmallScreen
+                            ? AppDimensions.paddingXS
+                            : AppDimensions.paddingS,
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
@@ -620,9 +698,10 @@ class _AnimatedGlobalFeedRowState extends State<_AnimatedGlobalFeedRow>
                         textType: TextType.body,
                         color: AppColors.white,
                         fontWeight: FontWeight.w600,
-                        fontSize: context.isSmallScreen 
-                            ? AppDimensions.textS 
-                            : AppDimensions.textM,
+                        fontSize:
+                            context.isSmallScreen
+                                ? AppDimensions.textS
+                                : AppDimensions.textM,
                       ),
                       SizedBox(width: context.isSmallScreen ? 4 : 6),
                       Icon(
