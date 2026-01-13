@@ -508,10 +508,32 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                    ? context.screenWidth * 0.35
                    : context.screenWidth * 0.3),
 
-              Text("${post.comments} ",style: TextStyle(color: AppColors.white),),
-              const SizedBox(width: AppDimensions.reactionIconSpacing),
-
-              Text("${AppStrings.comments} ",style: TextStyle(color: AppColors.white),),
+              InkWell(
+                onTap: () async {
+                  // Navigate to comment screen using your app router
+                  // Pass both post and collection name if available
+                  final arguments = widget.collectionName != null
+                      ? {'post': widget.post, 'collectionName': widget.collectionName}
+                      : widget.post;
+                  final result = await Navigator.pushNamed(
+                    context,
+                    AppRoutes.comments,
+                    arguments: arguments,
+                  );
+                  // If comments were updated, refresh posts
+                  if (result == true && widget.onCommentsUpdated != null) {
+                    widget.onCommentsUpdated!();
+                  }
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text("${post.comments} ",style: TextStyle(color: AppColors.white),),
+                    const SizedBox(width: AppDimensions.reactionIconSpacing),
+                    Text("${AppStrings.comments} ",style: TextStyle(color: AppColors.white),),
+                  ],
+                ),
+              ),
 
             ],
           ),
