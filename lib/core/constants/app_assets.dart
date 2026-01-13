@@ -70,6 +70,11 @@ class AppAssets {
   static const String caLogo = 'assets/logos/CA logo.png';
   static const String festivalResourceLogo = 'assets/logos/Festival Resource Log.png';
   static const String fetiefoodieLogo = 'assets/logos/fetiefoodie logo.png';
+  // New logo assets
+  static const String crapAdviserLogo = 'assets/logos/crapAdviser-logo.png';
+  static const String organiserLogo = 'assets/logos/orgnaiser-logo.png';
+  static const String festieFoodieLogo = 'assets/logos/festieFoodie-logo.png';
+  static const String forwardIcon = 'assets/logos/forwardIcon.png';
 
   static const String proback = 'assets/images/proback.png';
   static const String profile = 'assets/images/profile.png';

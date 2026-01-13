@@ -62,33 +62,66 @@ class CreateChatRoomViewModel extends BaseViewModel {
   /// Load contacts from device or create mock contacts if unavailable
   Future<void> _loadContacts() async {
     await handleAsync(() async {
-      // ✅ flutter_contacts handles permission on iOS correctly
-      final granted = await FlutterContacts.requestPermission();
-
-      if (!granted) {
+      // Check permission status first (especially important for Android)
+      PermissionStatus permissionStatus = await Permission.contacts.status;
+      
+      // If not granted, request permission
+      if (!permissionStatus.isGranted) {
+        permissionStatus = await Permission.contacts.request();
+      }
+      
+      // Check if permission is permanently denied
+      if (permissionStatus.isPermanentlyDenied) {
+        setError(
+          'Contacts permission is permanently denied. Please enable it in app settings.',
+        );
+        return;
+      }
+      
+      // If still not granted after request, show error
+      if (!permissionStatus.isGranted) {
         setError(AppStrings.contactsPermissionDenied);
         return;
       }
 
-      final contacts = await FlutterContacts.getContacts(
-        withProperties: true,
-        withPhoto: true,
-      );
+      // Now use FlutterContacts to get contacts (permission is granted)
+      try {
+        final contacts = await FlutterContacts.getContacts(
+          withProperties: true,
+          withPhoto: true,
+        );
 
-      if (contacts.isNotEmpty) {
-        _allContacts = contacts;
-        print("📇 Loaded ${contacts.length} contacts");
-      } else {
+        if (contacts.isNotEmpty) {
+          _allContacts = contacts;
+          if (kDebugMode) {
+            print("📇 Loaded ${contacts.length} contacts");
+          }
+        } else {
+          _createMockContacts();
+        }
+      } catch (e) {
+        // If getting contacts fails even with permission, it might be an Android issue
+        if (kDebugMode) {
+          print('❌ Error getting contacts: $e');
+        }
+        // Try to create mock contacts as fallback
         _createMockContacts();
       }
 
       _filterContacts();
-      await _matchContactsWithUsers();
+      
+      // Update UI immediately with contacts (before matching)
+      _updateContactDataWithUserInfo();
       notifyListeners();
+      
+      // Match contacts asynchronously (non-blocking)
+      // This allows UI to show contacts immediately while matching happens in background
+      _matchContactsWithUsers();
     }, errorMessage: AppStrings.failedToLoadContacts);
   }
 
   /// Match contacts with users in Firestore by phone number
+  /// This runs asynchronously and doesn't block the UI
   Future<void> _matchContactsWithUsers() async {
     try {
       // Collect all phone numbers from contacts
@@ -105,16 +138,26 @@ class CreateChatRoomViewModel extends BaseViewModel {
         }
         // Still update contact data even if no phone numbers
         _updateContactDataWithUserInfo();
+        notifyListeners();
         return;
       }
 
-      // Get users by phone numbers from Firestore
+      // Show initial contact data (without matching) so UI isn't blocked
+      _updateContactDataWithUserInfo();
+      notifyListeners();
+
+      // Get users by phone numbers from Firestore (non-blocking, runs in background)
+      // Use optimized version with parallel queries and pagination
       _phoneToUserIdMap = await _firestoreService.getUsersByPhoneNumbers(
         phoneNumbers,
+        useCache: true,
+        maxConcurrentQueries: 5, // Process 5 batches in parallel
+        pageSize: 100, // Fetch 100 users per page
       );
 
-      // Update contact data to mark which contacts are app users
+      // Update contact data with matching results
       _updateContactDataWithUserInfo();
+      notifyListeners();
 
       if (kDebugMode) {
         print('✅ Matched ${_phoneToUserIdMap.length} contacts with app users');
@@ -125,6 +168,7 @@ class CreateChatRoomViewModel extends BaseViewModel {
       }
       // Still update contact data even on error
       _updateContactDataWithUserInfo();
+      notifyListeners();
     }
   }
 

@@ -3939,12 +3939,19 @@ class FirestoreService {
   /// 
   /// [phoneNumbers] - List of phone numbers to search for
   /// Returns a map of originalPhoneNumber -> userId
-  Future<Map<String, String>> getUsersByPhoneNumbers(List<String> phoneNumbers) async {
+  // Cache for phone number matching (in-memory, cleared on app restart)
+  static final Map<String, Map<String, String>> _phoneMatchingCache = {};
+  static const int _maxCacheSize = 100; // Max cached phone sets
+
+  Future<Map<String, String>> getUsersByPhoneNumbers(
+    List<String> phoneNumbers, {
+    bool useCache = true,
+    int maxConcurrentQueries = 5,
+    int pageSize = 100,
+  }) async {
     try {
       if (phoneNumbers.isEmpty) return {};
 
-      final phoneToUserId = <String, String>{};
-      
       // Helper function to normalize phone number
       String normalizePhone(String phone) {
         return phone
@@ -3963,6 +3970,30 @@ class FirestoreService {
         return phone;
       }
 
+      // Create a sorted list of normalized phones for cache key
+      final normalizedPhones = phoneNumbers
+          .where((p) => p.isNotEmpty)
+          .map((p) => normalizePhone(p))
+          .where((p) => p.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+      
+      if (normalizedPhones.isEmpty) return {};
+
+      // Create cache key from sorted normalized phones
+      final cacheKey = normalizedPhones.join('|');
+      
+      // Check cache first
+      if (useCache && _phoneMatchingCache.containsKey(cacheKey)) {
+        if (kDebugMode) {
+          print('✅ Using cached phone matching results');
+        }
+        return Map<String, String>.from(_phoneMatchingCache[cacheKey]!);
+      }
+
+      final phoneToUserId = <String, String>{};
+      
       // Create a map of normalized phone -> original phone for lookup
       final normalizedToOriginal = <String, String>{};
       for (final phone in phoneNumbers) {
@@ -3974,96 +4005,183 @@ class FirestoreService {
         }
       }
 
-      if (normalizedToOriginal.isEmpty) return {};
-
-      // Strategy 1: Try direct queries with whereIn (batch of 10)
+      // Strategy 1: Parallel batch queries with whereIn (batch of 10)
       final batchSize = 10;
-      final normalizedPhones = normalizedToOriginal.keys.toList();
       final processedPhones = <String>{};
+      final batches = <List<String>>[];
 
+      // Create batches
       for (int i = 0; i < normalizedPhones.length; i += batchSize) {
-        final batch = normalizedPhones.skip(i).take(batchSize).toList();
-        
-        try {
-          // Try querying with normalized phone numbers
-          final querySnapshot = await _firestore
-              .collection('users')
-              .where('phoneNumber', whereIn: batch)
-              .where('appIdentifier', isEqualTo: 'festivalrumor')
-              .get();
+        batches.add(normalizedPhones.skip(i).take(batchSize).toList());
+      }
 
-          for (var doc in querySnapshot.docs) {
-            final data = doc.data();
-            final storedPhone = data['phoneNumber'] as String?;
-            if (storedPhone != null) {
-              final storedNormalized = normalizePhone(storedPhone);
-              
-              // Match with batch phones
-              for (var contactNormalized in batch) {
-                if (storedNormalized == contactNormalized) {
-                  final originalPhone = normalizedToOriginal[contactNormalized]!;
-                  phoneToUserId[originalPhone] = doc.id;
-                  processedPhones.add(contactNormalized);
-                  break;
+      // Execute batches in parallel (with concurrency limit)
+      final semaphore = <Future<void>>[];
+      for (int i = 0; i < batches.length; i += maxConcurrentQueries) {
+        final batchGroup = batches.skip(i).take(maxConcurrentQueries);
+        
+        final futures = batchGroup.map((batch) async {
+          try {
+            final querySnapshot = await _firestore
+                .collection('users')
+                .where('phoneNumber', whereIn: batch)
+                .where('appIdentifier', isEqualTo: 'festivalrumor')
+                .get();
+
+            for (var doc in querySnapshot.docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final storedPhone = data['phoneNumber'] as String?;
+              if (storedPhone != null) {
+                final storedNormalized = normalizePhone(storedPhone);
+                
+                // Match with batch phones
+                for (var contactNormalized in batch) {
+                  if (storedNormalized == contactNormalized) {
+                    final originalPhone = normalizedToOriginal[contactNormalized]!;
+                    phoneToUserId[originalPhone] = doc.id;
+                    processedPhones.add(contactNormalized);
+                    break;
+                  }
                 }
               }
             }
+          } catch (e) {
+            if (kDebugMode) {
+              print('⚠️ Error in batch query: $e');
+            }
           }
-        } catch (e) {
-          if (kDebugMode) {
-            print('⚠️ Error in batch query: $e');
-          }
-        }
+        });
+
+        // Wait for this group to complete before starting next group
+        await Future.wait(futures);
       }
 
-      // Strategy 2: For unmatched phones, fetch all users and match by last 10 digits
+      // Strategy 2: For unmatched phones, use paginated queries with last 10 digits matching
       final unmatchedPhones = normalizedPhones
           .where((phone) => !processedPhones.contains(phone))
           .toList();
 
       if (unmatchedPhones.isNotEmpty) {
         try {
-          // Fetch all users with appIdentifier = 'festivalrumor' and phoneNumber field
-          final allUsersSnapshot = await _firestore
-              .collection('users')
-              .where('appIdentifier', isEqualTo: 'festivalrumor')
-              .where('phoneNumber', isNotEqualTo: null)
-              .get();
-
-          // Create a map of last 10 digits -> userId for all users
-          final last10ToUserId = <String, List<MapEntry<String, String>>>{};
-          for (var doc in allUsersSnapshot.docs) {
-            final data = doc.data();
-            final storedPhone = data['phoneNumber'] as String?;
-            if (storedPhone != null && storedPhone.isNotEmpty) {
-              final storedNormalized = normalizePhone(storedPhone);
-              final last10 = getLast10Digits(storedNormalized);
-              if (last10.length >= 10) {
-                if (!last10ToUserId.containsKey(last10)) {
-                  last10ToUserId[last10] = [];
-                }
-                last10ToUserId[last10]!.add(MapEntry(storedNormalized, doc.id));
+          // Build a set of last 10 digits from unmatched phones for efficient lookup
+          final unmatchedLast10Set = <String>{};
+          final last10ToNormalized = <String, List<String>>{};
+          
+          for (var phone in unmatchedPhones) {
+            final last10 = getLast10Digits(phone);
+            if (last10.length >= 10) {
+              unmatchedLast10Set.add(last10);
+              if (!last10ToNormalized.containsKey(last10)) {
+                last10ToNormalized[last10] = [];
               }
+              last10ToNormalized[last10]!.add(phone);
             }
           }
 
-          // Match unmatched contact phones by last 10 digits
-          for (var contactNormalized in unmatchedPhones) {
-            final contactLast10 = getLast10Digits(contactNormalized);
-            if (contactLast10.length >= 10) {
-              final matches = last10ToUserId[contactLast10];
-              if (matches != null && matches.isNotEmpty) {
-                // Use the first match (or could implement more sophisticated matching)
-                final originalPhone = normalizedToOriginal[contactNormalized]!;
-                phoneToUserId[originalPhone] = matches.first.value;
+          if (unmatchedLast10Set.isNotEmpty) {
+            // Fetch users in pages instead of all at once
+            QuerySnapshot? lastDoc;
+            final last10ToUserId = <String, List<MapEntry<String, String>>>{};
+            int totalFetched = 0;
+            const maxPages = 50; // Limit pages to prevent infinite loops
+            int pageCount = 0;
+
+            do {
+              Query query = _firestore
+                  .collection('users')
+                  .where('appIdentifier', isEqualTo: 'festivalrumor')
+                  .where('phoneNumber', isNotEqualTo: null)
+                  .limit(pageSize);
+
+              if (lastDoc != null) {
+                query = query.startAfterDocument(lastDoc.docs.last);
               }
+
+              final pageSnapshot = await query.get();
+              
+              if (pageSnapshot.docs.isEmpty) break;
+
+              // Process this page
+              for (var doc in pageSnapshot.docs) {
+                final data = doc.data() as Map<String, dynamic>;
+                final storedPhone = data['phoneNumber'] as String?;
+                if (storedPhone != null && storedPhone.isNotEmpty) {
+                  final storedNormalized = normalizePhone(storedPhone);
+                  final last10 = getLast10Digits(storedNormalized);
+                  
+                  // Only process if this last10 is in our unmatched set
+                  if (last10.length >= 10 && unmatchedLast10Set.contains(last10)) {
+                    if (!last10ToUserId.containsKey(last10)) {
+                      last10ToUserId[last10] = [];
+                    }
+                    last10ToUserId[last10]!.add(MapEntry(storedNormalized, doc.id));
+                  }
+                }
+              }
+
+              totalFetched += pageSnapshot.docs.length;
+              lastDoc = pageSnapshot;
+              pageCount++;
+
+              // Early exit if we've found matches for all unmatched phones
+              final foundLast10s = last10ToUserId.keys.toSet();
+              if (foundLast10s.length >= unmatchedLast10Set.length) {
+                // Check if we have at least one match for each unmatched phone
+                bool allMatched = true;
+                for (var last10 in unmatchedLast10Set) {
+                  if (!foundLast10s.contains(last10)) {
+                    allMatched = false;
+                    break;
+                  }
+                }
+                if (allMatched) break;
+              }
+
+              // Safety limit
+              if (pageCount >= maxPages) break;
+            } while (lastDoc!.docs.length == pageSize);
+
+            // Match unmatched contact phones by last 10 digits
+            for (var contactNormalized in unmatchedPhones) {
+              final contactLast10 = getLast10Digits(contactNormalized);
+              if (contactLast10.length >= 10) {
+                final matches = last10ToUserId[contactLast10];
+                if (matches != null && matches.isNotEmpty) {
+                  // Find best match (exact normalized match preferred)
+                  MapEntry<String, String>? bestMatch;
+                  for (var match in matches) {
+                    if (match.key == contactNormalized) {
+                      bestMatch = match;
+                      break;
+                    }
+                  }
+                  
+                  final matchToUse = bestMatch ?? matches.first;
+                  final originalPhone = normalizedToOriginal[contactNormalized]!;
+                  phoneToUserId[originalPhone] = matchToUse.value;
+                }
+              }
+            }
+
+            if (kDebugMode) {
+              print('📄 Fetched $totalFetched users in $pageCount pages for fallback matching');
             }
           }
         } catch (e) {
           if (kDebugMode) {
-            print('⚠️ Error in fallback matching: $e');
+            print('⚠️ Error in paginated fallback matching: $e');
           }
         }
+      }
+
+      // Cache the results (with size limit)
+      if (useCache) {
+        if (_phoneMatchingCache.length >= _maxCacheSize) {
+          // Remove oldest entry (simple FIFO - remove first key)
+          final firstKey = _phoneMatchingCache.keys.first;
+          _phoneMatchingCache.remove(firstKey);
+        }
+        _phoneMatchingCache[cacheKey] = Map<String, String>.from(phoneToUserId);
       }
 
       if (kDebugMode) {

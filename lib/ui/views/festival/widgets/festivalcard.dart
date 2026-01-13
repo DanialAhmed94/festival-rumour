@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_strings.dart';
@@ -6,7 +7,7 @@ import '../../../../core/constants/app_assets.dart';
 import '../festival_model.dart';
 
 
-class FestivalCard extends StatelessWidget {
+class FestivalCard extends StatefulWidget {
   final FestivalModel festival;
   final VoidCallback? onBack;
   final VoidCallback? onTap;
@@ -21,9 +22,42 @@ class FestivalCard extends StatelessWidget {
   });
 
   @override
+  State<FestivalCard> createState() => _FestivalCardState();
+}
+
+class _FestivalCardState extends State<FestivalCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  bool _hasPlayed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(seconds: 10),
+      vsync: this,
+    );
+    // Play animation once when card is first displayed
+    _playAnimation();
+  }
+
+  void _playAnimation() {
+    if (!_hasPlayed && mounted) {
+      _hasPlayed = true;
+      _animationController.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: AspectRatio(
         aspectRatio: AppDimensions.eventCardAspectRatio,
         child: Stack(
@@ -31,9 +65,9 @@ class FestivalCard extends StatelessWidget {
             // Background Image
             ClipRRect(
               borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
-              child: festival.imagepath.isNotEmpty
+                    child: widget.festival.imagepath.isNotEmpty
                   ? Image.network(
-                      festival.imagepath,
+                      widget.festival.imagepath,
                       fit: BoxFit.cover,
                       width: double.infinity,
                       height: double.infinity,
@@ -102,7 +136,7 @@ class FestivalCard extends StatelessWidget {
                           BorderRadius.circular(AppDimensions.radiusS),
                         ),
                         child: Text(
-                          _getStatusText(festival.status),
+                          _getStatusText(widget.festival.status),
                           style: const TextStyle(
                             color: AppColors.white,
                             fontWeight: FontWeight.bold,
@@ -130,9 +164,30 @@ class FestivalCard extends StatelessWidget {
                             Icons.arrow_forward_ios,
                             color: AppColors.primary,
                           ),
-                          onPressed: onNext,
+                          onPressed: widget.onNext,
                         ),
                       ),
+                    ),
+
+                    // Lottie Animation at center (plays for 2 seconds)
+                    AnimatedBuilder(
+                      animation: _animationController,
+                      builder: (context, child) {
+                        // Hide animation after 2 seconds
+                        if (_animationController.value >= 1.0) {
+                          return const SizedBox.shrink();
+                        }
+                        return Center(
+                          child: Lottie.asset(
+                            'assets/logos/anim_swipe.json',
+                            fit: BoxFit.contain,
+                            controller: _animationController,
+                            width: 200,
+                            height: 200,
+                            frameRate: FrameRate(60), // Optimize frame rate
+                          ),
+                        );
+                      },
                     ),
 
                     // Bottom Info
@@ -144,7 +199,7 @@ class FestivalCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Text(
-                            festival.location,
+                            widget.festival.location,
                             style: const TextStyle(
                               color: AppColors.white,
                               fontSize: AppDimensions.textS,
@@ -154,7 +209,7 @@ class FestivalCard extends StatelessWidget {
                           ),
                           const SizedBox(height: AppDimensions.spaceXS),
                           Text(
-                            festival.title,
+                            widget.festival.title,
                             style: const TextStyle(
                               color: AppColors.white,
                               fontSize: AppDimensions.textXXL,
@@ -164,7 +219,7 @@ class FestivalCard extends StatelessWidget {
                           ),
                           const SizedBox(height: AppDimensions.spaceXS),
                           Text(
-                            festival.date,
+                            widget.festival.date,
                             style: const TextStyle(
                               color: AppColors.white,
                               fontSize: AppDimensions.textS,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
@@ -100,11 +101,21 @@ class FestivalView extends BaseView<FestivalViewModel> {
                       _buildTopBarWithSearch(context, viewModel),
                       SizedBox(height: AppDimensions.spaceS),
                       //   SizedBox(height: context.getConditionalSpacing()),
-                      _titleHeadline(context),
+                    
                       SizedBox(height: AppDimensions.spaceS),
                       _buildLogosSection(context, viewModel),
                       SizedBox(height: AppDimensions.spaceS),
                       _buildAnimatedGlobalFeedRow(context, viewModel),
+                      SizedBox(height: AppDimensions.spaceS),
+                      Center(
+                        child: ResponsiveTextWidget(
+                          'Let\'s Go',
+                          textType: TextType.body,
+                          color: AppColors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 32,
+                        ),
+                      ),
                       SizedBox(
                         height:
                             context.isSmallScreen
@@ -124,6 +135,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
                   ),
                 ),
               ),
+
             ],
           ),
         ),
@@ -197,7 +209,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
         ),
       ),
       onTap: () {
-        viewModel.setFilter(filter);
+        viewModel.setFilter(context, filter);
         Navigator.pop(context);
       },
     );
@@ -211,15 +223,45 @@ class FestivalView extends BaseView<FestivalViewModel> {
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingS),
       child: Row(
         children: [
-          // Logo
-          Container(
-            height: context.getConditionalLogoSize(),
-            width: context.getConditionalLogoSize(),
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.transparent,
+          // User Profile Picture (tappable)
+          GestureDetector(
+            onTap: () => viewModel.navigateToProfile(context),
+            child: Container(
+              height: context.getConditionalLogoSize(),
+              width: context.getConditionalLogoSize(),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.white,
+                  width: 2,
+                ),
+              ),
+              child: ClipOval(
+                child: viewModel.userPhotoUrl != null && 
+                       viewModel.userPhotoUrl!.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: viewModel.userPhotoUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: AppColors.black.withOpacity(0.3),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.white,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Image.asset(
+                          AppAssets.profile,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : Image.asset(
+                        AppAssets.profile,
+                        fit: BoxFit.cover,
+                      ),
+              ),
             ),
-            child: SvgPicture.asset(AppAssets.logo, color: AppColors.primary),
           ),
           SizedBox(width: AppDimensions.spaceM),
 
@@ -307,6 +349,11 @@ class FestivalView extends BaseView<FestivalViewModel> {
                             )
                             : const SizedBox.shrink(),
                   ),
+                  
+                  SizedBox(width: context.getConditionalSpacing()),
+                  
+                  /// 🔹 Filter Dropdown Button
+                  _buildFilterDropdown(context, viewModel),
                 ],
               ),
             ),
@@ -409,32 +456,6 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
-  Widget _titleHeadline(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal:
-            context.isSmallScreen
-                ? AppDimensions.paddingXS
-                : context.isMediumScreen
-                ? AppDimensions.paddingS
-                : AppDimensions.paddingS,
-        vertical:
-            context.isSmallScreen
-                ? AppDimensions.paddingXS
-                : context.isMediumScreen
-                ? AppDimensions.paddingS
-                : AppDimensions.paddingS,
-      ),
-      decoration: BoxDecoration(color: AppColors.headlineBackground),
-      child: ResponsiveTextWidget(
-        AppStrings.headlineText,
-        textAlign: TextAlign.center,
-        fontSize: AppDimensions.textL,
-        //  fontWeight: FontWeight.bold,
-        color: AppColors.primary,
-      ),
-    );
-  }
 
   Widget _buildLogosSection(BuildContext context, FestivalViewModel viewModel) {
     return Container(
@@ -453,15 +474,16 @@ class FestivalView extends BaseView<FestivalViewModel> {
                 : AppDimensions.paddingM,
       ),
       decoration: BoxDecoration(color: AppColors.headlineBackground),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisSize: MainAxisSize.max,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Left side: Text section - Flexible to prevent overflow
-          Flexible(
-            flex: 2,
+          Center(
+            child: _buildScrollableLogos(context, viewModel),
+          ),
+          const SizedBox(height: 16),
+          Center(
             child: ResponsiveTextWidget(
-              'Tap into more awesomeness',
+              'Download our App Suite',
               textType: TextType.body,
               color: AppColors.white,
               fontWeight: FontWeight.bold,
@@ -469,53 +491,20 @@ class FestivalView extends BaseView<FestivalViewModel> {
                   context.isSmallScreen
                       ? AppDimensions.textM
                       : AppDimensions.textL,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          SizedBox(
-            width:
-                context.isSmallScreen
-                    ? AppDimensions.spaceM
-                    : AppDimensions.spaceL,
-          ),
-          // Right side: Three logos in white rounded containers
-          Flexible(
-            flex: 1,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerRight,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildLogoContainer(
-                    context,
-                    AppAssets.caLogo,
-                    onTap: () => viewModel.openAppStoreIOS(caAppStoreUrl),
-                  ),
-                  SizedBox(width: 16.0),
-                  _buildLogoContainer(
-                    context,
-                    AppAssets.festivalResourceLogo,
-                    onTap:
-                        () => viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
-                  ),
-                  SizedBox(width: 16.0),
-                  _buildLogoContainer(
-                    context,
-                    AppAssets.fetiefoodieLogo,
-                    onTap:
-                        () =>
-                            viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
-                  ),
-                ],
-              ),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildScrollableLogos(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
+    return _ScrollableLogosWidget(viewModel: viewModel);
+  }
+
 
   Widget _buildLogoContainer(
     BuildContext context,
@@ -563,6 +552,197 @@ class FestivalView extends BaseView<FestivalViewModel> {
   ) {
     return _AnimatedGlobalFeedRow(
       onTap: () => viewModel.navigateToGlobalFeed(context),
+    );
+  }
+
+  Widget _buildFilterDropdown(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
+    return PopupMenuButton<String>(
+      icon: const Icon(
+        Icons.filter_list,
+        color: AppColors.white,
+        size: 20,
+      ),
+      color: AppColors.black,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      onSelected: (value) {
+        viewModel.setFilter(context, value);
+      },
+      itemBuilder: (BuildContext context) => [
+        PopupMenuItem<String>(
+          value: AppStrings.live.toLowerCase(),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.live_tv,
+                color: AppColors.accent,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                AppStrings.live,
+                style: const TextStyle(
+                  color: AppColors.white,
+                  fontSize: AppDimensions.textM,
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: AppStrings.upcoming.toLowerCase(),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.schedule,
+                color: AppColors.accent,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                AppStrings.upcoming,
+                style: const TextStyle(
+                  color: AppColors.white,
+                  fontSize: AppDimensions.textM,
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: AppStrings.past.toLowerCase(),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.history,
+                color: AppColors.accent,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                AppStrings.past,
+                style: const TextStyle(
+                  color: AppColors.white,
+                  fontSize: AppDimensions.textM,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Scrollable Logos Widget with Navigation Arrows
+class _ScrollableLogosWidget extends StatefulWidget {
+  final FestivalViewModel viewModel;
+
+  const _ScrollableLogosWidget({required this.viewModel});
+
+  @override
+  State<_ScrollableLogosWidget> createState() => _ScrollableLogosWidgetState();
+}
+
+class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Left navigation arrow
+        Transform.scale(
+          scaleX: -1, // Flip horizontally for left arrow
+          child: Image.asset(
+            AppAssets.forwardIcon,
+            width: 24,
+            height: 24,
+            color: AppColors.white,
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Logos - using Row to show all three without scrolling
+        Flexible(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildLogoItem(
+                context,
+                AppAssets.crapAdviserLogo,
+                onTap: () => widget.viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
+              ),
+              const SizedBox(width: 16),
+              _buildLogoItem(
+                context,
+                AppAssets.organiserLogo,
+                onTap: () => widget.viewModel.openAppStoreIOS(caAppStoreUrl),
+              ),
+              const SizedBox(width: 16),
+              _buildLogoItem(
+                context,
+                AppAssets.festieFoodieLogo,
+                onTap: () => widget.viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Right navigation arrow
+        Image.asset(
+          AppAssets.forwardIcon,
+          width: 24,
+          height: 24,
+          color: AppColors.white,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLogoItem(
+    BuildContext context,
+    String assetPath, {
+    VoidCallback? onTap,
+  }) {
+    final logoSize =
+        context.isSmallScreen
+            ? 60.0
+            : context.isMediumScreen
+            ? 70.0
+            : 80.0;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: logoSize,
+        height: logoSize,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.asset(
+            assetPath,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: AppColors.grey600,
+                child: Center(
+                  child: Icon(
+                    Icons.image_not_supported,
+                    color: AppColors.grey400,
+                    size: logoSize * 0.5,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }
@@ -654,7 +834,7 @@ class _AnimatedGlobalFeedRowState extends State<_AnimatedGlobalFeedRow>
               children: [
                 Expanded(
                   child: ResponsiveTextWidget(
-                    'The world is buzzing 👀',
+                    'The world is buzzing (feed) 👀',
                     textType: TextType.body,
                     color: AppColors.white.withOpacity(0.9),
                     fontWeight: FontWeight.bold,

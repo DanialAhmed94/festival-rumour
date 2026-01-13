@@ -25,11 +25,15 @@ abstract class BaseView<T extends BaseViewModel> extends StatefulWidget {
   /// Called when an error occurs
   void onError(BuildContext context, String error) {
     // Default error handling - show snackbar
-    if (context.mounted) {
+    // Only show snackbar if error message is not null and not empty
+    if (context.mounted && error.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error),
-          backgroundColor: Theme.of(context).colorScheme.error,
+          content: Text(
+            error,
+            style: const TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -65,7 +69,9 @@ class _BaseViewState<T extends BaseViewModel> extends State<BaseView<T>> {
     if (_isHandlingError) return;
 
     // Handle errors
-    if (_viewModel.errorMessage != null && mounted) {
+    if (_viewModel.errorMessage != null && 
+        _viewModel.errorMessage!.isNotEmpty && 
+        mounted) {
       final errorMessage = _viewModel.errorMessage!;
       
       // Prevent handling the same error multiple times

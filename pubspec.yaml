@@ -134,12 +134,15 @@ dependencies:
 
   # Contacts
   flutter_contacts: ^1.1.7
+  # Lottie Animations
+  lottie: ^3.1.2
   firebase_core: ^4.2.1
   firebase_auth: ^6.1.2
   firebase_storage: ^13.0.4
   cloud_firestore: ^6.1.0
   geocoding: ^4.0.0
   flutter_screenutil: ^5.9.3
+  rename_app: ^1.6.5
 
 dev_dependencies:
   flutter_test:

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_sizes.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
@@ -15,6 +16,8 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_durations.dart';
 import '../../../core/api/festival_api_service.dart';
 import '../../../core/providers/festival_provider.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/firestore_service.dart';
 import 'festival_model.dart';
 
 const String caAppStoreUrl =
@@ -28,6 +31,8 @@ class FestivalViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FestivalApiService _festivalApiService = locator<FestivalApiService>();
   final GeocodingService _geocodingService = locator<GeocodingService>();
+  final AuthService _authService = locator<AuthService>();
+  final FirestoreService _firestoreService = locator<FirestoreService>();
 
   final List<FestivalModel> festivals = [];
   final List<FestivalModel> allFestivals = []; // Store all festivals
@@ -38,14 +43,61 @@ class FestivalViewModel extends BaseViewModel {
   late FocusNode searchFocusNode; // Search field focus node
   TextEditingController searchController =
       TextEditingController(); // Search field controller
+  String? _userPhotoUrl; // User profile photo URL
 
   final PageController pageController = PageController(
     viewportFraction: AppDimensions.pageViewportFraction,
   );
   Timer? _autoSlideTimer;
 
+  String? get userPhotoUrl => _userPhotoUrl;
+
   FestivalViewModel() {
     searchFocusNode = FocusNode();
+    _loadUserPhoto();
+  }
+
+  /// Load user profile photo URL
+  Future<void> _loadUserPhoto() async {
+    try {
+      final currentUser = _authService.currentUser;
+      if (currentUser == null) {
+        _userPhotoUrl = null;
+        notifyListeners();
+        return;
+      }
+
+      // Try to get from Firestore first (where uploaded images are stored)
+      try {
+        final userData = await _firestoreService.getUserData(currentUser.uid);
+        if (userData != null && 
+            userData['photoUrl'] != null && 
+            (userData['photoUrl'] as String).isNotEmpty) {
+          _userPhotoUrl = userData['photoUrl'] as String;
+          notifyListeners();
+          return;
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('Could not fetch user photo from Firestore: $e');
+        }
+      }
+
+      // Fallback to Firebase Auth photoURL
+      _userPhotoUrl = currentUser.photoURL;
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading user photo: $e');
+      }
+      _userPhotoUrl = null;
+      notifyListeners();
+    }
+  }
+
+  /// Navigate to profile screen
+  void navigateToProfile(BuildContext context) {
+    _navigationService.navigateTo(AppRoutes.profile);
   }
 
   Future<void> loadFestivals() async {
@@ -98,7 +150,8 @@ class FestivalViewModel extends BaseViewModel {
           (festivals.length * AppDimensions.pageBaseMultiplier) + 1;
       currentPage = base;
       _jumpToInitialWhenReady(base);
-      _startAutoSlide();
+      // Auto slide disabled
+      // _startAutoSlide();
     }
   }
 
@@ -230,9 +283,57 @@ class FestivalViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  void setFilter(String filter) {
+  void setFilter(BuildContext context, String filter) {
     currentFilter = filter;
     _applyFilter();
+    
+    // Reset to first page when filter changes
+    if (festivals.isNotEmpty) {
+      final int base =
+          (festivals.length * AppDimensions.pageBaseMultiplier) + 1;
+      currentPage = base;
+      _jumpToInitialWhenReady(base);
+    } else {
+      currentPage = 0;
+      if (pageController.hasClients) {
+        try {
+          pageController.jumpToPage(0);
+        } catch (e) {
+          if (kDebugMode) print('Error jumping to page: $e');
+        }
+      }
+    }
+    
+    // Show snackbar to notify user
+    String filterName;
+    switch (filter) {
+      case 'live':
+        filterName = AppStrings.live;
+        break;
+      case 'upcoming':
+        filterName = AppStrings.upcoming;
+        break;
+      case 'past':
+        filterName = AppStrings.past;
+        break;
+      default:
+        filterName = 'All';
+    }
+    
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Showing $filterName festivals',
+            style: const TextStyle(color: AppColors.white),
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+    
     notifyListeners();
   }
 
