@@ -24,9 +24,9 @@ class SignupViewModel extends BaseViewModel {
 
   /// 🔹 Country Code Selection
   CountryCode _selectedCountryCode = CountryCode(
-    name: 'Indonesia',
-    code: 'ID',
-    dialCode: '+62',
+    name: 'United Kingdom',
+    code: 'GB',
+    dialCode: '+44',
   );
 
   /// 🔹 Validation error
@@ -40,6 +40,8 @@ class SignupViewModel extends BaseViewModel {
   String? _verificationId;
   String? _phoneNumber;
   String? _errorMessage;
+
+  bool fromFestival = false;
 
   /// Focus node getter
   FocusNode get phoneFocus => _phoneFocus;
@@ -205,7 +207,7 @@ class SignupViewModel extends BaseViewModel {
     setLoading(false);
 
     // 🚀 Only navigate HERE, nowhere else
-    _navigationService.navigateTo(AppRoutes.otp);
+    _navigationService.navigateTo(AppRoutes.otp, arguments: fromFestival);
   }
 
   void _onCodeAutoRetrievalTimeout(String verificationId) {
@@ -267,7 +269,6 @@ class SignupViewModel extends BaseViewModel {
     }
   }
 
-
   /// 🔹 Get verification ID for OTP screen
   String? get verificationId => _verificationId;
 
@@ -276,18 +277,18 @@ class SignupViewModel extends BaseViewModel {
 
   /// 🔹 Get error message
   String? get errorMessage => _errorMessage;
-  
+
   /// 🔹 Snackbar error for UI display (debounced)
   String? _snackbarError;
   String? _lastShownError;
   Timer? _errorDebounceTimer;
-  
+
   String? get snackbarError => _snackbarError;
-  
+
   /// Update error message with debouncing
   void _updateErrorWithDebounce(String? error) {
     if (error == _lastShownError) return;
-    
+
     _errorDebounceTimer?.cancel();
     _errorDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (isDisposed) return;
@@ -296,7 +297,7 @@ class SignupViewModel extends BaseViewModel {
       notifyListeners();
     });
   }
-  
+
   void clearSnackbarError() {
     _snackbarError = null;
     notifyListeners();

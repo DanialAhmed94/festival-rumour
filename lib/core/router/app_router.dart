@@ -103,7 +103,8 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const SplashView());
 
     case AppRoutes.signup:
-      return SmoothPageRoute(page: const SignupView());
+      final fromFestival = settings.arguments as bool? ?? false;
+      return SmoothPageRoute(page: SignupView(fromFestival: fromFestival));
 
     case AppRoutes.signupEmail:
       return SmoothPageRoute(page: const SignupViewEmail());
@@ -119,7 +120,8 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const FestivalView());
 
     case AppRoutes.otp:
-      return SmoothPageRoute(page: OtpView());
+      final fromFestival = settings.arguments as bool? ?? false;
+      return SmoothPageRoute(page: OtpView(fromFestival: fromFestival));
 
     case AppRoutes.interest:
       return SmoothPageRoute(page: const InterestsView());
@@ -184,8 +186,12 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
 
     case AppRoutes.jobpost:
       final arguments = settings.arguments;
-      final category = arguments is Map ? arguments['category'] as String? : null;
-      final jobData = arguments is Map ? arguments['jobData'] as Map<String, dynamic>? : null;
+      final category =
+          arguments is Map ? arguments['category'] as String? : null;
+      final jobData =
+          arguments is Map
+              ? arguments['jobData'] as Map<String, dynamic>?
+              : null;
       return SmoothPageRoute(
         page: FestivalsJobPostView(
           category: category,
@@ -199,7 +205,7 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       // - Map: {'userId': String, 'fromRoute': String?} for navigation tracking
       String? userId;
       String? fromRoute;
-      
+
       if (settings.arguments is Map) {
         final args = settings.arguments as Map<String, dynamic>;
         userId = args['userId'] as String?;
@@ -207,7 +213,7 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       } else if (settings.arguments is String) {
         userId = settings.arguments as String;
       }
-      
+
       return SmoothPageRoute(
         page: ProfileView(
           userId: userId,
@@ -222,13 +228,13 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       int initialTab = 0;
       String username = 'username';
       String? userId;
-      
+
       if (settings.arguments is Map) {
         final args = settings.arguments as Map<String, dynamic>;
         initialTab = args['initialTab'] as int? ?? 0;
         username = args['username'] as String? ?? 'username';
         userId = args['userId'] as String?;
-        
+
         if (kDebugMode) {
           print('🔍 [AppRouter.profileList] Parsing arguments:');
           print('   initialTab: $initialTab');
@@ -239,16 +245,20 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       } else if (settings.arguments is int) {
         initialTab = settings.arguments as int;
       }
-      
+
       if (kDebugMode) {
         print('📱 [AppRouter.profileList] Creating ProfileListView');
         print('   initialTab: $initialTab');
         print('   username: $username');
         print('   userId: $userId');
       }
-      
+
       return SmoothPageRoute(
-        page: ProfileListView(initialTab: initialTab, Username: username, userId: userId),
+        page: ProfileListView(
+          initialTab: initialTab,
+          Username: username,
+          userId: userId,
+        ),
       );
 
     case AppRoutes.posts:
@@ -326,16 +336,14 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
         // If no userId provided, return to home or show error
         return SmoothPageRoute(page: const HomeView());
       }
-      return SmoothPageRoute(
-        page: ViewUserProfileView(userId: userId),
-      );
-    
+      return SmoothPageRoute(page: ViewUserProfileView(userId: userId));
+
     case AppRoutes.myJobs:
       return SmoothPageRoute(page: const MyJobsView());
-    
+
     case AppRoutes.allJobs:
       return SmoothPageRoute(page: const AllJobsView());
-    
+
     case AppRoutes.jobDetail:
       final jobData = settings.arguments as Map<String, dynamic>?;
       if (jobData == null) {

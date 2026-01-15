@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -50,7 +52,11 @@ class CreateChatRoomViewModel extends BaseViewModel {
   @override
   void init() {
     super.init();
-    _loadContacts();
+    if (Platform.isIOS) {
+      _loadContactsiOS();
+    } else {
+      _loadContacts();
+    }
   }
 
   @override
@@ -59,17 +65,45 @@ class CreateChatRoomViewModel extends BaseViewModel {
     super.dispose();
   }
 
+  Future<void> _loadContactsiOS() async {
+    await handleAsync(() async {
+      // ✅ flutter_contacts handles permission on iOS correctly
+      final granted = await FlutterContacts.requestPermission();
+
+      if (!granted) {
+        setError(AppStrings.contactsPermissionDenied);
+        return;
+      }
+
+      final contacts = await FlutterContacts.getContacts(
+        withProperties: true,
+        withPhoto: true,
+      );
+
+      if (contacts.isNotEmpty) {
+        _allContacts = contacts;
+        print("📇 Loaded ${contacts.length} contacts");
+      } else {
+        _createMockContacts();
+      }
+
+      _filterContacts();
+      await _matchContactsWithUsers();
+      notifyListeners();
+    }, errorMessage: AppStrings.failedToLoadContacts);
+  }
+
   /// Load contacts from device or create mock contacts if unavailable
   Future<void> _loadContacts() async {
     await handleAsync(() async {
       // Check permission status first (especially important for Android)
       PermissionStatus permissionStatus = await Permission.contacts.status;
-      
+
       // If not granted, request permission
       if (!permissionStatus.isGranted) {
         permissionStatus = await Permission.contacts.request();
       }
-      
+
       // Check if permission is permanently denied
       if (permissionStatus.isPermanentlyDenied) {
         setError(
@@ -77,7 +111,7 @@ class CreateChatRoomViewModel extends BaseViewModel {
         );
         return;
       }
-      
+
       // If still not granted after request, show error
       if (!permissionStatus.isGranted) {
         setError(AppStrings.contactsPermissionDenied);
@@ -109,11 +143,11 @@ class CreateChatRoomViewModel extends BaseViewModel {
       }
 
       _filterContacts();
-      
+
       // Update UI immediately with contacts (before matching)
       _updateContactDataWithUserInfo();
       notifyListeners();
-      
+
       // Match contacts asynchronously (non-blocking)
       // This allows UI to show contacts immediately while matching happens in background
       _matchContactsWithUsers();

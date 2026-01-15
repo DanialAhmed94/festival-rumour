@@ -43,17 +43,19 @@ class SettingsView extends BaseView<SettingsViewModel> {
         ],
       ),
       body: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-          horizontal: context.isSmallScreen 
-              ? AppDimensions.paddingM
-              : context.isMediumScreen 
+        padding: EdgeInsets.symmetric(
+          horizontal:
+              context.isSmallScreen
+                  ? AppDimensions.paddingM
+                  : context.isMediumScreen
                   ? AppDimensions.paddingL
                   : AppDimensions.paddingXL,
-          vertical: context.isSmallScreen 
-              ? AppDimensions.paddingS
-              : context.isMediumScreen 
+          vertical:
+              context.isSmallScreen
+                  ? AppDimensions.paddingS
+                  : context.isMediumScreen
                   ? AppDimensions.paddingM
-                  : AppDimensions.paddingL
+                  : AppDimensions.paddingL,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,10 +64,10 @@ class SettingsView extends BaseView<SettingsViewModel> {
             const ResponsiveTextWidget(
               AppStrings.general,
               textType: TextType.body,
-                fontWeight: FontWeight.bold,
-                fontSize: AppDimensions.textM,
-                color: AppColors.grey700,
-              ),
+              fontWeight: FontWeight.bold,
+              fontSize: AppDimensions.textM,
+              color: AppColors.grey700,
+            ),
             const SizedBox(height: AppDimensions.paddingS),
 
             _buildTile(
@@ -88,30 +90,40 @@ class SettingsView extends BaseView<SettingsViewModel> {
               title: AppStrings.privacySettingsPro,
               subtitle: AppStrings.includingAnonymousToggle,
               value: viewModel.privacy,
-              onChanged: (value) => _showPrivacyUpgradeDialog(context, viewModel),
+              onChanged:
+                  (value) => _showPrivacyUpgradeDialog(context, viewModel),
             ),
             _buildTile(
               icon: Icons.military_tech_outlined,
               iconColor: AppColors.orange,
               title: AppStrings.badges,
-              trailing: const Icon(Icons.arrow_forward_ios,
-                  size: AppDimensions.iconS, color: AppColors.grey600),
+              trailing: const Icon(
+                Icons.arrow_forward_ios,
+                size: AppDimensions.iconS,
+                color: AppColors.grey600,
+              ),
               onTap: () => _showBadgesDialog(context),
             ),
             _buildTile(
               icon: Icons.leaderboard_outlined,
               iconColor: AppColors.brown,
               title: AppStrings.leaderBoard,
-              trailing: const Icon(Icons.arrow_forward_ios,
-                  size: AppDimensions.iconS, color: AppColors.grey600),
+              trailing: const Icon(
+                Icons.arrow_forward_ios,
+                size: AppDimensions.iconS,
+                color: AppColors.grey600,
+              ),
               onTap: viewModel.openLeaderboard,
             ),
             _buildTile(
               icon: Icons.work_outline,
               iconColor: AppColors.blue,
               title: 'My Jobs',
-              trailing: const Icon(Icons.arrow_forward_ios,
-                  size: AppDimensions.iconS, color: AppColors.grey600),
+              trailing: const Icon(
+                Icons.arrow_forward_ios,
+                size: AppDimensions.iconS,
+                color: AppColors.grey600,
+              ),
               onTap: viewModel.openMyJobs,
             ),
             _buildTile(
@@ -135,10 +147,10 @@ class SettingsView extends BaseView<SettingsViewModel> {
             const ResponsiveTextWidget(
               AppStrings.others,
               textType: TextType.body,
-                fontWeight: FontWeight.bold,
-                fontSize: AppDimensions.textM,
-                color: AppColors.grey700,
-              ),
+              fontWeight: FontWeight.bold,
+              fontSize: AppDimensions.textM,
+              color: AppColors.grey700,
+            ),
             const SizedBox(height: AppDimensions.paddingS),
             _buildTile(
               icon: Icons.star_outline,
@@ -164,7 +176,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
               title: AppStrings.termsAndConditions,
               onTap: viewModel.openTerms,
             ),
-          ]
+          ],
         ),
       ),
     );
@@ -180,7 +192,9 @@ class SettingsView extends BaseView<SettingsViewModel> {
     VoidCallback? onTap,
   }) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceXS),
+      contentPadding: const EdgeInsets.symmetric(
+        vertical: AppDimensions.spaceXS,
+      ),
       leading: CircleAvatar(
         backgroundColor: iconColor.withOpacity(0.15),
         child: Icon(icon, color: iconColor),
@@ -188,9 +202,9 @@ class SettingsView extends BaseView<SettingsViewModel> {
       title: ResponsiveTextWidget(
         title,
         textType: TextType.body,
-          color: titleColor ?? AppColors.grey900,
-          fontWeight: FontWeight.w600,
-        ),
+        color: titleColor ?? AppColors.grey900,
+        fontWeight: FontWeight.w600,
+      ),
       trailing: trailing,
       onTap: onTap,
     );
@@ -206,7 +220,9 @@ class SettingsView extends BaseView<SettingsViewModel> {
     required ValueChanged<bool> onChanged,
   }) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceXS),
+      contentPadding: const EdgeInsets.symmetric(
+        vertical: AppDimensions.spaceXS,
+      ),
       leading: CircleAvatar(
         backgroundColor: iconColor.withOpacity(0.15),
         child: Icon(icon, color: iconColor),
@@ -217,13 +233,14 @@ class SettingsView extends BaseView<SettingsViewModel> {
         color: AppColors.grey900,
         fontWeight: FontWeight.w600,
       ),
-      subtitle: subtitle != null
-          ? ResponsiveTextWidget(
-        subtitle,
-        textType: TextType.caption,
-        color: AppColors.grey600,
-      )
-          : null,
+      subtitle:
+          subtitle != null
+              ? ResponsiveTextWidget(
+                subtitle,
+                textType: TextType.caption,
+                color: AppColors.grey600,
+              )
+              : null,
       trailing: Switch(
         value: value,
         activeColor: Colors.black,
@@ -231,6 +248,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
       ),
     );
   }
+
   void _showBadgesDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -245,16 +263,17 @@ class SettingsView extends BaseView<SettingsViewModel> {
           elevation: 8,
           child: Container(
             padding: EdgeInsets.all(
-              context.isSmallScreen 
+              context.isSmallScreen
                   ? AppDimensions.paddingM
-                  : context.isMediumScreen 
-                      ? AppDimensions.paddingL
-                      : AppDimensions.paddingXL
+                  : context.isMediumScreen
+                  ? AppDimensions.paddingL
+                  : AppDimensions.paddingXL,
             ),
             constraints: BoxConstraints(
-              maxWidth: context.isSmallScreen 
-                  ? context.screenWidth * 0.9
-                  : context.isMediumScreen 
+              maxWidth:
+                  context.isSmallScreen
+                      ? context.screenWidth * 0.9
+                      : context.isMediumScreen
                       ? context.screenWidth * 0.7
                       : context.screenWidth * 0.5,
               maxHeight: MediaQuery.of(context).size.height * 0.8,
@@ -300,8 +319,8 @@ class SettingsView extends BaseView<SettingsViewModel> {
                     ),
                     child: const ResponsiveTextWidget(
                       AppStrings.close,
-                      textType: TextType.body, 
-                      fontSize: AppDimensions.textM, 
+                      textType: TextType.body,
+                      fontSize: AppDimensions.textM,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -313,6 +332,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
       },
     );
   }
+
   Widget _buildBadgeItem({
     required IconData icon,
     required String title,
@@ -324,7 +344,8 @@ class SettingsView extends BaseView<SettingsViewModel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start, // 👈 text left-aligned
         children: [
-          Center( // 👈 icon stays centered
+          Center(
+            // 👈 icon stays centered
             child: CircleAvatar(
               radius: AppDimensions.avatarM,
               backgroundColor: color.withOpacity(0.15),
@@ -354,7 +375,10 @@ class SettingsView extends BaseView<SettingsViewModel> {
   }
 
   /// Show logout confirmation dialog
-  void _showLogoutConfirmation(BuildContext context, SettingsViewModel viewModel) {
+  void _showLogoutConfirmation(
+    BuildContext context,
+    SettingsViewModel viewModel,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -390,10 +414,26 @@ class SettingsView extends BaseView<SettingsViewModel> {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(dialogContext);
-                viewModel.logout();
+
+                // 🔥 SHOW LOADER
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  barrierColor: Colors.black.withOpacity(0.4),
+                  builder:
+                      (_) => const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.onPrimary,
+                        ),
+                      ),
+                );
+
+                // 🔥 PERFORM LOGOUT
+                await viewModel.logout();
               },
+
               child: const ResponsiveTextWidget(
                 AppStrings.confirm,
                 textType: TextType.body,
@@ -409,7 +449,10 @@ class SettingsView extends BaseView<SettingsViewModel> {
   }
 
   /// Show delete account confirmation dialog
-  void _showDeleteAccountConfirmation(BuildContext context, SettingsViewModel viewModel) {
+  void _showDeleteAccountConfirmation(
+    BuildContext context,
+    SettingsViewModel viewModel,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -447,6 +490,20 @@ class SettingsView extends BaseView<SettingsViewModel> {
             TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
+
+                // 🔥 SHOW LOADER
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  barrierColor: Colors.black.withOpacity(0.4),
+                  builder:
+                      (_) => const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.onPrimary,
+                        ),
+                      ),
+                );
+
                 viewModel.deleteAccount();
               },
               child: const ResponsiveTextWidget(
@@ -464,7 +521,10 @@ class SettingsView extends BaseView<SettingsViewModel> {
   }
 
   /// Show privacy upgrade dialog (paid feature)
-  void _showPrivacyUpgradeDialog(BuildContext context, SettingsViewModel viewModel) {
+  void _showPrivacyUpgradeDialog(
+    BuildContext context,
+    SettingsViewModel viewModel,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -532,11 +592,11 @@ class SettingsView extends BaseView<SettingsViewModel> {
           backgroundColor: AppColors.primary,
           child: Container(
             padding: EdgeInsets.all(
-              context.isSmallScreen 
+              context.isSmallScreen
                   ? AppDimensions.paddingM
-                  : context.isMediumScreen 
-                      ? AppDimensions.paddingL
-                      : AppDimensions.paddingXL
+                  : context.isMediumScreen
+                  ? AppDimensions.paddingL
+                  : AppDimensions.paddingXL,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -555,7 +615,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
                   ),
                 ),
                 const SizedBox(height: AppDimensions.paddingM),
-                
+
                 // Title
                 const ResponsiveTextWidget(
                   'Enjoying Festival Rumour?',
@@ -566,7 +626,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppDimensions.paddingS),
-                
+
                 // Message
                 const ResponsiveTextWidget(
                   'Your feedback helps us improve! Please rate us on the App Store.',
@@ -576,7 +636,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: AppDimensions.paddingL),
-                
+
                 // Buttons
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -607,7 +667,9 @@ class SettingsView extends BaseView<SettingsViewModel> {
                             vertical: AppDimensions.paddingM,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                            borderRadius: BorderRadius.circular(
+                              AppDimensions.radiusM,
+                            ),
                           ),
                         ),
                         child: const Row(
@@ -638,5 +700,4 @@ class SettingsView extends BaseView<SettingsViewModel> {
       },
     );
   }
-
 }

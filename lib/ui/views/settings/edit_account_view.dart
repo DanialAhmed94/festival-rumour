@@ -24,10 +24,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            error,
-            style: const TextStyle(color: Colors.black),
-          ),
+          content: Text(error, style: const TextStyle(color: Colors.black)),
           backgroundColor: Theme.of(context).colorScheme.error,
           behavior: SnackBarBehavior.floating,
         ),
@@ -61,7 +58,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             });
           });
         }
-        
+
         return Scaffold(
           backgroundColor: AppColors.grey50,
           appBar: AppBar(
@@ -83,36 +80,51 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                 padding: const EdgeInsets.only(right: AppDimensions.paddingM),
                 child: IntrinsicWidth(
                   child: ElevatedButton.icon(
-                    onPressed: vm.isLoading 
-                        ? null 
-                        : () {
-                            // Hide keyboard
-                            FocusScope.of(context).unfocus();
-                            if (kDebugMode) {
-                              print('🔘 [EditAccountView] Save button tapped');
-                              print('   isLoading: ${vm.isLoading}');
-                            }
-                            // Validate form first to show errors on screen
-                            if (vm.formKey.currentState?.validate() ?? false) {
-                              vm.saveChanges();
-                            } else {
+                    onPressed:
+                        (vm.isLoading && !vm.isDeletingAccount)
+                            ? null
+                            : () {
+                              // Hide keyboard
+                              FocusScope.of(context).unfocus();
                               if (kDebugMode) {
-                                print('❌ [EditAccountView] Form validation failed');
+                                print(
+                                  '🔘 [EditAccountView] Save button tapped',
+                                );
+                                print('   isLoading: ${vm.isLoading}');
                               }
-                            }
-                          },
-                    icon: vm.isLoading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                              // Validate form first to show errors on screen
+                              if (vm.formKey.currentState?.validate() ??
+                                  false) {
+                                vm.saveChanges();
+                              } else {
+                                if (kDebugMode) {
+                                  print(
+                                    '❌ [EditAccountView] Form validation failed',
+                                  );
+                                }
+                              }
+                            },
+                    icon:
+                        (vm.isLoading && !vm.isDeletingAccount)
+                            ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.black,
+                                ),
+                              ),
+                            )
+                            : const Icon(
+                              Icons.save,
+                              size: 18,
+                              color: Colors.black,
                             ),
-                          )
-                        : const Icon(Icons.save, size: 18, color: Colors.black),
                     label: ResponsiveTextWidget(
-                      vm.isLoading ? 'Saving...' : AppStrings.save,
+                      (vm.isLoading && !vm.isDeletingAccount)
+                          ? 'Saving...'
+                          : AppStrings.save,
                       textType: TextType.caption,
                       fontWeight: FontWeight.bold,
                       color: Colors.black,
@@ -125,7 +137,9 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                         vertical: AppDimensions.paddingS,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                        borderRadius: BorderRadius.circular(
+                          AppDimensions.radiusM,
+                        ),
                       ),
                     ),
                   ),
@@ -144,20 +158,20 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                     children: [
                       _buildProfileSection(context, vm),
                       const SizedBox(height: AppDimensions.paddingL),
-                      
+
                       _buildPersonalInfoSection(context, vm),
                       const SizedBox(height: AppDimensions.paddingL),
-                      
+
                       _buildContactInfoSection(context, vm),
                       const SizedBox(height: AppDimensions.paddingL),
-                      
+
                       // Password section in separate form
                       Form(
                         key: vm.passwordFormKey,
                         child: _buildPasswordSection(context, vm),
                       ),
                       const SizedBox(height: AppDimensions.paddingL),
-                      
+
                       _buildDangerZoneSection(context, vm),
                       const SizedBox(height: AppDimensions.paddingXL),
                     ],
@@ -165,7 +179,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                 ),
               ),
               // Loading overlay
-              if (vm.isLoading)
+              if (vm.isLoading && !vm.isDeletingAccount)
                 Container(
                   color: Colors.black.withOpacity(0.3),
                   child: Center(
@@ -173,13 +187,17 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                       padding: const EdgeInsets.all(AppDimensions.paddingL),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+                        borderRadius: BorderRadius.circular(
+                          AppDimensions.radiusL,
+                        ),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.black,
+                            ),
                           ),
                           const SizedBox(height: AppDimensions.paddingM),
                           ResponsiveTextWidget(
@@ -200,7 +218,10 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     );
   }
 
-  Widget _buildProfileSection(BuildContext context, EditAccountViewModel viewModel) {
+  Widget _buildProfileSection(
+    BuildContext context,
+    EditAccountViewModel viewModel,
+  ) {
     return Container(
       padding: const EdgeInsets.all(AppDimensions.paddingL),
       decoration: BoxDecoration(
@@ -242,7 +263,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             ],
           ),
           const SizedBox(height: AppDimensions.paddingL),
-          
+
           // Profile Image with professional styling
           Stack(
             children: [
@@ -290,14 +311,14 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             ],
           ),
           const SizedBox(height: AppDimensions.paddingM),
-          
+
           const ResponsiveTextWidget(
             AppStrings.tapToUploadImage,
             textType: TextType.caption,
             color: AppColors.grey600,
           ),
           const SizedBox(height: AppDimensions.paddingXS),
-          
+
           const ResponsiveTextWidget(
             "Recommended: 400x400px, Max 5MB",
             textType: TextType.caption,
@@ -308,7 +329,10 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     );
   }
 
-  Widget _buildPersonalInfoSection(BuildContext context, EditAccountViewModel viewModel) {
+  Widget _buildPersonalInfoSection(
+    BuildContext context,
+    EditAccountViewModel viewModel,
+  ) {
     return Container(
       padding: const EdgeInsets.all(AppDimensions.paddingL),
       decoration: BoxDecoration(
@@ -351,7 +375,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             ],
           ),
           const SizedBox(height: AppDimensions.paddingL),
-          
+
           // Name Field
           _buildTextField(
             controller: viewModel.nameController,
@@ -364,7 +388,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: AppDimensions.paddingM),
-          
+
           // Bio Field
           _buildTextField(
             controller: viewModel.bioController,
@@ -382,7 +406,10 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     );
   }
 
-  Widget _buildContactInfoSection(BuildContext context, EditAccountViewModel viewModel) {
+  Widget _buildContactInfoSection(
+    BuildContext context,
+    EditAccountViewModel viewModel,
+  ) {
     return Container(
       padding: const EdgeInsets.all(AppDimensions.paddingL),
       decoration: BoxDecoration(
@@ -425,7 +452,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             ],
           ),
           const SizedBox(height: AppDimensions.paddingL),
-          
+
           // Email Field (Read-only)
           _buildTextField(
             controller: viewModel.emailController,
@@ -438,7 +465,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             helperText: "Email cannot be changed",
           ),
           const SizedBox(height: AppDimensions.paddingM),
-          
+
           // Phone Field (Read-only)
           _buildTextField(
             controller: viewModel.phoneController,
@@ -455,7 +482,10 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     );
   }
 
-  Widget _buildPasswordSection(BuildContext context, EditAccountViewModel viewModel) {
+  Widget _buildPasswordSection(
+    BuildContext context,
+    EditAccountViewModel viewModel,
+  ) {
     return Container(
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       decoration: BoxDecoration(
@@ -479,7 +509,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             color: AppColors.onPrimary,
           ),
           const SizedBox(height: AppDimensions.paddingM),
-          
+
           // Current Password
           _buildPasswordField(
             controller: viewModel.currentPasswordController,
@@ -492,7 +522,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             onSubmitted: (_) => viewModel.handleCurrentPasswordSubmitted(),
           ),
           const SizedBox(height: AppDimensions.paddingM),
-          
+
           // New Password
           _buildPasswordField(
             controller: viewModel.newPasswordController,
@@ -505,7 +535,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             onSubmitted: (_) => viewModel.handleNewPasswordSubmitted(),
           ),
           const SizedBox(height: AppDimensions.paddingM),
-          
+
           // Confirm Password
           _buildPasswordField(
             controller: viewModel.confirmPasswordController,
@@ -518,21 +548,24 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             onSubmitted: (_) => viewModel.handleConfirmPasswordSubmitted(),
           ),
           const SizedBox(height: AppDimensions.paddingM),
-          
+
           // Change Password Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
                 // Validate password form first
-                if (viewModel.passwordFormKey.currentState?.validate() ?? false) {
+                if (viewModel.passwordFormKey.currentState?.validate() ??
+                    false) {
                   viewModel.changePassword();
                 }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingM),
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppDimensions.paddingM,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                 ),
@@ -550,14 +583,17 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     );
   }
 
-  Widget _buildDangerZoneSection(BuildContext context, EditAccountViewModel viewModel) {
+  Widget _buildDangerZoneSection(
+    BuildContext context,
+    EditAccountViewModel viewModel,
+  ) {
     return Container(
       padding: EdgeInsets.all(
-        context.isSmallScreen 
+        context.isSmallScreen
             ? AppDimensions.paddingM
-            : context.isMediumScreen 
-                ? AppDimensions.paddingL
-                : AppDimensions.paddingXL
+            : context.isMediumScreen
+            ? AppDimensions.paddingL
+            : AppDimensions.paddingXL,
       ),
       decoration: BoxDecoration(
         color: AppColors.red.withOpacity(0.1),
@@ -574,14 +610,14 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             color: AppColors.red,
           ),
           const SizedBox(height: AppDimensions.paddingS),
-          
+
           const ResponsiveTextWidget(
             AppStrings.deleteAccountWarning,
             textType: TextType.caption,
             color: AppColors.red,
           ),
           const SizedBox(height: AppDimensions.paddingM),
-          
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -589,7 +625,9 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.red,
                 foregroundColor: AppColors.onPrimary,
-                padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingM),
+                padding: const EdgeInsets.symmetric(
+                  vertical: AppDimensions.paddingM,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                 ),
@@ -636,7 +674,10 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: readOnly ? AppColors.grey500 : AppColors.primary),
+        prefixIcon: Icon(
+          icon,
+          color: readOnly ? AppColors.grey500 : AppColors.primary,
+        ),
         helperText: helperText,
         helperStyle: TextStyle(
           color: AppColors.grey600,
@@ -668,10 +709,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
           borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
-        errorStyle: const TextStyle(
-          color: Colors.red,
-          fontSize: 12,
-        ),
+        errorStyle: const TextStyle(color: Colors.red, fontSize: 12),
         errorMaxLines: 3,
         isDense: false,
       ),
@@ -715,10 +753,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-          borderSide: const BorderSide(
-            color: AppColors.accent,
-            width: 2,
-          ),
+          borderSide: const BorderSide(color: AppColors.accent, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
@@ -728,17 +763,17 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
           borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
-        errorStyle: const TextStyle(
-          color: Colors.red,
-          fontSize: 12,
-        ),
+        errorStyle: const TextStyle(color: Colors.red, fontSize: 12),
         errorMaxLines: 3,
         isDense: false,
       ),
     );
   }
 
-  void _showDeleteAccountDialog(BuildContext context, EditAccountViewModel viewModel) {
+  void _showDeleteAccountDialog(
+    BuildContext context,
+    EditAccountViewModel viewModel,
+  ) {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -766,6 +801,17 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
             TextButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  barrierColor: Colors.black.withOpacity(0.4),
+                  builder:
+                      (_) => const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.onBackground,
+                        ),
+                      ),
+                );
                 viewModel.deleteAccount();
               },
               child: const ResponsiveTextWidget(
@@ -814,12 +860,10 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
               borderSide: const BorderSide(color: AppColors.primary),
             ),
           ),
-          items: items.map((String item) {
-            return DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            );
-          }).toList(),
+          items:
+              items.map((String item) {
+                return DropdownMenuItem<String>(value: item, child: Text(item));
+              }).toList(),
           onChanged: onChanged,
         ),
       ],
@@ -880,43 +924,42 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
         ),
       );
     }
-    
+
     // Show Firebase URL if available
-    if (viewModel.profileImageUrl != null && viewModel.profileImageUrl!.isNotEmpty) {
+    if (viewModel.profileImageUrl != null &&
+        viewModel.profileImageUrl!.isNotEmpty) {
       return ClipOval(
         child: CachedNetworkImage(
           imageUrl: viewModel.profileImageUrl!,
           fit: BoxFit.cover,
           width: 140,
           height: 140,
-          placeholder: (context, url) => Container(
-            color: AppColors.grey100,
-            child: const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+          placeholder:
+              (context, url) => Container(
+                color: AppColors.grey100,
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                  ),
+                ),
               ),
-            ),
-          ),
-          errorWidget: (context, url, error) => const Icon(
-            Icons.person,
-            size: 70,
-            color: AppColors.grey500,
-          ),
+          errorWidget:
+              (context, url, error) =>
+                  const Icon(Icons.person, size: 70, color: AppColors.grey500),
         ),
       );
     }
-    
+
     // Default placeholder
-    return const Icon(
-      Icons.person,
-      size: 70,
-      color: AppColors.grey500,
-    );
+    return const Icon(Icons.person, size: 70, color: AppColors.grey500);
   }
 
   /// Show beautiful dialog for image source selection
-  void _showImageSourceDialog(BuildContext context, EditAccountViewModel viewModel) {
+  void _showImageSourceDialog(
+    BuildContext context,
+    EditAccountViewModel viewModel,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -940,7 +983,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                   color: AppColors.onPrimary,
                 ),
                 const SizedBox(height: AppDimensions.paddingXL),
-                
+
                 // Camera Option
                 GestureDetector(
                   onTap: () async {
@@ -952,7 +995,9 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                     padding: const EdgeInsets.all(AppDimensions.paddingL),
                     decoration: BoxDecoration(
                       color: AppColors.accent.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                      borderRadius: BorderRadius.circular(
+                        AppDimensions.radiusM,
+                      ),
                       border: Border.all(color: AppColors.accent, width: 2),
                     ),
                     child: Row(
@@ -988,9 +1033,9 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: AppDimensions.paddingL),
-                
+
                 // Gallery Option
                 GestureDetector(
                   onTap: () async {
@@ -1002,7 +1047,9 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                     padding: const EdgeInsets.all(AppDimensions.paddingL),
                     decoration: BoxDecoration(
                       color: AppColors.accent.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                      borderRadius: BorderRadius.circular(
+                        AppDimensions.radiusM,
+                      ),
                       border: Border.all(color: AppColors.accent, width: 2),
                     ),
                     child: Row(
@@ -1038,9 +1085,9 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: AppDimensions.paddingL),
-                
+
                 // Cancel Button
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
@@ -1060,4 +1107,3 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
     );
   }
 }
- 

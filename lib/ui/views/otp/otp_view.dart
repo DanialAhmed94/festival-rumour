@@ -15,7 +15,9 @@ import '../../../shared/extensions/context_extensions.dart';
 import 'opt_view_model.dart';
 
 class OtpView extends BaseView<OtpViewModel> {
-  OtpView({super.key});
+  final bool fromFestival;
+
+  OtpView({super.key, this.fromFestival = false});
 
   @override
   OtpViewModel createViewModel() => OtpViewModel();
@@ -37,6 +39,7 @@ class OtpView extends BaseView<OtpViewModel> {
 
   @override
   Widget buildView(BuildContext context, OtpViewModel viewModel) {
+    viewModel.fromFestival = fromFestival;
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -44,136 +47,143 @@ class OtpView extends BaseView<OtpViewModel> {
         statusBarBrightness: Brightness.dark,
       ),
     );
-    
+
     return SafeArea(
       child: Scaffold(
         resizeToAvoidBottomInset: true,
         body: Stack(
-            children: [
-              // Main content
-              Positioned.fill(
-                child: ResponsiveContainer(
-                  mobileMaxWidth: double.infinity,
-                  tabletMaxWidth: double.infinity,
-                  desktopMaxWidth: double.infinity,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: context.isSmallScreen 
-                          ? AppDimensions.paddingM
-                          : context.isMediumScreen 
-                              ? AppDimensions.paddingL
-                              : AppDimensions.paddingXL,
-                      vertical: context.isSmallScreen 
-                          ? AppDimensions.paddingM
-                          : context.isMediumScreen 
-                              ? AppDimensions.paddingL
-                              : AppDimensions.paddingXL
+          children: [
+            // Main content
+            Positioned.fill(
+              child: ResponsiveContainer(
+                mobileMaxWidth: double.infinity,
+                tabletMaxWidth: double.infinity,
+                desktopMaxWidth: double.infinity,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal:
+                        context.isSmallScreen
+                            ? AppDimensions.paddingM
+                            : context.isMediumScreen
+                            ? AppDimensions.paddingL
+                            : AppDimensions.paddingXL,
+                    vertical:
+                        context.isSmallScreen
+                            ? AppDimensions.paddingM
+                            : context.isMediumScreen
+                            ? AppDimensions.paddingL
+                            : AppDimensions.paddingXL,
+                  ),
+                  decoration: const BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage(AppAssets.bottomsheet),
+                      fit: BoxFit.cover,
                     ),
-                    decoration: const BoxDecoration(
-                      image: DecorationImage(
-                        image: AssetImage(AppAssets.bottomsheet),
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    child: Selector<OtpViewModel, String?>(
-                      selector: (_, vm) => vm.errorText,
-                      builder: (context, errorText, child) {
-                        final viewModel = Provider.of<OtpViewModel>(context, listen: false);
-                        
-                        // Show snackbar when errorText changes
-                        if (errorText != null && 
-                            errorText.isNotEmpty && 
-                            errorText != _lastShownError &&
-                            !_isShowingSnackbar) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (context.mounted && errorText == viewModel.errorText) {
-                              _showErrorSnackbarIfNeeded(context, viewModel);
-                            }
-                          });
-                        }
-                        
-                        return SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: AppDimensions.spaceXXL),
-                              const ResponsiveTextWidget(
-                                AppStrings.enterCode,
-                                textType: TextType.body, 
-                                fontSize: AppDimensions.textXL,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primary,
-                              ),
-                              const SizedBox(height: AppDimensions.spaceS),
-                              ResponsiveTextWidget(
-                                viewModel.phoneNumber != null 
+                  ),
+                  child: Selector<OtpViewModel, String?>(
+                    selector: (_, vm) => vm.errorText,
+                    builder: (context, errorText, child) {
+                      final viewModel = Provider.of<OtpViewModel>(
+                        context,
+                        listen: false,
+                      );
+
+                      // Show snackbar when errorText changes
+                      if (errorText != null &&
+                          errorText.isNotEmpty &&
+                          errorText != _lastShownError &&
+                          !_isShowingSnackbar) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (context.mounted &&
+                              errorText == viewModel.errorText) {
+                            _showErrorSnackbarIfNeeded(context, viewModel);
+                          }
+                        });
+                      }
+
+                      return SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: AppDimensions.spaceXXL),
+                            const ResponsiveTextWidget(
+                              AppStrings.enterCode,
+                              textType: TextType.body,
+                              fontSize: AppDimensions.textXL,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                            const SizedBox(height: AppDimensions.spaceS),
+                            ResponsiveTextWidget(
+                              viewModel.phoneNumber != null
                                   ? "${AppStrings.enterOtpDescription}\n${viewModel.displayPhoneNumber}"
                                   : "${AppStrings.enterOtpDescription}\nPlease check your phone for the verification code.",
-                                textType: TextType.body, 
-                                color: AppColors.primary, 
-                                fontSize: AppDimensions.textM,
-                              ),
+                              textType: TextType.body,
+                              color: AppColors.primary,
+                              fontSize: AppDimensions.textM,
+                            ),
 
-                              const SizedBox(height: AppDimensions.paddingL),
-                              _buildOtpInput(context, viewModel),
+                            const SizedBox(height: AppDimensions.paddingL),
+                            _buildOtpInput(context, viewModel),
 
-                              // Enhanced error display
-                              if (viewModel.errorInfo != null) ...[
-                                const SizedBox(height: AppDimensions.paddingM),
-                                _buildErrorCard(context, viewModel),
-                              ],
-
-                              // Attempts remaining indicator
-                              if (viewModel.remainingAttempts < 5 && viewModel.remainingAttempts > 0) ...[
-                                const SizedBox(height: AppDimensions.paddingS),
-                                _buildAttemptsIndicator(context, viewModel),
-                              ],
-
-                              const SizedBox(height: AppDimensions.paddingXL),
-                              _buildSignupButton(context, viewModel),
-                              const SizedBox(height: AppDimensions.spaceM),
-                              _buildResendButton(context, viewModel),
+                            // Enhanced error display
+                            if (viewModel.errorInfo != null) ...[
+                              const SizedBox(height: AppDimensions.paddingM),
+                              _buildErrorCard(context, viewModel),
                             ],
-                          ),
-                        );
-                      },
-                      child: const SizedBox.shrink(),
-                    ),
+
+                            // Attempts remaining indicator
+                            // if (viewModel.remainingAttempts < 5 &&
+                            //     viewModel.remainingAttempts > 0) ...[
+                            //   const SizedBox(height: AppDimensions.paddingS),
+                            //   _buildAttemptsIndicator(context, viewModel),
+                            // ],
+                            const SizedBox(height: AppDimensions.paddingXL),
+                            _buildSignupButton(context, viewModel),
+                            const SizedBox(height: AppDimensions.spaceM),
+                            _buildResendButton(context, viewModel),
+                          ],
+                        ),
+                      );
+                    },
+                    child: const SizedBox.shrink(),
                   ),
                 ),
               ),
-              // Back button
-              Positioned(
-                left: AppDimensions.paddingM,
-                top: AppDimensions.spaceXL,
-                child: CustomBackButton(
-                  onTap: () {
-                    context.pop();
-                  },
-                ),
+            ),
+            // Back button
+            Positioned(
+              left: AppDimensions.paddingM,
+              top: AppDimensions.spaceXL,
+              child: CustomBackButton(
+                onTap: () {
+                  context.pop();
+                },
               ),
-              // Loading overlay
-              if (viewModel.isLoading)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black.withOpacity(0.3),
-                    child: const Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+            ),
+            // Loading overlay
+            if (viewModel.isLoading)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.3),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppColors.accent,
                       ),
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
-      );
-    
+      ),
+    );
   }
 
   Widget _buildOtpInput(BuildContext context, OtpViewModel viewModel) {
     final isDisabled = viewModel.isLoading || !viewModel.hasRemainingAttempts;
-    
+
     return Opacity(
       opacity: isDisabled ? 0.5 : 1.0,
       child: IgnorePointer(
@@ -188,26 +198,30 @@ class OtpView extends BaseView<OtpViewModel> {
           pinTheme: PinTheme(
             shape: PinCodeFieldShape.circle,
             borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-            fieldHeight: context.isSmallScreen 
-                ? AppDimensions.buttonHeightL
-                : context.isMediumScreen 
+            fieldHeight:
+                context.isSmallScreen
+                    ? AppDimensions.buttonHeightL
+                    : context.isMediumScreen
                     ? AppDimensions.buttonHeightXL
                     : AppDimensions.buttonHeightXL * 1.2,
-            fieldWidth: context.isSmallScreen 
-                ? AppDimensions.buttonHeightL
-                : context.isMediumScreen 
+            fieldWidth:
+                context.isSmallScreen
+                    ? AppDimensions.buttonHeightL
+                    : context.isMediumScreen
                     ? AppDimensions.buttonHeightXL
                     : AppDimensions.buttonHeightXL * 1.2,
             inactiveFillColor: AppColors.onPrimary,
             activeFillColor: AppColors.onPrimary,
             selectedFillColor: AppColors.onPrimary,
             inactiveColor: AppColors.white,
-            selectedColor: viewModel.errorInfo?.type == OtpErrorType.invalidCode 
-                ? AppColors.accent 
-                : AppColors.primary,
-            activeColor: viewModel.errorInfo?.type == OtpErrorType.invalidCode 
-                ? AppColors.accent 
-                : AppColors.primary,
+            selectedColor:
+                viewModel.errorInfo?.type == OtpErrorType.invalidCode
+                    ? AppColors.accent
+                    : AppColors.primary,
+            activeColor:
+                viewModel.errorInfo?.type == OtpErrorType.invalidCode
+                    ? AppColors.accent
+                    : AppColors.primary,
           ),
           textStyle: const TextStyle(
             color: AppColors.primary,
@@ -230,16 +244,13 @@ class OtpView extends BaseView<OtpViewModel> {
 
   Widget _buildErrorCard(BuildContext context, OtpViewModel viewModel) {
     final errorInfo = viewModel.errorInfo!;
-    
+
     return Container(
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       decoration: BoxDecoration(
         color: AppColors.accent.withOpacity(0.1),
         borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-        border: Border.all(
-          color: AppColors.accent.withOpacity(0.3),
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.accent.withOpacity(0.3), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -266,7 +277,9 @@ class OtpView extends BaseView<OtpViewModel> {
           if (errorInfo.recoverySuggestion != null) ...[
             const SizedBox(height: AppDimensions.spaceS),
             Padding(
-              padding: const EdgeInsets.only(left: AppDimensions.iconM + AppDimensions.spaceS),
+              padding: const EdgeInsets.only(
+                left: AppDimensions.iconM + AppDimensions.spaceS,
+              ),
               child: ResponsiveTextWidget(
                 errorInfo.recoverySuggestion!,
                 textType: TextType.body,
@@ -335,82 +348,95 @@ class OtpView extends BaseView<OtpViewModel> {
 
   Widget _buildSignupButton(BuildContext context, OtpViewModel viewModel) {
     final isEnabled = viewModel.canVerify && !viewModel.isLoading;
-    
+
     return SizedBox(
       width: double.infinity,
-      height: context.isSmallScreen 
-          ? AppDimensions.buttonHeightL
-          : context.isMediumScreen 
+      height:
+          context.isSmallScreen
+              ? AppDimensions.buttonHeightL
+              : context.isMediumScreen
               ? AppDimensions.buttonHeightXL
               : AppDimensions.buttonHeightXL * 1.1,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: isEnabled ? AppColors.accent : AppColors.accent.withOpacity(0.5),
+          backgroundColor:
+              isEnabled ? AppColors.accent : AppColors.accent.withOpacity(0.5),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
           ),
           elevation: isEnabled ? 4 : 0,
         ),
-        onPressed: isEnabled
-            ? () {
-                viewModel.unfocusOtpField();
-                viewModel.verifyCode();
-              }
-            : null,
-        child: viewModel.isLoading
-            ? const SizedBox(
-                width: AppDimensions.iconS,
-                height: AppDimensions.iconS,
-                child: CircularProgressIndicator(
+        onPressed:
+            isEnabled
+                ? () {
+                  viewModel.unfocusOtpField();
+                  viewModel.verifyCode();
+                }
+                : null,
+        child:
+            viewModel.isLoading
+                ? const SizedBox(
+                  width: AppDimensions.iconS,
+                  height: AppDimensions.iconS,
+                  child: CircularProgressIndicator(
+                    color: AppColors.onPrimary,
+                    strokeWidth: AppDimensions.borderWidthS,
+                  ),
+                )
+                : ResponsiveTextWidget(
+                  viewModel.fromFestival
+                      ? "Verify & Continue"
+                      : AppStrings.signUp,
+                  textType: TextType.body,
                   color: AppColors.onPrimary,
-                  strokeWidth: AppDimensions.borderWidthS,
+                  fontSize: AppDimensions.textXL,
                 ),
-              )
-            : const ResponsiveTextWidget(
-                AppStrings.signUp,
-                textType: TextType.body, 
-                color: AppColors.onPrimary,
-                fontSize: AppDimensions.textXL,
-              ),
       ),
     );
   }
 
   Widget _buildResendButton(BuildContext context, OtpViewModel viewModel) {
     final canResend = viewModel.canResend && !viewModel.isLoading;
-    
+
     return Center(
       child: Column(
         children: [
           TextButton.icon(
             onPressed: canResend ? viewModel.resendCode : null,
-            icon: viewModel.isResending
-                ? const SizedBox(
-                    width: AppDimensions.iconS,
-                    height: AppDimensions.iconS,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+            icon:
+                viewModel.isResending
+                    ? const SizedBox(
+                      width: AppDimensions.iconS,
+                      height: AppDimensions.iconS,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.primary,
+                        ),
+                      ),
+                    )
+                    : const Icon(
+                      Icons.refresh,
+                      size: AppDimensions.iconS,
+                      color: AppColors.primary,
                     ),
-                  )
-                : const Icon(
-                    Icons.refresh,
-                    size: AppDimensions.iconS,
-                    color: AppColors.primary,
-                  ),
             label: ResponsiveTextWidget(
-              viewModel.isResending 
+              viewModel.isResending
                   ? 'Sending...'
                   : viewModel.canResend
-                      ? AppStrings.resendCode
-                      : 'Resend Code',
-              textType: TextType.body, 
-              color: canResend ? AppColors.primary : AppColors.primary.withOpacity(0.5),
+                  ? AppStrings.resendCode
+                  : 'Resend Code',
+              textType: TextType.body,
+              color:
+                  canResend
+                      ? AppColors.primary
+                      : AppColors.primary.withOpacity(0.5),
               fontSize: AppDimensions.textM,
               fontWeight: FontWeight.w500,
             ),
           ),
-          if (!viewModel.canResend && viewModel.errorInfo?.requiresResend == true) ...[
+          if (!viewModel.canResend &&
+              viewModel.errorInfo?.requiresResend == true) ...[
             const SizedBox(height: AppDimensions.spaceXS),
             ResponsiveTextWidget(
               'Please request a new code to continue.',
@@ -441,11 +467,14 @@ class OtpView extends BaseView<OtpViewModel> {
     }
   }
 
-  void _showErrorSnackbarIfNeeded(BuildContext context, OtpViewModel viewModel) {
+  void _showErrorSnackbarIfNeeded(
+    BuildContext context,
+    OtpViewModel viewModel,
+  ) {
     final errorText = viewModel.errorText;
-    
-    if (errorText == null || 
-        errorText.isEmpty || 
+
+    if (errorText == null ||
+        errorText.isEmpty ||
         !context.mounted ||
         _isShowingSnackbar ||
         errorText == _lastShownError) {
@@ -454,49 +483,53 @@ class OtpView extends BaseView<OtpViewModel> {
 
     _isShowingSnackbar = true;
     _lastShownError = errorText;
-    
+
     viewModel.clearErrorText();
     viewModel.clearError();
-    
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              _getErrorIcon(viewModel.errorInfo?.type ?? OtpErrorType.unknown),
-              color: Colors.white,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                errorText,
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'Dismiss',
-          textColor: Colors.white,
-          onPressed: () {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            _isShowingSnackbar = false;
-          },
-        ),
-      ),
-    ).closed.then((_) {
-      _isShowingSnackbar = false;
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (_lastShownError == errorText) {
-          _lastShownError = null;
-        }
-      });
-    });
-  }
 
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  _getErrorIcon(
+                    viewModel.errorInfo?.type ?? OtpErrorType.unknown,
+                  ),
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    errorText,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Dismiss',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                _isShowingSnackbar = false;
+              },
+            ),
+          ),
+        )
+        .closed
+        .then((_) {
+          _isShowingSnackbar = false;
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (_lastShownError == errorText) {
+              _lastShownError = null;
+            }
+          });
+        });
+  }
 }

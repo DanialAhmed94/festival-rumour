@@ -15,13 +15,17 @@ import '../../../../shared/widgets/responsive_widget.dart';
 import 'signup_view_model.dart';
 
 class SignupView extends BaseView<SignupViewModel> {
-  const SignupView({super.key});
+  final bool fromFestival;
+  const SignupView({super.key, this.fromFestival = false});
 
   @override
   SignupViewModel createViewModel() => SignupViewModel();
 
   @override
   Widget buildView(BuildContext context, SignupViewModel viewModel) {
+    viewModel.fromFestival = this.fromFestival; // ✔ works correctly
+    final bool fromFestival = this.fromFestival; // ✔ works correctly
+
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: Stack(
@@ -55,11 +59,11 @@ class SignupView extends BaseView<SignupViewModel> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildHeader(context),
+                      _buildHeader(context, fromFestival),
                       SizedBox(height: context.responsiveSpaceL),
                       _buildPhoneInput(context, viewModel),
                       SizedBox(height: context.responsiveSpaceL),
-                      _buildDescription(context),
+                      _buildDescription(context, fromFestival),
                       SizedBox(height: context.responsiveSpaceXL),
                       _buildContinueButton(context, viewModel),
                     ],
@@ -76,7 +80,7 @@ class SignupView extends BaseView<SignupViewModel> {
               alignment: Alignment.center,
               child: const LoadingWidget(color: AppColors.onPrimary),
             ),
-          
+
           /// 🔹 Error snackbar handler
           _ErrorSnackbarHandler(viewModel: viewModel),
         ],
@@ -84,13 +88,13 @@ class SignupView extends BaseView<SignupViewModel> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, bool fromFestival) {
     return Row(
       children: [
         CustomBackButton(onTap: () => context.pop()),
         SizedBox(width: context.responsiveSpaceM),
         ResponsiveTextWidget(
-          AppStrings.signUp,
+          fromFestival ? "Verify Contact" : AppStrings.signUp,
           style: TextStyle(
             fontSize: context.responsiveTextXXL,
             fontWeight: FontWeight.bold,
@@ -191,9 +195,11 @@ class SignupView extends BaseView<SignupViewModel> {
     );
   }
 
-  Widget _buildDescription(BuildContext context) {
+  Widget _buildDescription(BuildContext context, bool fromFestival) {
     return ResponsiveTextWidget(
-      AppStrings.otpdescription,
+      fromFestival
+          ? "Please verify your phone number to continue."
+          : AppStrings.otpdescription,
       style: TextStyle(
         color: AppColors.white,
         fontSize: context.responsiveTextM,
@@ -241,9 +247,9 @@ class SignupView extends BaseView<SignupViewModel> {
 /// Error snackbar handler widget - only shows when error changes
 class _ErrorSnackbarHandler extends StatelessWidget {
   final SignupViewModel viewModel;
-  
+
   const _ErrorSnackbarHandler({required this.viewModel});
-  
+
   @override
   Widget build(BuildContext context) {
     return Selector<SignupViewModel, String?>(

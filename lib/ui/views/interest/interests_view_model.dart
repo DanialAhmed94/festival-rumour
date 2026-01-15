@@ -145,32 +145,47 @@ class InterestsViewModel extends BaseViewModel {
 
     if (isOAuthFlow && storedCredential != null) {
       // Google/Apple OAuth flow - sign in with stored credential
-      if (kDebugMode) {
-        print('🔐 [SIGNUP] Creating user via OAuth flow ($providerType)');
-        print('   Email: $email');
-        print('   Display Name: $displayName');
-      }
 
-      if (email == null || email.isEmpty) {
-        throw ValidationException(
-          message: 'Email is required. Please start signup again.',
-          code: 'MISSING_REQUIRED_FIELDS',
+      if (providerType == "google") {
+        if (kDebugMode) {
+          print('🔐 [SIGNUP] Creating user via OAuth flow ($providerType)');
+          print('   Email: $email');
+          print('   Display Name: $displayName');
+        }
+
+        if (email == null || email.isEmpty) {
+          throw ValidationException(
+            message: 'Email is required. Please start signup again.',
+            code: 'MISSING_REQUIRED_FIELDS',
+          );
+        }
+
+        // Sign in to Firebase Auth with stored credential
+        userCredential = await _authService.signInWithCredential(
+          storedCredential,
         );
+
+        // Validate user creation was successful
+        if (userCredential.user == null) {
+          throw UnknownException(
+            message: 'Failed to create user account. Please try again.',
+          );
+        }
+
+        user = userCredential.user!;
+      } else {
+        user = FirebaseAuth.instance.currentUser;
+        if (kDebugMode) {
+          print("🔐 [SIGNUP] Using already signed-in OAuth user");
+          print(" UID: ${user?.uid}");
+          print(" Email: ${email ?? 'no email'}");
+        }
+        if (user == null) {
+          throw UnknownException(
+            message: 'OAuth user not found in Firebase. Please try again.',
+          );
+        }
       }
-
-      // Sign in to Firebase Auth with stored credential
-      userCredential = await _authService.signInWithCredential(
-        storedCredential,
-      );
-
-      // Validate user creation was successful
-      if (userCredential.user == null) {
-        throw UnknownException(
-          message: 'Failed to create user account. Please try again.',
-        );
-      }
-
-      user = userCredential.user!;
     } else {
       // Email/Password flow - create new user
       if (kDebugMode) {
@@ -376,13 +391,33 @@ class InterestsViewModel extends BaseViewModel {
     // For OAuth flow, password will be null (not applicable)
     // App identifier 'festivalrumor' will be added to differentiate users
     // postCount will be initialized to 0
+    String finalName = displayName ?? "";
+
+    // If provider is Apple → always generate display name when null/empty
+    if (providerType == "apple") {
+      if (finalName.isEmpty) {
+        finalName = generateCaptainName(); // Captain 123456
+        print("🍎 Apple user missing name → Generated: $finalName");
+      }
+    }
+
+    // Google & Email keep their normal display name.
+    // If Google has name, finalName stays same.
+    // If Google gives null → leave it empty (Firebase won't break).
+
+    // ⭐ Update FirebaseAuth user profile
+    if (finalName.isNotEmpty) {
+      await _authService.updateDisplayName(finalName);
+    }
+
+    print("email ${email}");
+
+    // ⭐ 3️⃣ Save user data to Firestore
     await _firestoreService.saveUserData(
-      userId: user.uid,
+      userId: user!.uid,
       email: email!,
-      password:
-          password ??
-          '', // Will be hashed in FirestoreService (empty string for OAuth)
-      displayName: displayName,
+      password: password ?? "",
+      displayName: finalName, // <--- Captain ### goes here
       phoneNumber: phoneNumber,
       interests: interests,
       photoUrl: photoUrl,
@@ -399,6 +434,11 @@ class InterestsViewModel extends BaseViewModel {
     // Clear stored signup data after successful creation and Firestore save
     // Only clear if everything succeeded
     _signupDataService.clearAllData();
+  }
+
+  String generateCaptainName() {
+    final random = DateTime.now().millisecondsSinceEpoch % 1000000;
+    return "Captain$random";
   }
 
   /// Compress image to specified quality percentage (0-100)

@@ -29,14 +29,11 @@ class WelcomeViewModel extends BaseViewModel {
     setLoading(true);
 
     try {
-      // Get Google credentials WITHOUT signing in
+      // 1️⃣ Get Google credentials WITHOUT signing in
       final credentialsData = await _authService.getGoogleCredentials();
 
       if (credentialsData == null) {
-        // User cancelled the sign-in
-        if (kDebugMode) {
-          print("ℹ️ [LOGIN] Google Sign-In cancelled by user");
-        }
+        if (kDebugMode) print("ℹ️ [LOGIN] Google Sign-In cancelled by user");
         setLoading(false);
         return;
       }
@@ -52,53 +49,59 @@ class WelcomeViewModel extends BaseViewModel {
         return;
       }
 
-      // At this point, email is guaranteed to be non-null
       final userEmail = email;
 
       if (kDebugMode) {
-        print("🔍 [LOGIN] Checking if user exists with email: $userEmail");
+        print("🔍 Checking Firestore for Google user: $userEmail");
       }
 
-      // Check if user already exists in Firestore
-      final userExists = await _firestoreService.checkUserExistsByEmail(
-        userEmail,
+      // 2️⃣ Check if Firestore user exists
+      final exists = await _firestoreService.checkUserExistsByEmail(userEmail);
+
+      // 3️⃣ Sign in with Google → FirebaseAuth
+      final userCredential = await _authService.signInWithCredential(
+        credential,
       );
+      User? user = userCredential.user;
 
-      if (userExists) {
-        // Returning user - sign in and navigate to Festivals
-        if (kDebugMode) {
-          print("✅ [LOGIN] Returning user found, signing in...");
-        }
+      if (user == null) {
+        setError("Google sign-in failed.");
+        setLoading(false);
+        return;
+      }
 
-        final userCredential = await _authService.signInWithCredential(
-          credential,
-        );
-        final user = userCredential.user;
+      final uid = user.uid;
+      print("🔵 Google Logged In → UID = $uid");
 
-        if (user != null) {
-          // Save login state to storage
-          await _storageService.setLoggedIn(true, userId: user.uid);
-          if (kDebugMode) {
-            print('✅ [LOGIN] Google Sign-In successful (returning user)');
-            print('   User ID: ${user.uid}');
-            print('   Email: ${user.email}');
-            print('   Navigating to: ${AppRoutes.festivals}');
-          }
+      // ---------------------------------------------------------
+      // ⭐ 4️⃣ UPDATE FirebaseAuth current user data for Google
+      // ---------------------------------------------------------
 
-          // Navigate to festival screen
-          _navigationService.navigateTo(AppRoutes.festivals);
-        }
-      } else {
-        // First-time user - store credentials and navigate to Photo Upload
-        if (kDebugMode) {
-          print("🆕 [LOGIN] New user detected, starting signup flow...");
-          print("   Email: $userEmail");
-          print("   Display Name: $displayName");
-          print("   Photo URL: $photoURL");
-          print("   Navigating to: ${AppRoutes.photoUpload}");
-        }
+      // Update name from Google
+      if (displayName != null && displayName.isNotEmpty) {
+        await user.updateDisplayName(displayName);
+      }
 
-        // Store Google credential and user data in SignupDataService
+      // Update photo from Google
+      if (photoURL != null && photoURL.isNotEmpty) {
+        await user.updatePhotoURL(photoURL);
+      }
+
+      // Refresh FirebaseAuth currentUser
+      await user.reload();
+      user = _authService.currentUser;
+
+      print("🔥 Updated FirebaseAuth user:");
+      print("Name: ${user?.displayName}");
+      print("Photo: ${user?.photoURL}");
+
+      // ---------------------------------------------------------
+      // ⭐ 5️⃣ If new user → go to signup flow
+      // ---------------------------------------------------------
+      if (!exists) {
+        print("🆕 New Google user → starting signup flow");
+
+        // First-time Google user
         _signupDataService.setGoogleCredential(
           credential: credential,
           email: userEmail,
@@ -106,16 +109,26 @@ class WelcomeViewModel extends BaseViewModel {
           photoURL: photoURL,
         );
 
-        // Navigate to Photo Upload screen (first step of signup flow)
+        // ⭐ FIX: Store data for signup creation screen
+        _signupDataService.setEmail(userEmail);
+        _signupDataService.setDisplayName(displayName ?? "");
+        _signupDataService.setProfileImage(photoURL);
+
         _navigationService.navigateTo(AppRoutes.photoUpload);
+        setLoading(false);
+        return;
       }
+
+      // ---------------------------------------------------------
+      // ⭐ 6️⃣ Existing user → login normally
+      // ---------------------------------------------------------
+      await _storageService.setLoggedIn(true, userId: uid);
+
+      print("✅ Returning Google user → navigating to festivals");
+      _navigationService.navigateTo(AppRoutes.festivals);
     } catch (error) {
-      if (kDebugMode) {
-        print("❌ [LOGIN] Google Sign-In Error: $error");
-      }
-      // Clear any stored data on error
+      print("❌ Google Login Error: $error");
       _signupDataService.clearCredentials();
-      // Error handling is done by the global error handler
       setError('Failed to sign in with Google. Please try again.');
     } finally {
       setLoading(false);
@@ -130,142 +143,176 @@ class WelcomeViewModel extends BaseViewModel {
     setLoading(true);
 
     try {
-      // Get Apple credentials WITHOUT signing in
+      // 1️⃣ Get Apple credentials (non-Firebase sign in)
       final credentialsData = await _authService.getAppleCredentials();
-
       if (credentialsData == null) {
-        // User cancelled the sign-in
-        if (kDebugMode) {
-          print("ℹ️ [LOGIN] Apple Sign-In cancelled by user");
-        }
+        print("ℹ️ Apple Sign-In cancelled");
         setLoading(false);
         return;
       }
 
       final credential = credentialsData['credential'] as AuthCredential;
-      final email = credentialsData['email'] as String?;
       final displayName = credentialsData['displayName'] as String?;
       final photoURL = credentialsData['photoURL'] as String?;
 
-      // Note: Apple may not provide email on subsequent sign-ins
-      // If email is null, we need to handle it differently
-      if (email == null || email.isEmpty) {
-        // Try to sign in to get email from Firebase Auth
-        // This happens when user has already signed in with Apple before
-        try {
-          final userCredential = await _authService.signInWithCredential(
-            credential,
-          );
-          final user = userCredential.user;
-
-          if (user != null && user.email != null) {
-            // Check if user exists in Firestore
-            final userExists = await _firestoreService.checkUserExistsByEmail(
-              user.email!,
-            );
-
-            if (userExists) {
-              // Returning user
-              await _storageService.setLoggedIn(true, userId: user.uid);
-              if (kDebugMode) {
-                print('✅ [LOGIN] Apple Sign-In successful (returning user)');
-                print('   User ID: ${user.uid}');
-                print('   Email: ${user.email}');
-              }
-              _navigationService.navigateTo(AppRoutes.festivals);
-              setLoading(false);
-              return;
-            } else {
-              // New user but email not provided by Apple
-              // Sign out and show error
-              await _authService.signOut();
-              setError(
-                'Unable to get email from Apple account. Please try again or use email signup.',
-              );
-              setLoading(false);
-              return;
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print("⚠️ [LOGIN] Error during Apple credential check: $e");
-          }
-          setError('Unable to verify Apple account. Please try again.');
-          setLoading(false);
-          return;
-        }
-      }
-
-      // At this point, email is guaranteed to be non-null
-      // (we would have returned earlier if it was null)
-      final userEmail = email!;
-
-      if (kDebugMode) {
-        print("🔍 [LOGIN] Checking if user exists with email: $userEmail");
-      }
-
-      // Check if user already exists in Firestore
-      final userExists = await _firestoreService.checkUserExistsByEmail(
-        userEmail,
+      // 2️⃣ Sign in to Firebase using Apple credential
+      final userCredential = await _authService.signInWithCredential(
+        credential,
       );
+      final user = userCredential.user;
 
-      if (userExists) {
-        // Returning user - sign in and navigate to Festivals
-        if (kDebugMode) {
-          print("✅ [LOGIN] Returning user found, signing in...");
-        }
+      if (user == null) {
+        setError("Apple sign-in failed");
+        setLoading(false);
+        return;
+      }
 
-        final userCredential = await _authService.signInWithCredential(
-          credential,
-        );
-        final user = userCredential.user;
+      final uid = user.uid;
+      print("🍎 Apple User UID: $uid");
 
-        if (user != null) {
-          // Save login state to storage
-          await _storageService.setLoggedIn(true, userId: user.uid);
-          if (kDebugMode) {
-            print('✅ [LOGIN] Apple Sign-In successful (returning user)');
-            print('   User ID: ${user.uid}');
-            print('   Email: ${user.email}');
-            print('   Navigating to: ${AppRoutes.festivals}');
-          }
+      // 3️⃣ ALWAYS update FirebaseAuth currentUser
+      if (displayName != null && displayName.isNotEmpty) {
+        await user.updateDisplayName(displayName);
+      }
+      if (photoURL != null) {
+        await user.updatePhotoURL(photoURL);
+      }
+      await user.reload(); // refresh currentUser
 
-          // Navigate to festival screen
-          _navigationService.navigateTo(AppRoutes.festivals);
-        }
+      print("🔥 FirebaseAuth updated user:");
+      print("Name: ${user.displayName}");
+      print("Photo: ${user.photoURL}");
+
+      // 4️⃣ Check if the UID exists in Firestore (ONLY THIS!)
+      final exists = await _firestoreService.checkUserExistsByUid(uid);
+
+      if (exists) {
+        // Returning user → direct login
+        await _storageService.setLoggedIn(true, userId: uid);
+
+        print("✅ Existing Apple user → navigating to festivals");
+        _navigationService.navigateTo(AppRoutes.festivals);
       } else {
-        // First-time user - store credentials and navigate to Photo Upload
-        if (kDebugMode) {
-          print("🆕 [LOGIN] New user detected, starting signup flow...");
-          print("   Email: $userEmail");
-          print("   Display Name: $displayName");
-          print("   Photo URL: $photoURL");
-          print("   Navigating to: ${AppRoutes.photoUpload}");
-        }
+        // NEW user → start signup flow
+        print("🆕 New Apple user → starting signup");
 
-        // Store Apple credential and user data in SignupDataService
         _signupDataService.setAppleCredential(
           credential: credential,
-          email: userEmail,
+          email: user.email ?? '', // may be null → it's OK
           displayName: displayName,
           photoURL: photoURL,
         );
 
-        // Navigate to Photo Upload screen (first step of signup flow)
         _navigationService.navigateTo(AppRoutes.photoUpload);
       }
-    } catch (error) {
-      if (kDebugMode) {
-        print("❌ [LOGIN] Apple Sign-In Error: $error");
-      }
-      // Clear any stored data on error
+    } catch (e) {
+      print("❌ Apple Login Error: $e");
       _signupDataService.clearCredentials();
-      // Error handling is done by the global error handler
-      setError('Failed to sign in with Apple. Please try again.');
+      setError("Apple login failed. Try again.");
     } finally {
       setLoading(false);
     }
   }
+
+  // Future<void> loginWithApple() async {
+  //   setLoading(true);
+
+  //   try {
+  //     // 1️⃣ Ask Apple for credential info (email may be null next time)
+  //     final data = await _authService.getAppleCredentials();
+  //     if (data == null) {
+  //       setLoading(false);
+  //       return;
+  //     }
+
+  //     final credential = data['credential'] as AuthCredential;
+  //     final email = data['email'] as String?;
+  //     final displayName = data['displayName'] as String?;
+  //     final photoURL = data['photoURL'] as String?; // usually null
+
+  //     // 2️⃣ Sign in to Firebase using Apple credential
+  //     final userCredential = await _authService.signInWithCredential(
+  //       credential,
+  //     );
+  //     User? user = userCredential.user;
+
+  //     if (user == null) {
+  //       setError("Apple sign-in failed.");
+  //       setLoading(false);
+  //       return;
+  //     }
+
+  //     final uid = user.uid;
+  //     print("🍎 Apple Logged In → UID = $uid");
+
+  //     // ----------------------------------------------------
+  //     // ⭐ 3️⃣ LOAD & UPDATE FIREBASEAUTH CURRENT USER DATA
+  //     // ----------------------------------------------------
+
+  //     // If Apple gave name → update Firebase user
+  //     if (displayName != null && displayName.isNotEmpty) {
+  //       await user.updateDisplayName(displayName);
+  //     }
+
+  //     // If Apple gave email (first login only)
+  //     if (email != null && email.isNotEmpty) {
+  //       // FirebaseAuth auto-stores Apple email on first login,
+  //       // but calling reload ensures _authService.currentUser updates.
+  //       print("📩 Updating email: $email");
+  //     }
+
+  //     // Apple photoURL is usually null, but update if provided
+  //     if (photoURL != null) {
+  //       await user.updatePhotoURL(photoURL);
+  //     }
+
+  //     // 🔄 Reload user to refresh _authService.currentUser
+  //     await user.reload();
+  //     user = _authService.currentUser; // Refresh local reference
+
+  //     print("🔥 Updated FirebaseAuth User:");
+  //     print("UID: ${user?.uid}");
+  //     print("Name: ${user?.displayName}");
+  //     print("Email: ${user?.email}");
+  //     print("Photo: ${user?.photoURL}");
+
+  //     // ----------------------------------------------------
+  //     // ⭐ 4️⃣ CHECK IF USER EXISTS IN FIRESTORE BY UID
+  //     // ----------------------------------------------------
+  //     final exists = await _firestoreService.checkUserExistsByUid(uid);
+
+  //     if (!exists) {
+  //       print("🆕 Creating new Apple user record in Firestore");
+
+  //       await _firestoreService.saveUserData(
+  //         userId: uid,
+  //         email: email ?? user?.email ?? "",
+  //         password: "",
+  //         displayName: displayName ?? user?.displayName,
+  //         phoneNumber: null,
+  //         interests: [],
+  //         photoUrl: user?.photoURL,
+  //       );
+  //     } else {
+  //       print("📄 User already exists → No need to create new record");
+  //     }
+
+  //     // ----------------------------------------------------
+  //     // ⭐ 5️⃣ SAVE LOGIN STATE LOCALLY
+  //     // ----------------------------------------------------
+  //     await _storageService.setLoggedIn(true, userId: uid);
+
+  //     // ----------------------------------------------------
+  //     // ⭐ 6️⃣ NAVIGATE TO FESTIVALS
+  //     // ----------------------------------------------------
+  //     _navigationService.navigateTo(AppRoutes.festivals);
+  //   } catch (e) {
+  //     print("❌ Apple login error: $e");
+  //     setError("Apple sign-in failed. Please try again.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // }
 
   void goToSignup() {
     _navigationService.navigateTo(AppRoutes.signupEmail);

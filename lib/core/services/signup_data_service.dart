@@ -29,7 +29,7 @@ class SignupDataService {
   void setEmailAndPassword(String email, String password) {
     _email = email;
     _password = password;
-    
+
     if (kDebugMode) {
       print('Signup data stored: email=$email');
     }
@@ -38,16 +38,24 @@ class SignupDataService {
   /// Store phone number (called from OTP screen after verification)
   void setPhoneNumber(String phoneNumber) {
     _phoneNumber = phoneNumber;
-    
+
     if (kDebugMode) {
       print('Phone number stored: $phoneNumber');
+    }
+  }
+
+  void setEmail(String email) {
+    _email = email;
+
+    if (kDebugMode) {
+      print("Email set manually → $email");
     }
   }
 
   /// Store display name (called from name screen)
   void setDisplayName(String displayName) {
     _displayName = displayName;
-    
+
     if (kDebugMode) {
       print('Display name stored: $displayName');
     }
@@ -56,7 +64,7 @@ class SignupDataService {
   /// Store username (called from username screen if exists)
   void setUsername(String username) {
     _username = username;
-    
+
     if (kDebugMode) {
       print('Username stored: $username');
     }
@@ -65,7 +73,7 @@ class SignupDataService {
   /// Store interests (called from interest screen)
   void setInterests(List<String> interests) {
     _interests = interests;
-    
+
     if (kDebugMode) {
       print('Interests stored: ${interests.length} items');
     }
@@ -74,7 +82,7 @@ class SignupDataService {
   /// Store photo URLs (called from upload photos screen)
   void setPhotoUrls(List<String> photoUrls) {
     _photoUrls = photoUrls;
-    
+
     if (kDebugMode) {
       print('Photo URLs stored: ${photoUrls.length} items');
     }
@@ -83,9 +91,11 @@ class SignupDataService {
   /// Store profile image (called from upload photos screen)
   void setProfileImage(dynamic image) {
     _profileImage = image;
-    
+
     if (kDebugMode) {
-      print('Profile image stored: ${image != null ? 'image selected' : 'no image'}');
+      print(
+        'Profile image stored: ${image != null ? 'image selected' : 'no image'}',
+      );
     }
   }
 
@@ -133,13 +143,13 @@ class SignupDataService {
     _providerEmail = email;
     _providerDisplayName = displayName;
     _providerPhotoURL = photoURL;
-    
+
     // Also set email and displayName in regular fields for consistency
     _email = email;
     if (displayName != null && displayName.isNotEmpty) {
       _displayName = displayName;
     }
-    
+
     if (kDebugMode) {
       print('Google credential stored: email=$email, displayName=$displayName');
     }
@@ -157,13 +167,13 @@ class SignupDataService {
     _providerEmail = email;
     _providerDisplayName = displayName;
     _providerPhotoURL = photoURL;
-    
+
     // Also set email and displayName in regular fields for consistency
     _email = email;
     if (displayName != null && displayName.isNotEmpty) {
       _displayName = displayName;
     }
-    
+
     if (kDebugMode) {
       print('Apple credential stored: email=$email, displayName=$displayName');
     }
@@ -188,7 +198,9 @@ class SignupDataService {
   String? get providerPhotoURL => _providerPhotoURL;
 
   /// Check if this is a Google/Apple OAuth flow
-  bool get isOAuthFlow => _providerType != null && (_googleCredential != null || _appleCredential != null);
+  bool get isOAuthFlow =>
+      _providerType != null &&
+      (_googleCredential != null || _appleCredential != null);
 
   /// Get the stored credential based on provider type
   AuthCredential? get storedCredential {
@@ -204,10 +216,8 @@ class SignupDataService {
   bool get hasEmailAndPassword => _email != null && _password != null;
 
   /// Check if all required data is stored
-  bool get hasAllRequiredData => 
-      _email != null && 
-      _password != null && 
-      _displayName != null;
+  bool get hasAllRequiredData =>
+      _email != null && _password != null && _displayName != null;
 
   /// Get all stored data as a map
   Map<String, dynamic> getAllData() {
@@ -235,17 +245,26 @@ class SignupDataService {
     _photoUrls = null;
     _profileImage = null;
     _additionalData = null;
-    
+
     if (kDebugMode) {
       print('All signup data cleared');
     }
   }
 
+  String? _oauthUid;
+
+  void setOAuthUser(User user) {
+    _oauthUid = user.uid;
+    _email = user.email;
+  }
+
+  String? get oauthUid => _oauthUid;
+
   /// Clear only email and password (for security)
   void clearCredentials() {
     _email = null;
     _password = null;
-    
+
     // Also clear OAuth credentials for security
     _googleCredential = null;
     _appleCredential = null;
@@ -253,10 +272,9 @@ class SignupDataService {
     _providerEmail = null;
     _providerDisplayName = null;
     _providerPhotoURL = null;
-    
+
     if (kDebugMode) {
       print('Credentials cleared (including OAuth credentials)');
     }
   }
 }
-

@@ -1,10 +1,6 @@
 import '../../../core/api/api_config.dart';
 
-enum FestivalStatus {
-  past,
-  live,
-  upcoming,
-}
+enum FestivalStatus { past, live, upcoming }
 
 class FestivalModel {
   final int id;
@@ -48,7 +44,7 @@ class FestivalModel {
     // Determine title - use description, but if it's "N/A", use name_organizer
     final description = json['description']?.toString() ?? '';
     final nameOrganizer = json['name_organizer']?.toString() ?? '';
-    
+
     String title;
     if (description.isNotEmpty && description.toUpperCase() != 'N/A') {
       title = description;
@@ -57,14 +53,13 @@ class FestivalModel {
     } else {
       title = 'Festival';
     }
-    
+
     // Determine location - use latitude/longitude or default
     final lat = json['latitude']?.toString();
     final lng = json['longitude']?.toString();
-    final location = (lat != null && lng != null) 
-        ? '$lat, $lng' 
-        : 'Location TBD';
-    
+    final location =
+        (lat != null && lng != null) ? '$lat, $lng' : 'Location TBD';
+
     // Format date - use starting_date and ending_date
     final startingDate = json['starting_date']?.toString() ?? '';
     final endingDate = json['ending_date']?.toString() ?? '';
@@ -80,19 +75,18 @@ class FestivalModel {
     } else {
       date = 'Date TBD';
     }
-    
+
     // Get image path and convert to full URL
     final imagePath = json['image']?.toString() ?? '';
-    final imageUrl = imagePath.isNotEmpty 
-        ? ApiConfig.getImageUrl(imagePath)
-        : '';
-    
+    final imageUrl =
+        imagePath.isNotEmpty ? ApiConfig.getImageUrl(imagePath) : '';
+
     // Determine festival status: past, live, or upcoming
     final status = _getFestivalStatus(startingDate, endingDate);
-    
+
     // Determine if festival is live (currently happening)
     final isLive = status == FestivalStatus.live;
-    
+
     return FestivalModel(
       id: json['id'] as int? ?? 0,
       title: title,
@@ -118,8 +112,18 @@ class FestivalModel {
     try {
       final date = DateTime.parse(dateString);
       final months = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
       ];
       return '${date.day} ${months[date.month - 1]} ${date.year}';
     } catch (e) {
@@ -128,39 +132,46 @@ class FestivalModel {
   }
 
   /// Determine festival status: past, live, or upcoming
-  static FestivalStatus _getFestivalStatus(String? startingDate, String? endingDate) {
-    if (startingDate == null || endingDate == null || startingDate.isEmpty || endingDate.isEmpty) {
-      return FestivalStatus.upcoming; // Default to upcoming if dates are missing
+  static FestivalStatus _getFestivalStatus(
+    String? startingDate,
+    String? endingDate,
+  ) {
+    if (startingDate == null ||
+        endingDate == null ||
+        startingDate.isEmpty ||
+        endingDate.isEmpty) {
+      return FestivalStatus
+          .upcoming; // Default to upcoming if dates are missing
     }
-    
+
     try {
       final start = DateTime.parse(startingDate);
       final end = DateTime.parse(endingDate);
       final now = DateTime.now();
-      
+
       // Normalize dates to compare only dates (ignore time)
       final startDate = DateTime(start.year, start.month, start.day);
       final endDate = DateTime(end.year, end.month, end.day);
       final currentDate = DateTime(now.year, now.month, now.day);
-      
+
       // Past: if ending date has passed
       if (endDate.isBefore(currentDate)) {
         return FestivalStatus.past;
       }
-      
+
       // Live: if current date is between start and end (inclusive)
       // Or if start date matches current date
       if ((currentDate.isAfter(startDate.subtract(const Duration(days: 1))) &&
-           currentDate.isBefore(endDate.add(const Duration(days: 1)))) ||
+              currentDate.isBefore(endDate.add(const Duration(days: 1)))) ||
           startDate.isAtSameMomentAs(currentDate)) {
         return FestivalStatus.live;
       }
-      
+
       // Upcoming: if start date is in the future
       if (startDate.isAfter(currentDate)) {
         return FestivalStatus.upcoming;
       }
-      
+
       // Default to live if dates match exactly
       return FestivalStatus.live;
     } catch (e) {

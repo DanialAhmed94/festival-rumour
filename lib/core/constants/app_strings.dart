@@ -106,7 +106,7 @@ class AppStrings {
   static const List<String> favoriteCountries = ['+92', 'PK', 'US'];
   static const String primarySettings = "Primary Settings";
   static const String enterOtpDescription =
-      "Enter the four digit code we sent to your Number.";
+      "Enter the six digit code we sent to your Number.";
   static const String otpVerificationError =
       "Failed to verify OTP. Please try again.";
   static const String otpResendError =

@@ -102,6 +102,8 @@ class EditAccountViewModel extends BaseViewModel {
   Future<void> _loadUserData() async {
     await handleAsync(() async {
       final currentUser = _authService.currentUser;
+
+      print("currentUser ${currentUser}");
       if (currentUser == null) {
         if (kDebugMode) {
           print('⚠️ No user logged in');
@@ -130,6 +132,8 @@ class EditAccountViewModel extends BaseViewModel {
       // Set email (read-only)
       if (currentUser.email != null) {
         emailController.text = currentUser.email!;
+      } else {
+        emailController.text = 'Not Available';
       }
 
       // Set phone and store original
@@ -683,87 +687,73 @@ class EditAccountViewModel extends BaseViewModel {
     }
   }
 
+  bool isDeletingAccount = false;
+
   /// Delete user account with proper error handling
   Future<void> deleteAccount() async {
-    await handleAsync(() async {
-      if (kDebugMode) {
-        print('🗑️ [Settings] Starting account deletion process...');
-      }
+    isDeletingAccount = true;
+    notifyListeners(); // 🔥 Tell UI to show delete loader
 
-      // 🔐 Get user ID BEFORE deletion
-      final userId = _authService.userUid;
+    try {
+      await handleAsync(() async {
+        if (kDebugMode) {
+          print('🗑️ [Settings] Starting account deletion process...');
+        }
 
-      if (userId != null) {
-        // 1️⃣ Delete all user posts
-        try {
-          await _firestoreService.deleteAllUserPosts(userId);
-          if (kDebugMode) {
-            print('✅ [Settings] User posts deleted');
+        // 🔐 Get user ID BEFORE deletion
+        final userId = _authService.userUid;
+
+        if (userId != null) {
+          // 1️⃣ Delete all user posts
+          try {
+            await _firestoreService.deleteAllUserPosts(userId);
+            if (kDebugMode) print('✅ User posts deleted');
+          } catch (e) {
+            if (kDebugMode) print('⚠️ Error deleting posts: $e');
           }
-        } catch (e) {
-          if (kDebugMode) {
-            print('⚠️ [Settings] Error deleting posts: $e');
+
+          // 2️⃣ Delete user jobs
+          try {
+            await _firestoreService.deleteAllUserJobs(userId);
+            if (kDebugMode) print('✅ User jobs deleted');
+          } catch (e) {
+            if (kDebugMode) print('⚠️ Error deleting jobs: $e');
+          }
+
+          // 3️⃣ Cleanup chat rooms
+          try {
+            await _firestoreService.cleanupUserChatRooms(userId);
+            if (kDebugMode) print('✅ Chat rooms cleaned');
+          } catch (e) {
+            if (kDebugMode) print('⚠️ Error cleaning chats: $e');
+          }
+
+          // 4️⃣ Delete user profile
+          try {
+            await _firestoreService.deleteUserProfile(userId);
+            if (kDebugMode) print('✅ User profile deleted');
+          } catch (e) {
+            if (kDebugMode) print('⚠️ Error deleting profile: $e');
           }
         }
 
-        // 2️⃣ Delete all user jobs
-        try {
-          await _firestoreService.deleteAllUserJobs(userId);
-          if (kDebugMode) {
-            print('✅ [Settings] User jobs deleted');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('⚠️ [Settings] Error deleting jobs: $e');
-          }
-        }
+        // 5️⃣ 🔥 Delete Firebase Auth via Cloud Function
+        await deleteAccountFromServer();
+        if (kDebugMode) print('✅ Auth deleted via Cloud Function');
 
-        // 3️⃣ Cleanup chat rooms
-        try {
-          await _firestoreService.cleanupUserChatRooms(userId);
-          if (kDebugMode) {
-            print('✅ [Settings] Chat rooms cleaned');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('⚠️ [Settings] Error cleaning chats: $e');
-          }
-        }
+        // 6️⃣ Clear local storage
+        await _storageService.clearAll();
+        if (kDebugMode) print('✅ Local storage cleared');
 
-        // 4️⃣ Delete user profile
-        try {
-          await _firestoreService.deleteUserProfile(userId);
-          if (kDebugMode) {
-            print('✅ [Settings] User profile deleted');
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('⚠️ [Settings] Error deleting profile: $e');
-          }
-        }
-      }
-
-      // 5️⃣ 🔥 DELETE AUTH VIA CLOUD FUNCTION
-      await deleteAccountFromServer();
-
-      if (kDebugMode) {
-        print('✅ [Settings] Firebase Auth deleted via Cloud Function');
-      }
-
-      // 6️⃣ Clear local storage
-      await _storageService.clearAll();
-
-      if (kDebugMode) {
-        print('✅ [Settings] Local storage cleared');
-      }
-
-      // 7️⃣ Navigate to login
-      await _navigationService.navigateToLogin();
-
-      if (kDebugMode) {
-        print('✅ [Settings] Account deletion completed');
-      }
-    }, errorMessage: 'Failed to delete account. Please try again.');
+        // 7️⃣ Navigate to login
+        await _navigationService.navigateToLogin();
+        if (kDebugMode) print('✅ Account deletion completed');
+      }, errorMessage: 'Failed to delete account. Please try again.');
+    } finally {
+      // 🔥 Ensure we always turn this off
+      isDeletingAccount = false;
+      notifyListeners();
+    }
   }
 
   void goBack() {

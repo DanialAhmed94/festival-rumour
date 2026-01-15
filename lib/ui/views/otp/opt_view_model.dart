@@ -1,3 +1,5 @@
+import 'package:festival_rumour/core/services/storage_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/viewmodels/base_view_model.dart';
@@ -55,13 +57,15 @@ class OtpViewModel extends BaseViewModel {
   bool _isFocusChanging = false;
   bool _isOtpVerified = false;
   bool _isInitialized = false; // Guard to prevent multiple initializations
-  
+
   // Retry mechanism
   int _verificationAttempts = 0;
   static const int _maxVerificationAttempts = 5;
   DateTime? _lastVerificationAttempt;
   DateTime? _lastResendAttempt;
   static const Duration _resendCooldown = Duration(seconds: 60);
+
+  bool fromFestival = false;
 
   // Phone verification state
   String? _phoneNumber;
@@ -75,16 +79,18 @@ class OtpViewModel extends BaseViewModel {
   FocusNode get otpFocus => _otpFocus;
   String? get phoneNumber => _phoneNumber;
   bool get isOtpVerified => _isOtpVerified;
-  bool get canResend => _lastResendAttempt == null || 
+  bool get canResend =>
+      _lastResendAttempt == null ||
       DateTime.now().difference(_lastResendAttempt!) >= _resendCooldown;
   int get remainingAttempts => _maxVerificationAttempts - _verificationAttempts;
-  bool get hasRemainingAttempts => _verificationAttempts < _maxVerificationAttempts;
-  
+  bool get hasRemainingAttempts =>
+      _verificationAttempts < _maxVerificationAttempts;
+
   String get formattedPhoneNumber {
     if (_phoneNumber == null) return '+1234567890';
     return _phoneNumber!;
   }
-  
+
   String get displayPhoneNumber {
     if (_phoneNumber == null) return '+1234567890';
     return _phoneNumber!;
@@ -103,7 +109,7 @@ class OtpViewModel extends BaseViewModel {
   /// Auto-focus OTP field when screen loads
   void focusOtpField() {
     if (isDisposed || _isFocusChanging || _otpFocus.hasFocus) return;
-    
+
     try {
       _isFocusChanging = true;
       _otpFocus.requestFocus();
@@ -121,7 +127,7 @@ class OtpViewModel extends BaseViewModel {
   /// Unfocus OTP field
   void unfocusOtpField() {
     if (isDisposed || _isFocusChanging || !_otpFocus.hasFocus) return;
-    
+
     try {
       _isFocusChanging = true;
       _otpFocus.unfocus();
@@ -139,7 +145,7 @@ class OtpViewModel extends BaseViewModel {
   @override
   void init() {
     super.init();
-    
+
     // Prevent multiple initializations
     if (_isInitialized && !isDisposed) {
       if (kDebugMode) {
@@ -148,20 +154,22 @@ class OtpViewModel extends BaseViewModel {
       _resetState();
       return;
     }
-    
+
     _isInitialized = true;
-    
+
     // Reset state when screen is revisited
     _resetState();
-    
+
     _initializePhoneNumber();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!isDisposed) {
         // Only focus if we have valid verification data
-        if (_verificationId != null && _verificationId!.isNotEmpty && !_otpFocus.hasFocus) {
+        if (_verificationId != null &&
+            _verificationId!.isNotEmpty &&
+            !_otpFocus.hasFocus) {
           focusOtpField();
         }
-        
+
         // Re-check phone data after a delay
         Future.delayed(const Duration(milliseconds: 500), () {
           if (!isDisposed) {
@@ -192,50 +200,61 @@ class OtpViewModel extends BaseViewModel {
     try {
       _phoneNumber = _phoneAuthService.phoneNumber;
       _verificationId = _phoneAuthService.verificationId;
-      
+
       if (kDebugMode) {
         print('=== OTP View Phone Data ===');
         print('Phone number retrieved: $_phoneNumber');
-        print('Verification ID retrieved: ${_verificationId != null ? "${_verificationId!.substring(0, 20)}..." : "NULL"}');
+        print(
+          'Verification ID retrieved: ${_verificationId != null ? "${_verificationId!.substring(0, 20)}..." : "NULL"}',
+        );
         print('==========================');
       }
-      
+
       // Check if verification data is missing when returning to screen
       if (_verificationId == null || _verificationId!.isEmpty) {
         if (_phoneNumber != null) {
           // Phone number exists but verification ID is missing - session expired
           if (kDebugMode) {
-            print('⚠️ [OTP] Verification ID is missing - session may have expired');
+            print(
+              '⚠️ [OTP] Verification ID is missing - session may have expired',
+            );
           }
-          _setError(const OtpErrorInfo(
-            type: OtpErrorType.expiredSession,
-            message: 'Verification session expired.',
-            recoverySuggestion: 'Please request a new verification code.',
-            requiresResend: true,
-            canRetry: false,
-          ));
+          _setError(
+            const OtpErrorInfo(
+              type: OtpErrorType.expiredSession,
+              message: 'Verification session expired.',
+              recoverySuggestion: 'Please request a new verification code.',
+              requiresResend: true,
+              canRetry: false,
+            ),
+          );
         } else {
           // Both phone number and verification ID are missing
           if (kDebugMode) {
             print('⚠️ [OTP] Both phone number and verification ID are missing');
           }
-          _setError(const OtpErrorInfo(
-            type: OtpErrorType.missingData,
-            message: 'Verification data not available.',
-            recoverySuggestion: 'Please go back and request a new verification code.',
-            requiresResend: true,
-            canRetry: false,
-          ));
+          _setError(
+            const OtpErrorInfo(
+              type: OtpErrorType.missingData,
+              message: 'Verification data not available.',
+              recoverySuggestion:
+                  'Please go back and request a new verification code.',
+              requiresResend: true,
+              canRetry: false,
+            ),
+          );
         }
       }
     } catch (e) {
       if (kDebugMode) print('Error getting phone number: $e');
-      _setError(OtpErrorInfo(
-        type: OtpErrorType.unknown,
-        message: 'Failed to load verification data. Please try again.',
-        canRetry: false,
-        requiresResend: true,
-      ));
+      _setError(
+        OtpErrorInfo(
+          type: OtpErrorType.unknown,
+          message: 'Failed to load verification data. Please try again.',
+          canRetry: false,
+          requiresResend: true,
+        ),
+      );
     }
   }
 
@@ -260,21 +279,26 @@ class OtpViewModel extends BaseViewModel {
   /// Verify phone OTP with comprehensive error handling
   Future<void> verifyCode() async {
     if (!isOtpValid) {
-      _setError(const OtpErrorInfo(
-        type: OtpErrorType.invalidCode,
-        message: 'Please enter a complete 6-digit code.',
-        canRetry: true,
-      ));
+      _setError(
+        const OtpErrorInfo(
+          type: OtpErrorType.invalidCode,
+          message: 'Please enter a complete 6-digit code.',
+          canRetry: true,
+        ),
+      );
       return;
     }
 
     if (!hasRemainingAttempts) {
-      _setError(const OtpErrorInfo(
-        type: OtpErrorType.tooManyAttempts,
-        message: 'Too many verification attempts. Please request a new code.',
-        recoverySuggestion: 'Tap "Resend Code" to get a new verification code.',
-        requiresResend: true,
-      ));
+      _setError(
+        const OtpErrorInfo(
+          type: OtpErrorType.tooManyAttempts,
+          message: 'Too many verification attempts. Please request a new code.',
+          recoverySuggestion:
+              'Tap "Resend Code" to get a new verification code.',
+          requiresResend: true,
+        ),
+      );
       return;
     }
 
@@ -290,12 +314,18 @@ class OtpViewModel extends BaseViewModel {
         _phoneNumber = _phoneAuthService.phoneNumber;
 
         if (kDebugMode) {
-          print('🔍 [SIGNUP] Verifying OTP (Attempt $_verificationAttempts/$_maxVerificationAttempts)');
-          print('   Verification ID: ${_verificationId != null ? "${_verificationId!.substring(0, 20)}..." : "NULL"}');
+          print(
+            '🔍 [SIGNUP] Verifying OTP (Attempt $_verificationAttempts/$_maxVerificationAttempts)',
+          );
+          print(
+            '   Verification ID: ${_verificationId != null ? "${_verificationId!.substring(0, 20)}..." : "NULL"}',
+          );
           print('   Phone Number: $_phoneNumber');
         }
 
-        if (_verificationId == null || _phoneNumber == null || _verificationId!.isEmpty) {
+        if (_verificationId == null ||
+            _phoneNumber == null ||
+            _verificationId!.isEmpty) {
           throw ValidationException(
             message: 'No verification data available.',
             code: 'MISSING_VERIFICATION_DATA',
@@ -321,15 +351,15 @@ class OtpViewModel extends BaseViewModel {
         }
 
         _signupDataService.setPhoneNumber(_phoneNumber!);
-        
-        try {
-          await _authService.signOut();
-        } catch (e) {
-          if (kDebugMode) {
-            print('Warning: Could not sign out temporary user: $e');
-          }
-        }
-        
+
+        // try {
+        //   await _authService.signOut();
+        // } catch (e) {
+        //   if (kDebugMode) {
+        //     print('Warning: Could not sign out temporary user: $e');
+        //   }
+        // }
+
         clearErrorText();
         _isOtpVerified = true;
         _verificationAttempts = 0; // Reset on success
@@ -344,36 +374,65 @@ class OtpViewModel extends BaseViewModel {
         _isOtpVerified = false;
         verificationSuccessful = false;
         clearError();
-        _setError(OtpErrorInfo(
-          type: OtpErrorType.unknown,
-          message: errorMessage,
-          canRetry: hasRemainingAttempts,
-          recoverySuggestion: hasRemainingAttempts 
-              ? 'Please check your code and try again.'
-              : 'Please request a new code.',
-        ));
+        _setError(
+          OtpErrorInfo(
+            type: OtpErrorType.unknown,
+            message: errorMessage,
+            canRetry: hasRemainingAttempts,
+            recoverySuggestion:
+                hasRemainingAttempts
+                    ? 'Please check your code and try again.'
+                    : 'Please request a new code.',
+          ),
+        );
       },
       minimumLoadingDuration: AppDurations.otpVerificationDuration,
     );
-
     if (verificationSuccessful && _isOtpVerified) {
       if (kDebugMode) {
-        print('🚀 [SIGNUP] Navigating to interest screen');
+        print('🚀 [SIGNUP] Navigating to interest/festival screen');
       }
-      _navigationService.navigateTo(AppRoutes.interest);
+
+      print("fromFestival${fromFestival}");
+
+      if (fromFestival) {
+        final StorageService storageService = locator<StorageService>();
+
+        final uid = await storageService.getUserId(); // <-- FIXED
+        print("🔥 Current UID: $uid");
+
+        if (uid != null && _phoneNumber != null) {
+          await _authService.savePhoneToFirestore(uid, _phoneNumber!);
+        }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _navigationService.navigateTo(AppRoutes.festivals);
+        });
+
+        return;
+      }
+
+      // Normal signup → interest
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigationService.navigateTo(AppRoutes.interest);
+      });
     }
   }
 
   /// Resend phone OTP with cooldown and error handling
   Future<void> resendCode() async {
     if (!canResend) {
-      final remainingSeconds = _resendCooldown.inSeconds - 
+      final remainingSeconds =
+          _resendCooldown.inSeconds -
           DateTime.now().difference(_lastResendAttempt!).inSeconds;
-      _setError(OtpErrorInfo(
-        type: OtpErrorType.tooManyAttempts,
-        message: 'Please wait ${remainingSeconds}s before requesting a new code.',
-        canRetry: false,
-      ));
+      _setError(
+        OtpErrorInfo(
+          type: OtpErrorType.tooManyAttempts,
+          message:
+              'Please wait ${remainingSeconds}s before requesting a new code.',
+          canRetry: false,
+        ),
+      );
       return;
     }
 
@@ -434,12 +493,14 @@ class OtpViewModel extends BaseViewModel {
       },
       onError: (errorMessage) {
         clearError();
-        _setError(OtpErrorInfo(
-          type: OtpErrorType.unknown,
-          message: errorMessage,
-          canRetry: true,
-          recoverySuggestion: 'Please try again in a moment.',
-        ));
+        _setError(
+          OtpErrorInfo(
+            type: OtpErrorType.unknown,
+            message: errorMessage,
+            canRetry: true,
+            recoverySuggestion: 'Please try again in a moment.',
+          ),
+        );
       },
       minimumLoadingDuration: AppDurations.buttonLoadingDuration,
     );
@@ -455,80 +516,98 @@ class OtpViewModel extends BaseViewModel {
 
     if (exception is AuthException) {
       final errorMessage = exception.message.toLowerCase();
-      
-      if (errorMessage.contains('blocked') || 
+
+      if (errorMessage.contains('blocked') ||
           errorMessage.contains('unusual activity') ||
           errorMessage.contains('too many requests')) {
-        _setError(const OtpErrorInfo(
-          type: OtpErrorType.tooManyAttempts,
-          message: 'Too many requests. Please try again later.',
-          recoverySuggestion: 'Wait a few minutes before trying again.',
-          canRetry: false,
-        ));
-      } else if (errorMessage.contains('expired') || 
-                 errorMessage.contains('session-expired') ||
-                 exception.code == 'session-expired' ||
-                 exception.code == 'SESSION_EXPIRED') {
+        _setError(
+          const OtpErrorInfo(
+            type: OtpErrorType.tooManyAttempts,
+            message: 'Too many requests. Please try again later.',
+            recoverySuggestion: 'Wait a few minutes before trying again.',
+            canRetry: false,
+          ),
+        );
+      } else if (errorMessage.contains('expired') ||
+          errorMessage.contains('session-expired') ||
+          exception.code == 'session-expired' ||
+          exception.code == 'SESSION_EXPIRED') {
         _verificationId = null;
         _phoneAuthService.clearPhoneData();
         _otpCode = '';
         _verificationAttempts = 0;
-        
-        _setError(const OtpErrorInfo(
-          type: OtpErrorType.expiredSession,
-          message: 'Verification session expired.',
-          recoverySuggestion: 'Please request a new verification code.',
-          requiresResend: true,
-          canRetry: false,
-        ));
-      } else if (errorMessage.contains('invalid') || 
-                 exception.code == 'invalid-verification-code' ||
-                 exception.code == 'INVALID_VERIFICATION_CODE') {
-        _setError(OtpErrorInfo(
-          type: OtpErrorType.invalidCode,
-          message: 'Invalid verification code. Please check and try again.',
-          recoverySuggestion: hasRemainingAttempts 
-              ? 'You have ${remainingAttempts} attempt${remainingAttempts > 1 ? 's' : ''} remaining.'
-              : 'Please request a new code.',
-          canRetry: hasRemainingAttempts,
-          requiresResend: !hasRemainingAttempts,
-        ));
+
+        _setError(
+          const OtpErrorInfo(
+            type: OtpErrorType.expiredSession,
+            message: 'Verification session expired.',
+            recoverySuggestion: 'Please request a new verification code.',
+            requiresResend: true,
+            canRetry: false,
+          ),
+        );
+      } else if (errorMessage.contains('invalid') ||
+          exception.code == 'invalid-verification-code' ||
+          exception.code == 'INVALID_VERIFICATION_CODE') {
+        _setError(
+          OtpErrorInfo(
+            type: OtpErrorType.invalidCode,
+            message: 'Invalid verification code. Please check and try again.',
+            recoverySuggestion:
+                hasRemainingAttempts
+                    ? 'You have ${remainingAttempts} attempt${remainingAttempts > 1 ? 's' : ''} remaining.'
+                    : 'Please request a new code.',
+            canRetry: hasRemainingAttempts,
+            requiresResend: !hasRemainingAttempts,
+          ),
+        );
       } else {
-        _setError(OtpErrorInfo(
-          type: OtpErrorType.unknown,
-          message: exception.message,
-          canRetry: hasRemainingAttempts,
-        ));
+        _setError(
+          OtpErrorInfo(
+            type: OtpErrorType.unknown,
+            message: exception.message,
+            canRetry: hasRemainingAttempts,
+          ),
+        );
       }
     } else if (exception is NetworkException) {
-      _setError(OtpErrorInfo(
-        type: OtpErrorType.networkError,
-        message: 'Network error. Please check your connection.',
-        recoverySuggestion: 'Ensure you have a stable internet connection and try again.',
-        canRetry: true,
-      ));
+      _setError(
+        OtpErrorInfo(
+          type: OtpErrorType.networkError,
+          message: 'Network error. Please check your connection.',
+          recoverySuggestion:
+              'Ensure you have a stable internet connection and try again.',
+          canRetry: true,
+        ),
+      );
     } else if (exception is ValidationException) {
       if (exception.code == 'MISSING_VERIFICATION_DATA') {
-        _setError(const OtpErrorInfo(
-          type: OtpErrorType.missingData,
-          message: 'Verification data not available.',
-          recoverySuggestion: 'Please request a new verification code.',
-          requiresResend: true,
-          canRetry: false,
-        ));
+        _setError(
+          const OtpErrorInfo(
+            type: OtpErrorType.missingData,
+            message: 'Verification data not available.',
+            recoverySuggestion: 'Please request a new verification code.',
+            requiresResend: true,
+            canRetry: false,
+          ),
+        );
       } else {
-        _setError(OtpErrorInfo(
-          type: OtpErrorType.unknown,
-          message: exception.message,
-          canRetry: true,
-        ));
+        _setError(
+          OtpErrorInfo(
+            type: OtpErrorType.unknown,
+            message: exception.message,
+            canRetry: true,
+          ),
+        );
       }
     } else {
-      _setError(OtpErrorInfo(
-        type: OtpErrorType.unknown,
-        message: exception.message,
-        canRetry: hasRemainingAttempts,
-      ));
+      _setError(
+        OtpErrorInfo(
+          type: OtpErrorType.unknown,
+          message: exception.message,
+          canRetry: hasRemainingAttempts,
+        ),
+      );
     }
 
     notifyListeners();

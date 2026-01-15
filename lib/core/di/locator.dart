@@ -1,3 +1,4 @@
+import 'package:festival_rumour/core/services/signup_data_service.dart';
 import 'package:get_it/get_it.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -19,9 +20,11 @@ final GetIt locator = GetIt.instance;
 /// Initialize dependency injection
 Future<void> setupLocator() async {
   // Core Services
-  locator.registerLazySingleton<ErrorHandlerService>(() => ErrorHandlerService());
+  locator.registerLazySingleton<ErrorHandlerService>(
+    () => ErrorHandlerService(),
+  );
   locator.registerLazySingleton<NetworkService>(() => NetworkService());
-  
+
   // Services
   locator.registerLazySingleton<NavigationService>(() => NavigationService());
   locator.registerLazySingleton<AuthService>(() => AuthService());
@@ -29,7 +32,9 @@ Future<void> setupLocator() async {
   locator.registerLazySingleton<StorageService>(() => StorageService());
   locator.registerLazySingleton<GeocodingService>(() => GeocodingService());
   locator.registerLazySingleton<PostDataService>(() => PostDataService());
-  
+
+  locator.registerLazySingleton<SignupDataService>(() => SignupDataService());
+
   // Initialize NetworkService with API base URL
   locator<NetworkService>().initialize(
     baseUrl: ApiConfig.baseUrl,
@@ -38,16 +43,20 @@ Future<void> setupLocator() async {
     receiveTimeout: ApiConfig.receiveTimeout,
     sendTimeout: ApiConfig.sendTimeout,
   );
-  
+
   // API Services
   locator.registerLazySingleton<FestivalApiService>(() => FestivalApiService());
-  
+
   // Repositories
-  locator.registerLazySingleton<AuthRepository>(() => AuthRepositoryImpl(locator<AuthService>()));
-  
+  locator.registerLazySingleton<AuthRepository>(
+    () => AuthRepositoryImpl(locator<AuthService>()),
+  );
+
   // Use cases
-  locator.registerFactory<SignInWithGoogle>(() => SignInWithGoogle(locator<AuthRepository>()));
-  locator.registerFactory<SignInWithApple>(() => SignInWithApple(locator<AuthRepository>()));
+  locator.registerFactory<SignInWithGoogle>(
+    () => SignInWithGoogle(locator<AuthRepository>()),
+  );
+  locator.registerFactory<SignInWithApple>(
+    () => SignInWithApple(locator<AuthRepository>()),
+  );
 }
-
-

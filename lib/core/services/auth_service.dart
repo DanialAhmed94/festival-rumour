@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:crypto/crypto.dart';
@@ -43,6 +45,23 @@ class AuthService {
   /// Check if user is signed in
   bool get isSignedIn => currentUser != null;
 
+  /// Update user's phone number in Firebase User object
+  /// Save the phone number in Firestore or Database instead of FirebaseAuth
+  Future<void> savePhoneToFirestore(String uid, String phoneNumber) async {
+    print("uid${uid}");
+    final ref = FirebaseFirestore.instance.collection("users").doc(uid);
+
+    if ((await ref.get()).exists) {
+      await ref.update({"phoneNumber": phoneNumber});
+    } else {
+      await ref.set({"phoneNumber": phoneNumber}, SetOptions(merge: true));
+    }
+
+    if (kDebugMode) {
+      print("📱 Phone updated for UID: $uid");
+    }
+  }
+
   /// Sign in with Google
   Future<UserCredential?> signInWithGoogle() async {
     try {
@@ -68,7 +87,11 @@ class AuthService {
       return await _auth.signInWithCredential(credential);
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithGoogle');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.signInWithGoogle',
+      );
       rethrow;
     }
   }
@@ -79,7 +102,7 @@ class AuthService {
     try {
       // Sign out any cached account to force account picker to show
       await _googleSignIn.signOut();
-      
+
       // Trigger the authentication flow (will show account picker)
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
@@ -111,7 +134,11 @@ class AuthService {
       };
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.getGoogleCredentials');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.getGoogleCredentials',
+      );
       rethrow;
     }
   }
@@ -122,7 +149,11 @@ class AuthService {
       return await _auth.signInWithCredential(credential);
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithCredential');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.signInWithCredential',
+      );
       rethrow;
     }
   }
@@ -151,7 +182,11 @@ class AuthService {
       return userCredential;
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithApple');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.signInWithApple',
+      );
       return null;
     }
   }
@@ -180,9 +215,12 @@ class AuthService {
       // Extract user information
       // Note: Apple may not provide email/name on subsequent sign-ins
       final email = appleCredential.email;
-      final displayName = appleCredential.givenName != null || appleCredential.familyName != null
-          ? '${appleCredential.givenName ?? ''} ${appleCredential.familyName ?? ''}'.trim()
-          : null;
+      final displayName =
+          appleCredential.givenName != null ||
+                  appleCredential.familyName != null
+              ? '${appleCredential.givenName ?? ''} ${appleCredential.familyName ?? ''}'
+                  .trim()
+              : null;
       // Apple doesn't provide photo URL
       final photoURL = null;
 
@@ -194,7 +232,11 @@ class AuthService {
       };
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.getAppleCredentials');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.getAppleCredentials',
+      );
       rethrow;
     }
   }
@@ -272,7 +314,11 @@ class AuthService {
       return userCredential;
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.signUpWithEmail');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.signUpWithEmail',
+      );
       rethrow;
     }
   }
@@ -289,7 +335,11 @@ class AuthService {
       );
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithEmail');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.signInWithEmail',
+      );
       rethrow;
     }
   }
@@ -300,7 +350,11 @@ class AuthService {
       await currentUser?.sendEmailVerification();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.sendEmailVerification');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.sendEmailVerification',
+      );
       rethrow;
     }
   }
@@ -308,7 +362,7 @@ class AuthService {
   /// Check if email is already registered
   /// Returns true if email is available
   /// Throws AppException (mapped by ExceptionMapper) if email is already taken or there's an error
-  /// 
+  ///
   /// Note: This method attempts to create a temporary user to check availability.
   /// If the email is available, the temporary user is immediately deleted.
   /// If the email is already taken, it throws an exception that will be handled by the global error handler.
@@ -316,18 +370,18 @@ class AuthService {
     // Try to create a temporary user with a random password to check if email exists
     // We'll delete the user immediately if creation succeeds
     final tempPassword = 'TempCheck${DateTime.now().millisecondsSinceEpoch}';
-    
+
     try {
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: tempPassword,
       );
-      
+
       // If we get here, email is available - delete the temporary user
       if (userCredential.user != null) {
         await userCredential.user!.delete();
       }
-      
+
       // Email is available
       return true;
     } on FirebaseAuthException catch (e) {
@@ -337,7 +391,7 @@ class AuthService {
         final exception = ExceptionMapper.mapToAppException(e);
         throw exception;
       }
-      
+
       // For other Firebase errors, let ExceptionMapper handle them
       final exception = ExceptionMapper.mapToAppException(e);
       throw exception;
@@ -355,7 +409,11 @@ class AuthService {
       await currentUser?.reload();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.reloadUser');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.reloadUser',
+      );
       rethrow;
     }
   }
@@ -367,7 +425,11 @@ class AuthService {
       return AuthResult.success();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.sendPasswordResetEmail');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.sendPasswordResetEmail',
+      );
       return AuthResult.failure(exception.message);
     }
   }
@@ -392,7 +454,11 @@ class AuthService {
       return AuthResult.success();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.signInWithPhone');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.signInWithPhone',
+      );
       return AuthResult.failure(exception.message);
     }
   }
@@ -412,7 +478,11 @@ class AuthService {
       return AuthResult.success();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.verifyPhoneNumber');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.verifyPhoneNumber',
+      );
       return AuthResult.failure(exception.message);
     }
   }
@@ -424,7 +494,11 @@ class AuthService {
       await reloadUser();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.updateDisplayName');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.updateDisplayName',
+      );
       rethrow;
     }
   }
@@ -447,7 +521,11 @@ class AuthService {
       return downloadUrl;
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.uploadProfilePhoto');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.uploadProfilePhoto',
+      );
       rethrow;
     }
   }
@@ -459,7 +537,11 @@ class AuthService {
       await reloadUser();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.updateProfilePhoto');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.updateProfilePhoto',
+      );
       rethrow;
     }
   }
@@ -474,7 +556,11 @@ class AuthService {
       await user.delete();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.deleteAccount');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.deleteAccount',
+      );
       rethrow;
     }
   }
@@ -501,7 +587,11 @@ class AuthService {
       await user.reauthenticateWithCredential(credential);
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.reauthenticateWithEmailPassword');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.reauthenticateWithEmailPassword',
+      );
       rethrow;
     }
   }
@@ -519,7 +609,11 @@ class AuthService {
       await reloadUser();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
-      _errorHandler.handleError(exception, stackTrace, 'AuthService.updatePassword');
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.updatePassword',
+      );
       rethrow;
     }
   }

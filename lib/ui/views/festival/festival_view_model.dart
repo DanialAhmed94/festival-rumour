@@ -70,8 +70,8 @@ class FestivalViewModel extends BaseViewModel {
       // Try to get from Firestore first (where uploaded images are stored)
       try {
         final userData = await _firestoreService.getUserData(currentUser.uid);
-        if (userData != null && 
-            userData['photoUrl'] != null && 
+        if (userData != null &&
+            userData['photoUrl'] != null &&
             (userData['photoUrl'] as String).isNotEmpty) {
           _userPhotoUrl = userData['photoUrl'] as String;
           notifyListeners();
@@ -202,9 +202,25 @@ class FestivalViewModel extends BaseViewModel {
     });
   }
 
+  /// Check if phone number exists in Firestore
+  Future<bool> isPhoneMissing() async {
+    final user = _authService.currentUser;
+    if (user == null) return true;
+
+    final data = await _firestoreService.getUserData(user.uid);
+    if (data == null) return true;
+
+    final phone = data["phoneNumber"];
+    return phone == null || phone.toString().isEmpty;
+  }
+
   /// Navigate to home and save selected festival to provider
-  void navigateToHome(BuildContext context, FestivalModel festival) {
-    // Save selected festival and festivals list to provider for global access
+  /// Navigate to home and check if phone number exists
+  Future<void> navigateToHome(
+    BuildContext context,
+    FestivalModel festival,
+  ) async {
+    // Save selected festival and list
     final festivalProvider = Provider.of<FestivalProvider>(
       context,
       listen: false,
@@ -217,6 +233,19 @@ class FestivalViewModel extends BaseViewModel {
       print('🎪 Saved ${allFestivals.length} festivals to provider');
     }
 
+    // 1️⃣ Check if phone number is missing
+    final missing = await isPhoneMissing();
+
+    if (missing) {
+      print("📱 Phone missing → redirecting to phone screen");
+
+      // Navigate to Signup Phone screen → NOW FIXED
+      _navigationService.navigateTo(AppRoutes.signup, arguments: true);
+
+      return;
+    }
+
+    // 2️⃣ Phone exists → proceed normally
     _navigationService.navigateTo(AppRoutes.navbaar);
   }
 
@@ -286,7 +315,7 @@ class FestivalViewModel extends BaseViewModel {
   void setFilter(BuildContext context, String filter) {
     currentFilter = filter;
     _applyFilter();
-    
+
     // Reset to first page when filter changes
     if (festivals.isNotEmpty) {
       final int base =
@@ -303,7 +332,7 @@ class FestivalViewModel extends BaseViewModel {
         }
       }
     }
-    
+
     // Show snackbar to notify user
     String filterName;
     switch (filter) {
@@ -319,7 +348,7 @@ class FestivalViewModel extends BaseViewModel {
       default:
         filterName = 'All';
     }
-    
+
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -333,7 +362,7 @@ class FestivalViewModel extends BaseViewModel {
         ),
       );
     }
-    
+
     notifyListeners();
   }
 
