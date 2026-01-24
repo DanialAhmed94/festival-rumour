@@ -57,6 +57,10 @@ class AppColors {
 
 
   static const Color postBackground = Colors.black;
+  // Post UI tint (pink with a slight purple shade)
+  static const Color postPinkPurple = Color(0xFFE82B9D);
+  static const Color postPinkPurple50 = Color(0x80E82B9D); // 50% opacity
+  static const Color postYellow50 = Color(0x80FECD10); // #FECD10 @ 50% opacity
   static const Color postShadow = Colors.grey;
   static const Color reactionLike = Colors.red;
   static const Color reactionLove = Colors.blue;

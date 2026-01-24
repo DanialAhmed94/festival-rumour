@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_assets.dart';
 import '../../../core/utils/base_view.dart';
+import '../../../core/utils/backbutton.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/extensions/context_extensions.dart';
 
@@ -14,78 +14,42 @@ class JobDetailView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false, // Remove back button
-        title: const ResponsiveTextWidget(
-          'Job Details',
-          textType: TextType.title,
-          fontWeight: FontWeight.bold,
-          color: AppColors.white,
+      backgroundColor: AppColors.white,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: SafeArea(
+          bottom: false,
+          child: Container(
+            color: const Color(0xFFFC2E95),
+            padding: EdgeInsets.symmetric(
+              horizontal:
+                  context.isSmallScreen ? AppDimensions.paddingS : AppDimensions.paddingM,
+              vertical: AppDimensions.paddingS,
+            ),
+            child: Row(
+              children: [
+                CustomBackButton(onTap: () => Navigator.pop(context)),
+                const SizedBox(width: AppDimensions.spaceS),
+                Expanded(
+                  child: ResponsiveTextWidget(
+                    'Job Details',
+                    textType: TextType.title,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.white,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        actions: [
-          // White cross button on top right
-          Padding(
-            padding: EdgeInsets.only(
-              right: context.isSmallScreen 
-                  ? AppDimensions.paddingS 
-                  : AppDimensions.paddingM,
-            ),
-            child: GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                width: context.isSmallScreen ? 32 : 36,
-                height: context.isSmallScreen ? 32 : 36,
-                decoration: BoxDecoration(
-                  color: AppColors.white.withOpacity(0.9),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.close,
-                  color: AppColors.black,
-                  size: context.isSmallScreen ? 20 : 24,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
-      body: Stack(
-        children: [
-          // Background Image
-          Positioned.fill(
-            child: Image.asset(
-              AppAssets.bottomsheet,
-              fit: BoxFit.cover,
-            ),
-          ),
-          // Dark overlay
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(0.4),
-            ),
-          ),
-          // Content
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(
-                context.isSmallScreen 
-                    ? AppDimensions.paddingM 
-                    : AppDimensions.paddingL,
-              ),
-              child: _buildJobDetailCard(context),
-            ),
-          ),
-        ],
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(
+          context.isSmallScreen ? AppDimensions.paddingM : AppDimensions.paddingL,
+        ),
+        child: _buildJobDetailCard(context),
       ),
     );
   }
@@ -98,24 +62,17 @@ class JobDetailView extends StatelessWidget {
             : AppDimensions.paddingL,
       ),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.black.withOpacity(0.9),
-            AppColors.black.withOpacity(0.7),
-          ],
-        ),
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
         border: Border.all(
-          color: AppColors.yellow.withOpacity(0.4),
+          color: AppColors.black.withOpacity(0.2),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.yellow.withOpacity(0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            color: AppColors.black.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -137,7 +94,7 @@ class JobDetailView extends StatelessWidget {
                           ? AppDimensions.textL 
                           : AppDimensions.textXL,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.yellow,
+                      color: AppColors.black,
                     ),
                     SizedBox(height: context.isSmallScreen 
                         ? AppDimensions.spaceS 
@@ -148,7 +105,7 @@ class JobDetailView extends StatelessWidget {
                       fontSize: context.isSmallScreen 
                           ? AppDimensions.textM 
                           : AppDimensions.textL,
-                      color: AppColors.white,
+                      color: AppColors.black,
                       fontWeight: FontWeight.w600,
                     ),
                   ],
@@ -163,10 +120,10 @@ class JobDetailView extends StatelessWidget {
                   vertical: AppDimensions.paddingS,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.yellow.withOpacity(0.2),
+                  color: AppColors.black.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                   border: Border.all(
-                    color: AppColors.yellow.withOpacity(0.6),
+                    color: AppColors.black.withOpacity(0.18),
                     width: 1.5,
                   ),
                 ),
@@ -176,7 +133,7 @@ class JobDetailView extends StatelessWidget {
                   fontSize: context.isSmallScreen 
                       ? AppDimensions.textS 
                       : AppDimensions.textM,
-                  color: AppColors.yellow,
+                  color: AppColors.black,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -189,7 +146,7 @@ class JobDetailView extends StatelessWidget {
           
           // Divider
           Divider(
-            color: AppColors.yellow.withOpacity(0.4),
+            color: AppColors.black.withOpacity(0.15),
             thickness: 2,
             height: 2,
           ),
@@ -245,10 +202,10 @@ class JobDetailView extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.all(AppDimensions.paddingM),
                   decoration: BoxDecoration(
-                    color: AppColors.black.withOpacity(0.4),
+                    color: AppColors.grey100,
                     borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                     border: Border.all(
-                      color: AppColors.yellow.withOpacity(0.2),
+                      color: AppColors.black.withOpacity(0.12),
                       width: 1,
                     ),
                   ),
@@ -258,7 +215,7 @@ class JobDetailView extends StatelessWidget {
                     fontSize: context.isSmallScreen 
                         ? AppDimensions.textM 
                         : AppDimensions.textL,
-                    color: AppColors.white.withOpacity(0.9),
+                    color: AppColors.black.withOpacity(0.85),
                   ),
                 ),
               ],
@@ -276,10 +233,10 @@ class JobDetailView extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.all(AppDimensions.paddingM),
                   decoration: BoxDecoration(
-                    color: AppColors.black.withOpacity(0.4),
+                    color: AppColors.grey100,
                     borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                     border: Border.all(
-                      color: AppColors.yellow.withOpacity(0.2),
+                      color: AppColors.black.withOpacity(0.12),
                       width: 1,
                     ),
                   ),
@@ -289,7 +246,7 @@ class JobDetailView extends StatelessWidget {
                     fontSize: context.isSmallScreen 
                         ? AppDimensions.textM 
                         : AppDimensions.textL,
-                    color: AppColors.white.withOpacity(0.9),
+                    color: AppColors.black.withOpacity(0.85),
                   ),
                 ),
               ],
@@ -329,7 +286,7 @@ class JobDetailView extends StatelessWidget {
               ? AppDimensions.textL 
               : AppDimensions.textXL,
           fontWeight: FontWeight.bold,
-          color: AppColors.yellow,
+          color: AppColors.black,
         ),
         SizedBox(height: context.isSmallScreen 
             ? AppDimensions.paddingS 
@@ -352,12 +309,12 @@ class JobDetailView extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(context.isSmallScreen ? 6 : 8),
             decoration: BoxDecoration(
-              color: AppColors.yellow.withOpacity(0.2),
+              color: AppColors.black.withOpacity(0.06),
               borderRadius: BorderRadius.circular(AppDimensions.radiusS),
             ),
             child: Icon(
               icon,
-              color: AppColors.yellow,
+              color: AppColors.black,
               size: context.isSmallScreen ? 18 : 20,
             ),
           ),
@@ -374,7 +331,7 @@ class JobDetailView extends StatelessWidget {
                   fontSize: context.isSmallScreen 
                       ? AppDimensions.textS 
                       : AppDimensions.textM,
-                  color: AppColors.yellow.withOpacity(0.8),
+                  color: AppColors.black.withOpacity(0.6),
                   fontWeight: FontWeight.w600,
                 ),
                 SizedBox(height: context.isSmallScreen 
@@ -386,7 +343,7 @@ class JobDetailView extends StatelessWidget {
                   fontSize: context.isSmallScreen 
                       ? AppDimensions.textM 
                       : AppDimensions.textL,
-                  color: AppColors.white.withOpacity(0.9),
+                  color: AppColors.black.withOpacity(0.85),
                 ),
               ],
             ),

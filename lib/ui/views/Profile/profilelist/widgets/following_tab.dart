@@ -18,20 +18,20 @@ class FollowingTab extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM, vertical:AppDimensions.paddingS),
           child: TextField(
-            style: const TextStyle(color: AppColors.primary),
-            cursorColor: AppColors.primary,
+            style: const TextStyle(color: AppColors.black),
+            cursorColor: AppColors.black,
             decoration: InputDecoration(
               hintText: AppStrings.searchFollowing,
-              hintStyle: const TextStyle(color: AppColors.primary),
-              prefixIcon: const Icon(Icons.search, color: AppColors.primary),
+              hintStyle: const TextStyle(color: AppColors.grey600),
+              prefixIcon: const Icon(Icons.search, color: AppColors.black54),
               filled: true,
-              fillColor: AppColors.onPrimary.withOpacity(0.3),
+              fillColor: AppColors.grey200,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
-                borderSide: const BorderSide(color: AppColors.onPrimary, width: 2), // ✅ White border when active
+                borderSide: const BorderSide(color: AppColors.black, width: 2),
               ),
             ),
             onChanged: viewModel.searchFollowing,
@@ -48,13 +48,13 @@ class FollowingTab extends StatelessWidget {
                         Icon(
                           Icons.person_outline,
                           size: 64,
-                          color: AppColors.white,
+                          color: AppColors.black54,
                         ),
                         const SizedBox(height: AppDimensions.paddingM),
                         ResponsiveText(
                           'Not following anyone yet',
                           style: TextStyle(
-                            color: AppColors.white,
+                            color: AppColors.black,
                             fontSize: AppDimensions.textL,
                           ),
                         ),
@@ -64,7 +64,7 @@ class FollowingTab extends StatelessWidget {
                 )
               : viewModel.isLoadingInitialFollowing
                   ? const Center(
-                      child: CircularProgressIndicator(),
+                      child: CircularProgressIndicator(color: AppColors.black),
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
@@ -75,7 +75,7 @@ class FollowingTab extends StatelessWidget {
                           if (viewModel.isLoadingMoreFollowing) {
                             return const Padding(
                               padding: EdgeInsets.all(AppDimensions.paddingM),
-                              child: Center(child: CircularProgressIndicator()),
+                              child: Center(child: CircularProgressIndicator(color: AppColors.black)),
                             );
                           }
                           // Trigger load more when reaching the end
@@ -91,10 +91,10 @@ class FollowingTab extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
                 padding: const EdgeInsets.all(AppDimensions.paddingM),
                 decoration: BoxDecoration(
-                  color: AppColors.black,
+                  color: AppColors.grey200,
                   borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                   border: Border.all(
-                    color: AppColors.white,
+                    color: AppColors.grey300,
                     width: AppDimensions.dividerThickness,
                   ),
                 ),
@@ -122,7 +122,7 @@ class FollowingTab extends StatelessWidget {
                           ResponsiveText(
                             following['name'] ?? 'Unknown User',
                             style: const TextStyle(
-                              color: AppColors.white,
+                              color: AppColors.black,
                               fontSize: AppDimensions.textL,
                               fontWeight: FontWeight.w600,
                             ),
@@ -162,9 +162,10 @@ class FollowingTab extends StatelessWidget {
                     ),
                     const SizedBox(width: AppDimensions.spaceS),
                     PopupMenuButton<String>(
+                      color: AppColors.white,
                       icon: const Icon(
                         Icons.more_vert,
-                        color: AppColors.white,
+                        color: AppColors.black,
                       ),
                       onSelected: (value) async {
                         if (value == 'unfollow') {

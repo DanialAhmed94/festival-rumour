@@ -55,25 +55,9 @@ class ChatView extends BaseView<ChatViewModel> {
         return true;
       },
       child: Scaffold(
-        backgroundColor: AppColors.black,
+        backgroundColor: AppColors.white,
         body: Stack(
           children: [
-            // Background image
-            Positioned.fill(
-              child: Image.asset(
-                viewModel.isInChatRoom
-                    ? AppAssets.privatebackground
-                    : (viewModel.selectedTab == 0
-                        ? AppAssets
-                            .publicbackground // Public
-                        : AppAssets.privatebackground), // Private
-                fit: BoxFit.cover,
-              ),
-            ),
-
-            // Dark overlay
-            Positioned.fill(child: Container(color: AppColors.overlayBlack45)),
-
             // Main content
             if (viewModel.isInChatRoom)
               _buildChatRoomView(context, viewModel)
@@ -96,19 +80,14 @@ class ChatView extends BaseView<ChatViewModel> {
   }
 
   Widget _buildChatListView(BuildContext context, ChatViewModel viewModel) {
-    return Stack(
+    return Column(
       children: [
-        // App bar (extends into status bar)
-        _buildAppBar(context, viewModel),
-
-        // Main content (below app bar)
-        Positioned(
-          top:
-              MediaQuery.of(context).padding.top +
-              70, // Status bar + app bar height
-          left: 0,
-          right: 0,
-          bottom: 0,
+        SafeArea(
+          bottom: false,
+          child: _buildAppBar(context, viewModel),
+        ),
+        const SizedBox(height: AppDimensions.spaceM),
+        Expanded(
           child: Column(
             children: [
               _buildSegmentedControl(context, viewModel),
@@ -134,39 +113,29 @@ class ChatView extends BaseView<ChatViewModel> {
   }
 
   Widget _buildAppBar(BuildContext context, ChatViewModel viewModel) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top,
-          left: 16,
-          right: 16,
-          bottom: 12,
-        ),
-        decoration: BoxDecoration(color: AppColors.black.withOpacity(0.5)),
-        child: Row(
-          children: [
-            CustomBackButton(
-              onTap:
-                  onBack ??
-                  () {
-                    // Navigate back to discover screen using ViewModel
-                    viewModel.navigateBack(context);
-                  },
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(color: Color(0xFFFC2E95)),
+      child: Row(
+        children: [
+          CustomBackButton(
+            onTap:
+                onBack ??
+                () {
+                  // Navigate back to discover screen using ViewModel
+                  viewModel.navigateBack(context);
+                },
+          ),
+          Expanded(
+            child: ResponsiveTextWidget(
+              AppStrings.chatRooms,
+              textAlign: TextAlign.center,
+              textType: TextType.title,
+              color: AppColors.white,
+              fontWeight: FontWeight.w600,
             ),
-            Expanded(
-              child: ResponsiveTextWidget(
-                AppStrings.chatRooms,
-                textAlign: TextAlign.center,
-                textType: TextType.title,
-                color: AppColors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -647,17 +616,15 @@ class ChatView extends BaseView<ChatViewModel> {
 
   Widget _buildChatRoomAppBar(BuildContext context, ChatViewModel viewModel) {
     return Container(
-      height: AppDimensions.buttonHeightM,
-      color: Colors.transparent,
       padding: EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingM,
-        vertical: AppDimensions.spaceS,
+        vertical: AppDimensions.paddingS,
       ),
+      decoration: const BoxDecoration(color: Color(0xFFFC2E95)),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppColors.white),
-            onPressed: () {
+          CustomBackButton(
+            onTap: () {
               // Exit chat room and return to chat list view (public/private tabs)
               viewModel.exitChatRoom();
             },
@@ -728,7 +695,7 @@ class ChatView extends BaseView<ChatViewModel> {
               const ResponsiveTextWidget(
                 'No messages yet',
                 textType: TextType.title,
-                color: AppColors.white,
+                color: AppColors.black,
                 fontWeight: FontWeight.bold,
                 textAlign: TextAlign.center,
               ),
@@ -738,7 +705,7 @@ class ChatView extends BaseView<ChatViewModel> {
               const ResponsiveTextWidget(
                 'Start the conversation by sending a message',
                 textType: TextType.body,
-                color: AppColors.white,
+                color: AppColors.black,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppDimensions.paddingXL),
@@ -813,7 +780,7 @@ class ChatView extends BaseView<ChatViewModel> {
                               ? message.username[0].toUpperCase()
                               : 'U',
                           style: const TextStyle(
-                            color: AppColors.white,
+                            color: AppColors.black,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
@@ -887,7 +854,7 @@ class ChatView extends BaseView<ChatViewModel> {
                               ? message.username[0].toUpperCase()
                               : 'U',
                           style: const TextStyle(
-                            color: AppColors.white,
+                            color: AppColors.black,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
@@ -922,7 +889,7 @@ class ChatView extends BaseView<ChatViewModel> {
   ) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.onPrimary.withOpacity(0.95),
+      backgroundColor: AppColors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -948,12 +915,12 @@ class ChatView extends BaseView<ChatViewModel> {
               ListTile(
                 leading: const Icon(
                   Icons.delete_outline,
-                  color: AppColors.white,
+                  color: AppColors.black,
                 ),
                 title: const ResponsiveTextWidget(
                   'Delete for me',
                   textType: TextType.body,
-                  color: AppColors.white,
+                  color: AppColors.black,
                   fontWeight: FontWeight.w600,
                 ),
                 onTap: () {
@@ -967,12 +934,12 @@ class ChatView extends BaseView<ChatViewModel> {
                 ListTile(
                   leading: const Icon(
                     Icons.delete_forever,
-                    color: AppColors.white,
+                    color: AppColors.black,
                   ),
                   title: const ResponsiveTextWidget(
                     'Delete for everyone',
                     textType: TextType.body,
-                    color: AppColors.white,
+                    color: AppColors.black,
                     fontWeight: FontWeight.w600,
                   ),
                   onTap: () async {
@@ -987,9 +954,10 @@ class ChatView extends BaseView<ChatViewModel> {
                             success
                                 ? 'Message deleted for everyone'
                                 : 'Failed to delete message',
+                            style: const TextStyle(color: AppColors.black),
                           ),
                           backgroundColor:
-                              success ? AppColors.primary : AppColors.error,
+                              success ? Colors.green.shade400 : Colors.red.shade200,
                         ),
                       );
                     }
@@ -998,11 +966,11 @@ class ChatView extends BaseView<ChatViewModel> {
 
               // Cancel option
               ListTile(
-                leading: const Icon(Icons.close, color: AppColors.white),
+                leading: const Icon(Icons.close, color: AppColors.black),
                 title: const ResponsiveTextWidget(
                   'Cancel',
                   textType: TextType.body,
-                  color: AppColors.white,
+                  color: AppColors.black,
                 ),
                 onTap: () => Navigator.pop(context),
               ),
@@ -1026,9 +994,12 @@ class ChatView extends BaseView<ChatViewModel> {
 
     if (chatRoomId == null || chatRoomId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to delete group'),
-          backgroundColor: AppColors.error,
+        SnackBar(
+          content: const Text(
+            'Unable to delete group',
+            style: TextStyle(color: AppColors.black),
+          ),
+          backgroundColor: Colors.red.shade200,
         ),
       );
       return;
@@ -1038,20 +1009,20 @@ class ChatView extends BaseView<ChatViewModel> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: AppColors.onPrimary.withOpacity(0.95),
+          backgroundColor: AppColors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           ),
           title: const ResponsiveTextWidget(
             'Delete Group',
             textType: TextType.title,
-            color: AppColors.white,
+            color: AppColors.black,
             fontWeight: FontWeight.bold,
           ),
           content: ResponsiveTextWidget(
             'Are you sure you want to delete "$chatName"? This will permanently delete the group and all messages. This action cannot be undone.',
             textType: TextType.body,
-            color: AppColors.white,
+            color: AppColors.black,
           ),
           actions: [
             TextButton(
@@ -1059,7 +1030,7 @@ class ChatView extends BaseView<ChatViewModel> {
               child: const ResponsiveTextWidget(
                 'Cancel',
                 textType: TextType.body,
-                color: AppColors.white,
+                color: AppColors.black,
               ),
             ),
             TextButton(
@@ -1097,14 +1068,14 @@ class ChatView extends BaseView<ChatViewModel> {
                           children: [
                             const Icon(
                               Icons.check_circle,
-                              color: AppColors.white,
+                              color: AppColors.black,
                               size: 20,
                             ),
                             const SizedBox(width: 8),
                             const Text(
                               'Group deleted successfully',
                               style: TextStyle(
-                                color: AppColors.white,
+                                color: AppColors.black,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -1126,8 +1097,11 @@ class ChatView extends BaseView<ChatViewModel> {
                     // Show error snackbar
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: const Text('Failed to delete group'),
-                        backgroundColor: AppColors.error,
+                        content: const Text(
+                          'Failed to delete group',
+                          style: TextStyle(color: AppColors.black),
+                        ),
+                        backgroundColor: Colors.red.shade200,
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -1144,7 +1118,7 @@ class ChatView extends BaseView<ChatViewModel> {
               child: const ResponsiveTextWidget(
                 'Delete',
                 textType: TextType.body,
-                color: AppColors.error,
+                color: AppColors.black,
                 fontWeight: FontWeight.bold,
               ),
             ),

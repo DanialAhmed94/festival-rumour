@@ -132,19 +132,20 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
         resizeToAvoidBottomInset: false,
         body: Stack(
         children: [
-          // Background Image - Full screen coverage (const to prevent rebuilds)
-          Positioned.fill(
-            child: Image.asset(
-              AppAssets.bottomsheet,
-              fit: BoxFit.cover,
-            ),
+          // Background (no image)
+          const Positioned.fill(
+            child: ColoredBox(color: AppColors.white),
           ),
 
           // Main Content
           SafeArea(
             child: Column(
               children: [
-                _buildAppBar(context, widget.viewModel),
+                Container(
+                  width: double.infinity,
+                  color: const Color(0xFFFC2E95),
+                  child: _buildAppBar(context, widget.viewModel),
+                ),
                 // Conditional spacing based on screen size
 
                 Expanded(
@@ -196,13 +197,13 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
           ),
           SizedBox(width: context.getConditionalSpacing()),
           // Logo with responsive sizing
-          SvgPicture.asset(
-            AppAssets.logo,
-            color: AppColors.primary,
+          Image.asset(
+            AppAssets.logoPng,
             width: context.getConditionalLogoSize(),
            // The getter 'responsivePaddingL' isn't defined for the type 'BuildContext'.
             
             height: context.getConditionalLogoSize(),
+            fit: BoxFit.contain,
           ),
           
           // Title - Flexible to prevent overflow
@@ -272,6 +273,8 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
 
         final post = viewModel.posts[index];
         final postKey = _getOrCreateKey(index);
+        final postBackgroundColor =
+            (index % 2 == 0) ? AppColors.postPinkPurple50 : AppColors.postYellow50;
         
         return Column(
           key: ValueKey('post_column_${post.postId}'),
@@ -279,6 +282,7 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
             PostWidget(
               key: postKey,
               post: post,
+              backgroundColor: postBackgroundColor,
               onReactionSelected: (emotion) {
                 // Update reaction in ViewModel
                 if (emotion.isEmpty) {

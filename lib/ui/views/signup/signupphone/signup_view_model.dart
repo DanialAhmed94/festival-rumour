@@ -32,14 +32,9 @@ class SignupViewModel extends BaseViewModel {
   /// 🔹 Validation error
   String? phoneNumberError;
 
-  /// 🔹 Loading state
-  bool _isLoading = false;
-  bool get isLoading => _isLoading;
-
   /// 🔹 Firebase Auth state
   String? _verificationId;
   String? _phoneNumber;
-  String? _errorMessage;
 
   bool fromFestival = false;
 
@@ -48,11 +43,6 @@ class SignupViewModel extends BaseViewModel {
 
   /// Country code getter
   CountryCode get selectedCountryCode => _selectedCountryCode;
-
-  void setLoading(bool value) {
-    _isLoading = value;
-    notifyListeners();
-  }
 
   /// Focus management methods
   void focusPhone() {
@@ -117,7 +107,7 @@ class SignupViewModel extends BaseViewModel {
 
     unfocusPhone();
     setLoading(true);
-    _errorMessage = null;
+    clearError();
 
     try {
       String phoneText = phoneNumberController.text.trim();
@@ -148,10 +138,10 @@ class SignupViewModel extends BaseViewModel {
         codeAutoRetrievalTimeout: _onCodeAutoRetrievalTimeout,
       );
     } catch (e) {
-      _errorMessage = 'Failed to send verification code.';
-    } finally {
       setLoading(false);
+      setError('Failed to send verification code. Please try again.');
     }
+    // Note: Loading is cleared in _onCodeSent or _onVerificationFailed callbacks
   }
 
   /// 🔹 Firebase Auth callbacks
@@ -193,8 +183,9 @@ class SignupViewModel extends BaseViewModel {
       errorMsg = exception.message;
     }
 
-    _errorMessage = errorMsg;
-    _updateErrorWithDebounce(errorMsg);
+    // Stop loading and show error
+    setLoading(false);
+    setError(errorMsg);
   }
 
   void _onCodeSent(String verificationId, int? resendToken) {
@@ -204,6 +195,7 @@ class SignupViewModel extends BaseViewModel {
       _phoneAuthService.setPhoneData(_phoneNumber!, verificationId);
     }
 
+    // Stop loading before navigation
     setLoading(false);
 
     // 🚀 Only navigate HERE, nowhere else
@@ -238,12 +230,12 @@ class SignupViewModel extends BaseViewModel {
   /// 🔹 Verify OTP code
   Future<bool> verifyOtpCode(String smsCode) async {
     if (_verificationId == null) {
-      _errorMessage = 'No verification ID available. Please try again.';
+      setError('No verification ID available. Please try again.');
       return false;
     }
 
     setLoading(true);
-    _errorMessage = null;
+    clearError();
 
     try {
       final result = await _authService.verifyPhoneNumber(
@@ -255,14 +247,12 @@ class SignupViewModel extends BaseViewModel {
         _navigationService.navigateTo(AppRoutes.home);
         return true;
       } else {
-        _errorMessage = result.errorMessage;
-        _updateErrorWithDebounce(_errorMessage);
+        setError(result.errorMessage);
         return false;
       }
     } catch (e) {
       if (kDebugMode) print('Error verifying OTP: $e');
-      _errorMessage = 'Failed to verify code. Please try again.';
-      _updateErrorWithDebounce(_errorMessage);
+      setError('Failed to verify code. Please try again.');
       return false;
     } finally {
       setLoading(false);
@@ -275,37 +265,8 @@ class SignupViewModel extends BaseViewModel {
   /// 🔹 Get phone number for OTP screen
   String? get phoneNumber => _phoneNumber;
 
-  /// 🔹 Get error message
-  String? get errorMessage => _errorMessage;
-
-  /// 🔹 Snackbar error for UI display (debounced)
-  String? _snackbarError;
-  String? _lastShownError;
-  Timer? _errorDebounceTimer;
-
-  String? get snackbarError => _snackbarError;
-
-  /// Update error message with debouncing
-  void _updateErrorWithDebounce(String? error) {
-    if (error == _lastShownError) return;
-
-    _errorDebounceTimer?.cancel();
-    _errorDebounceTimer = Timer(const Duration(milliseconds: 300), () {
-      if (isDisposed) return;
-      _snackbarError = error;
-      _lastShownError = error;
-      notifyListeners();
-    });
-  }
-
-  void clearSnackbarError() {
-    _snackbarError = null;
-    notifyListeners();
-  }
-
   @override
   void onDispose() {
-    _errorDebounceTimer?.cancel();
     phoneNumberController.dispose();
     _phoneFocus.dispose();
     super.onDispose();

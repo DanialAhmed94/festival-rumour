@@ -23,11 +23,11 @@ class SplashView extends BaseView<SplashViewModel> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-          // 🔹 SVG Logo
-          SvgPicture.asset(
-          AppAssets.logo,      // path from your AppAssets
-            height: AppDimensions.imageXXL,
-            width: AppDimensions.imageXXL,
+          // 🔹 Logo
+          Image.asset(
+            AppAssets.logoPng,
+            height: MediaQuery.of(context).size.height * 0.12,
+            fit: BoxFit.contain,
           ),
              // FlutterLogo(size: 120, style: FlutterLogoStyle.markOnly),
             ],

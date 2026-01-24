@@ -199,13 +199,6 @@ class NameView extends BaseView<NameViewModel> {
   Widget _buildWelcomeDialog(BuildContext context, NameViewModel viewModel) {
     return Stack(
       children: [
-        // 🟤 Fullscreen black overlay
-        Container(
-          color: Colors.black54, // translucent background layer
-          width: double.infinity,
-          height: double.infinity,
-        ),
-
         // 🟢 Centered dialog
         Center(
           child: ResponsiveContainer(
@@ -216,7 +209,14 @@ class NameView extends BaseView<NameViewModel> {
               margin: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
               padding: const EdgeInsets.all(AppDimensions.paddingM),
               decoration: BoxDecoration(
-                color: AppColors.onPrimary,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFFF6B9D), // Pink
+                    Color(0xFFFF4757), // Red
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(AppDimensions.radiusL),
               ),
               child: Stack(

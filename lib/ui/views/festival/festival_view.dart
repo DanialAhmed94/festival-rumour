@@ -69,74 +69,75 @@ class FestivalView extends BaseView<FestivalViewModel> {
         },
         child: Scaffold(
           resizeToAvoidBottomInset: false,
-          body: Stack(
-            children: [
-              /// 🖼 Background image
-              Container(
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage(AppAssets.bottomsheet),
-                    fit: BoxFit.cover,
+          body: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                /// Header section (pink background) - above logos section
+                Container(
+                  color: const Color(0xFFFC2E95),
+                  child: ResponsiveContainer(
+                    mobileMaxWidth: double.infinity,
+                    tabletMaxWidth: AppDimensions.tabletWidth,
+                    desktopMaxWidth: AppDimensions.desktopWidth,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(height: AppDimensions.spaceS),
+                        _buildTopBarWithSearch(context, viewModel),
+                        SizedBox(height: AppDimensions.spaceS),
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              /// 🎨 Overlay layer (white or black tint)
-              Container(
-                color: AppColors.primary.withOpacity(
-                  0.3,
-                ), // You can tweak opacity (0.1–0.4)
-              ),
-
-              /// 🧱 Foreground content
-              SafeArea(
-                child: ResponsiveContainer(
-                  mobileMaxWidth: double.infinity,
-                  tabletMaxWidth: AppDimensions.tabletWidth,
-                  desktopMaxWidth: AppDimensions.desktopWidth,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(height: AppDimensions.spaceS),
-                      _buildTopBarWithSearch(context, viewModel),
-                      SizedBox(height: AppDimensions.spaceS),
-                      //   SizedBox(height: context.getConditionalSpacing()),
-                    
-                      SizedBox(height: AppDimensions.spaceS),
-                      _buildLogosSection(context, viewModel),
-                      SizedBox(height: AppDimensions.spaceS),
-                      _buildAnimatedGlobalFeedRow(context, viewModel),
-                      SizedBox(height: AppDimensions.spaceS),
-                      Center(
-                        child: ResponsiveTextWidget(
-                          'Let\'s Go',
-                          textType: TextType.body,
-                          color: AppColors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 32,
-                        ),
+                /// Content section (white background) - logos section and everything below it
+                Expanded(
+                  child: Container(
+                    color: AppColors.white,
+                    child: ResponsiveContainer(
+                      mobileMaxWidth: double.infinity,
+                      tabletMaxWidth: AppDimensions.tabletWidth,
+                      desktopMaxWidth: AppDimensions.desktopWidth,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(height: AppDimensions.spaceS),
+                          _buildLogosSection(context, viewModel),
+                          SizedBox(height: AppDimensions.spaceS),
+                          _buildAnimatedGlobalFeedRow(context, viewModel),
+                          SizedBox(height: AppDimensions.spaceS),
+                          Center(
+                            child: ResponsiveTextWidget(
+                              'Let\'s Go',
+                              textType: TextType.body,
+                              color: AppColors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 32,
+                            ),
+                          ),
+                          SizedBox(
+                            height:
+                                context.isSmallScreen
+                                    ? AppDimensions.spaceM
+                                    : AppDimensions.spaceL,
+                          ),
+                          Expanded(
+                            child: _buildFestivalsSlider(
+                              context,
+                              viewModel,
+                              pageController,
+                            ),
+                          ),
+                          SizedBox(height: AppDimensions.spaceS),
+                          _buildBottomIcon(context),
+                        ],
                       ),
-                      SizedBox(
-                        height:
-                            context.isSmallScreen
-                                ? AppDimensions.spaceM
-                                : AppDimensions.spaceL,
-                      ),
-                      Expanded(
-                        child: _buildFestivalsSlider(
-                          context,
-                          viewModel,
-                          pageController,
-                        ),
-                      ),
-                      SizedBox(height: AppDimensions.spaceS),
-                      _buildBottomIcon(context),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -277,7 +278,8 @@ class FestivalView extends BaseView<FestivalViewModel> {
               margin: context.responsiveMargin,
               padding: context.responsivePadding,
               decoration: BoxDecoration(
-                color: AppColors.onPrimary,
+                // light black with opacity
+                color: Colors.black.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
               ),
               child: Row(
@@ -285,7 +287,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
                   SizedBox(width: context.getConditionalSpacing()),
                   Icon(
                     Icons.search,
-                    color: AppColors.onSurfaceVariant,
+                    color: AppColors.white,
                     size: context.getConditionalIconSize(),
                   ),
                   SizedBox(width: context.getConditionalSpacing()),
@@ -299,7 +301,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
                       decoration: InputDecoration(
                         hintText: AppStrings.searchFestivals,
                         hintStyle: const TextStyle(
-                          color: AppColors.grey600,
+                          color: AppColors.white70,
                           fontWeight: FontWeight.w600,
                           fontSize: AppDimensions.textM,
                         ),
@@ -314,12 +316,12 @@ class FestivalView extends BaseView<FestivalViewModel> {
                         contentPadding: EdgeInsets.zero,
                       ),
                       style: const TextStyle(
-                        color: AppColors.primary,
+                        color: AppColors.white,
                         fontWeight: FontWeight.w600,
                         fontSize: AppDimensions.textM,
                         height: AppDimensions.searchBarTextHeight,
                       ),
-                      cursorColor: AppColors.primary,
+                      cursorColor: AppColors.white,
                       onChanged: (value) {
                         viewModel.setSearchQuery(value);
                       },
@@ -383,14 +385,14 @@ class FestivalView extends BaseView<FestivalViewModel> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.search_off, size: 64, color: AppColors.white),
+            const Icon(Icons.search_off, size: 64, color: AppColors.black),
             const SizedBox(height: AppDimensions.spaceM),
             ResponsiveTextWidget(
               viewModel.searchQuery.isNotEmpty
                   ? "${AppStrings.noFestivalsAvailable} for '${viewModel.searchQuery}'"
                   : AppStrings.noFestivalsAvailable,
               textType: TextType.body,
-              color: AppColors.white,
+              color: AppColors.black,
               textAlign: TextAlign.center,
             ),
             if (viewModel.searchQuery.isNotEmpty) ...[
@@ -400,7 +402,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
                 child: const ResponsiveTextWidget(
                   AppStrings.clearSearch,
                   textType: TextType.body,
-                  color: AppColors.white,
+                  color: AppColors.black,
                 ),
               ),
             ],
@@ -446,11 +448,24 @@ class FestivalView extends BaseView<FestivalViewModel> {
       child: Container(
         height: AppDimensions.buttonHeightXL,
         width: AppDimensions.buttonHeightXL,
-        child: SvgPicture.asset(
-          AppAssets.note,
-          width: AppDimensions.iconM,
-          height: AppDimensions.iconM,
-          color: AppColors.primary,
+        child: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [
+              Color(0xFFFB188A), // 0%
+              Color(0xFFFD774B), // 52%
+              Color(0xFFFED50B), // 100%
+            ],
+            stops: [0.0, 0.52, 1.0],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(bounds),
+          blendMode: BlendMode.srcIn,
+          child: SvgPicture.asset(
+            AppAssets.note,
+            width: AppDimensions.iconM,
+            height: AppDimensions.iconM,
+            color: AppColors.white, // shader drives final color
+          ),
         ),
       ),
     );
@@ -473,7 +488,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
                 ? AppDimensions.paddingM
                 : AppDimensions.paddingM,
       ),
-      decoration: BoxDecoration(color: AppColors.headlineBackground),
+      decoration: const BoxDecoration(color: Colors.transparent),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -485,7 +500,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
             child: ResponsiveTextWidget(
               'Download our App Suite',
               textType: TextType.body,
-              color: AppColors.white,
+              color: AppColors.black,
               fontWeight: FontWeight.bold,
               fontSize:
                   context.isSmallScreen
@@ -565,7 +580,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
         color: AppColors.white,
         size: 20,
       ),
-      color: AppColors.black,
+      color: AppColors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
       ),
@@ -586,7 +601,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
               Text(
                 AppStrings.live,
                 style: const TextStyle(
-                  color: AppColors.white,
+                  color: AppColors.black,
                   fontSize: AppDimensions.textM,
                 ),
               ),
@@ -606,7 +621,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
               Text(
                 AppStrings.upcoming,
                 style: const TextStyle(
-                  color: AppColors.white,
+                  color: AppColors.black,
                   fontSize: AppDimensions.textM,
                 ),
               ),
@@ -626,7 +641,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
               Text(
                 AppStrings.past,
                 style: const TextStyle(
-                  color: AppColors.white,
+                  color: AppColors.black,
                   fontSize: AppDimensions.textM,
                 ),
               ),
@@ -662,7 +677,7 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
             AppAssets.forwardIcon,
             width: 24,
             height: 24,
-            color: AppColors.white,
+            color: AppColors.black,
           ),
         ),
         const SizedBox(width: 12),
@@ -697,7 +712,7 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
           AppAssets.forwardIcon,
           width: 24,
           height: 24,
-          color: AppColors.white,
+          color: AppColors.black,
         ),
       ],
     );

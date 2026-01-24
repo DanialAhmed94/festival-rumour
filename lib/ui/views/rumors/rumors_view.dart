@@ -138,32 +138,23 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
           FocusScope.of(context).unfocus();
         },
       child: Scaffold(
-        extendBodyBehindAppBar: true,
+        backgroundColor: AppColors.white,
         resizeToAvoidBottomInset: false,
-        body: Stack(
-          children: [
-            // Background Image - Full screen coverage
-            Positioned.fill(
-                child: Image.asset(
-                  AppAssets.bottomsheet,
-                  fit: BoxFit.cover,
-                ),
-            ),
-
-            // Main Content
-            SafeArea(
-              child: Column(
-                children: [
-                    _buildAppBar(context, widget.viewModel),
-                    Expanded(
-                      child: _buildFeedList(context, widget.viewModel),
-                    ),
-                ],
+        body: SafeArea(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFC2E95),
+                child: _buildAppBar(context, widget.viewModel),
               ),
-            ),
-          ],
+              Expanded(
+                child: _buildFeedList(context, widget.viewModel),
+              ),
+            ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -190,13 +181,13 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
                   Navigator.pop(context);
                 },
           ),
-          const SizedBox(width: AppDimensions.spaceM),
+          SizedBox(width: context.getConditionalSpacing()),
           // Title - Flexible to prevent overflow
           Expanded(
             child: ResponsiveTextWidget(
               AppStrings.rumors,
               fontSize: context.getConditionalMainFont(),
-              color: AppColors.primary,
+              color: AppColors.white,
               fontWeight: FontWeight.bold,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -207,7 +198,7 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
           IconButton(
             icon: Icon(
               Icons.add_circle_outline,
-              color: AppColors.primary,
+              color: AppColors.white,
               size: AppDimensions.iconXL,
             ),
             onPressed: () => viewModel.goToCreatePost(),
@@ -246,6 +237,8 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
 
         final post = viewModel.posts[index];
         final postKey = _getOrCreateKey(index);
+        final postBackgroundColor =
+            (index % 2 == 0) ? AppColors.postPinkPurple50 : AppColors.postYellow50;
         
         return Column(
           key: ValueKey('post_column_${post.postId}'),
@@ -253,6 +246,7 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
             PostWidget(
               key: postKey,
               post: post,
+              backgroundColor: postBackgroundColor,
               collectionName: viewModel.festivalCollectionName, // Pass collection name for comments
               onReactionSelected: (emotion) {
                 // Update reaction in ViewModel

@@ -48,82 +48,90 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
         viewModel.unfocusSearch();
       },
       child: Scaffold(
-        extendBodyBehindAppBar: true,
-        body: Stack(
-          children: [
-            /// Background
-            Positioned.fill(
-              child: Image.asset(
-                AppAssets.bottomsheet,
-                fit: BoxFit.cover,
+        backgroundColor: AppColors.white,
+        body: SafeArea(
+          child: Column(
+            children: [
+              /// App Bar
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFC2E95),
+                child: _buildAppBar(context, viewModel),
               ),
-            ),
-            
-            /// Content
-            SafeArea(
-              child: Column(
-                children: [
-                  /// Header with Search Bar
-                  _buildHeader(context, viewModel),
-                  
-                  /// Search Results
-                  Expanded(
-                    child: _buildSearchResults(context, viewModel),
-                  ),
-                ],
+              
+              /// Search Bar
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.responsivePadding.horizontal,
+                  vertical: AppDimensions.spaceM,
+                ),
+                child: _buildSearchBar(context, viewModel),
               ),
-            ),
-          ],
+              
+              /// Search Results
+              Expanded(
+                child: _buildSearchResults(context, viewModel),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// ---------------- HEADER WITH SEARCH BAR ----------------
-  Widget _buildHeader(BuildContext context, SearchUsersViewModel viewModel) {
-    return Padding(
-      padding: context.responsivePadding,
-      child: Column(
+  /// ---------------- APP BAR ---------------- 
+  Widget _buildAppBar(BuildContext context, SearchUsersViewModel viewModel) {
+    return ResponsivePadding(
+      mobilePadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalMobile,
+        vertical: AppDimensions.appBarVerticalMobile,
+      ),
+      tabletPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalTablet,
+        vertical: AppDimensions.appBarVerticalTablet,
+      ),
+      desktopPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalDesktop,
+        vertical: AppDimensions.appBarVerticalDesktop,
+      ),
+      child: Row(
         children: [
-          /// Top Bar with Back Button and Title
-          Row(
-            children: [
-              CustomBackButton(
-                onTap: () {
-                  if (onBack != null) {
-                    onBack!();
-                  } else {
-                    Navigator.pop(context);
-                  }
-                },
-              ),
-              SizedBox(width: context.getConditionalSpacing()),
-              ResponsiveTextWidget(
-                'Search Users',
-                textType: TextType.title,
-                fontSize: context.getConditionalMainFont(),
-                color: AppColors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ],
+          CustomBackButton(
+            onTap: () {
+              if (onBack != null) {
+                onBack!();
+              } else {
+                Navigator.pop(context);
+              }
+            },
           ),
-          
-          SizedBox(height: AppDimensions.spaceM),
-          
-          /// Search Bar
-          _buildSearchBar(context, viewModel),
+          SizedBox(width: context.getConditionalSpacing()),
+          Expanded(
+            child: ResponsiveTextWidget(
+              'Search Users',
+              textType: TextType.title,
+              fontSize: context.getConditionalMainFont(),
+              color: AppColors.white,
+              fontWeight: FontWeight.bold,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(width: 48), // Balance the back button
         ],
       ),
     );
   }
 
-  /// ---------------- SEARCH BAR ----------------
+  /// ---------------- SEARCH BAR ---------------- 
   Widget _buildSearchBar(BuildContext context, SearchUsersViewModel viewModel) {
     return Container(
-      padding: context.responsivePadding,
+      padding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingM,
+        vertical: AppDimensions.paddingS,
+      ),
       height: context.getConditionalButtonSize(),
       decoration: BoxDecoration(
-        color: AppColors.onPrimary,
+        color: AppColors.grey200,
         borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
       ),
       child: Row(
@@ -132,7 +140,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
           // Search icon
           Icon(
             Icons.search, 
-            color: AppColors.onSurfaceVariant, 
+            color: AppColors.black54, 
             size: context.getConditionalIconSize(),
           ),
           SizedBox(width: context.getConditionalSpacing()),
@@ -146,7 +154,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
               decoration: InputDecoration(
                 hintText: 'Search by name or email...',
                 hintStyle: TextStyle(
-                  color: AppColors.primary,
+                  color: AppColors.grey600,
                   fontWeight: FontWeight.w600,
                   fontSize: context.getConditionalSubFont(),
                 ),
@@ -161,11 +169,11 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                 contentPadding: EdgeInsets.zero,
               ),
               style: TextStyle(
-                color: AppColors.primary,
+                color: AppColors.black,
                 fontWeight: FontWeight.w600,
                 fontSize: context.getConditionalSubFont(),
               ),
-              cursorColor: AppColors.primary,
+              cursorColor: AppColors.black,
               onChanged: (value) {
                 viewModel.searchUsers(value);
               },
@@ -182,7 +190,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                 ? IconButton(
                     icon: Icon(
                       Icons.clear, 
-                      color: AppColors.primary, 
+                      color: AppColors.black54, 
                       size: context.getConditionalIconSize(),
                     ),
                     onPressed: () {
@@ -202,7 +210,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
   Widget _buildSearchResults(BuildContext context, SearchUsersViewModel viewModel) {
     if (viewModel.busy) {
       return const Center(
-        child: LoadingWidget(),
+        child: LoadingWidget(color: AppColors.black),
       );
     }
 
@@ -220,14 +228,14 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
             Icon(
               Icons.search,
               size: 64,
-              color: AppColors.white,
+              color: AppColors.black54,
             ),
             SizedBox(height: AppDimensions.spaceM),
             ResponsiveTextWidget(
               'Search for users by name or email',
               textType: TextType.body,
               fontSize: context.getConditionalSubFont(),
-              color: AppColors.white,
+              color: AppColors.black,
               textAlign: TextAlign.center,
             ),
           ],
@@ -243,14 +251,14 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
             Icon(
               Icons.person_off,
               size: 64,
-              color: AppColors.white,
+              color: AppColors.black54,
             ),
             SizedBox(height: AppDimensions.spaceM),
             ResponsiveTextWidget(
               'No users found',
               textType: TextType.body,
               fontSize: context.getConditionalSubFont(),
-              color: AppColors.white,
+              color: AppColors.black,
               textAlign: TextAlign.center,
             ),
             SizedBox(height: AppDimensions.spaceXS),
@@ -258,7 +266,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
               'Try a different search term',
               textType: TextType.caption,
               fontSize: context.getConditionalFont(),
-              color: AppColors.white,
+              color: AppColors.black,
               textAlign: TextAlign.center,
             ),
           ],
@@ -285,7 +293,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                 'Search Results',
                 textType: TextType.title,
                 fontSize: context.getConditionalSubFont(),
-                color: AppColors.white,
+                color: AppColors.black,
                 fontWeight: FontWeight.w600,
               ),
               InkWell(
@@ -301,7 +309,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                     children: [
                       Icon(
                         Icons.clear,
-                        color: AppColors.white,
+                        color: AppColors.black,
                         size: context.getConditionalIconSize() * 0.8,
                       ),
                       SizedBox(width: AppDimensions.spaceXS),
@@ -309,7 +317,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                         'Clear',
                         textType: TextType.caption,
                         fontSize: context.getConditionalFont(),
-                        color: AppColors.white,
+                        color: AppColors.black,
                         fontWeight: FontWeight.w500,
                       ),
                     ],
@@ -329,7 +337,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
             itemCount: viewModel.searchResults.length,
             separatorBuilder: (context, index) => Divider(
               height: 1,
-              color: AppColors.white.withOpacity(0.2),
+              color: AppColors.grey300,
               indent: AppDimensions.spaceXL * 2,
             ),
             itemBuilder: (context, index) {
@@ -366,24 +374,30 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
         }
       },
       borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          vertical: AppDimensions.spaceM,
-          horizontal: AppDimensions.spaceS,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
+        padding: const EdgeInsets.all(AppDimensions.paddingM),
+        decoration: BoxDecoration(
+          color: AppColors.grey200,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+          border: Border.all(
+            color: AppColors.grey300,
+            width: AppDimensions.dividerThickness,
+          ),
         ),
         child: Row(
           children: [
             // User avatar
             CircleAvatar(
               radius: context.getConditionalIconSize() * 0.9,
-              backgroundColor: AppColors.primary.withOpacity(0.1),
+              backgroundColor: AppColors.grey300,
               backgroundImage: photoUrl != null && photoUrl.isNotEmpty
                   ? CachedNetworkImageProvider(photoUrl)
                   : null,
               child: photoUrl == null || photoUrl.isEmpty
                   ? Icon(
                       Icons.person,
-                      color: AppColors.primary,
+                      color: AppColors.black,
                       size: context.getConditionalIconSize(),
                     )
                   : null,
@@ -398,7 +412,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                     displayName,
                     textType: TextType.body,
                     fontSize: context.getConditionalSubFont(),
-                    color: AppColors.white,
+                    color: AppColors.black,
                     fontWeight: FontWeight.w600,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -409,7 +423,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                       email,
                       textType: TextType.caption,
                       fontSize: context.getConditionalSubFont() * 0.9,
-                      color: AppColors.white.withOpacity(0.7),
+                      color: AppColors.grey600,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -420,7 +434,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                       bio,
                       textType: TextType.caption,
                       fontSize: context.getConditionalSubFont() * 0.85,
-                      color: AppColors.white.withOpacity(0.6),
+                      color: AppColors.grey600,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -432,7 +446,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
             // Arrow icon
             Icon(
               Icons.arrow_forward_ios,
-              color: AppColors.white,
+              color: AppColors.black,
               size: context.getConditionalIconSize() * 0.7,
             ),
           ],
@@ -459,7 +473,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                 'Recent Searches',
                 textType: TextType.title,
                 fontSize: context.getConditionalSubFont(),
-                color: AppColors.white,
+                color: AppColors.black,
                 fontWeight: FontWeight.w600,
               ),
               if (viewModel.recentSearches.isNotEmpty)
@@ -474,7 +488,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                       'Clear',
                       textType: TextType.caption,
                       fontSize: context.getConditionalFont(),
-                      color: AppColors.white,
+                      color: AppColors.black,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -506,16 +520,22 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
         viewModel.searchFromRecent(searchQuery);
       },
       borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          vertical: AppDimensions.spaceM,
-          horizontal: AppDimensions.spaceS,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
+        padding: const EdgeInsets.all(AppDimensions.paddingM),
+        decoration: BoxDecoration(
+          color: AppColors.grey200,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+          border: Border.all(
+            color: AppColors.grey300,
+            width: AppDimensions.dividerThickness,
+          ),
         ),
         child: Row(
           children: [
             Icon(
               Icons.history,
-              color: AppColors.white.withOpacity(0.6),
+              color: AppColors.black54,
               size: context.getConditionalIconSize() * 0.8,
             ),
             SizedBox(width: context.getConditionalSpacing()),
@@ -524,7 +544,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
                 searchQuery,
                 textType: TextType.body,
                 fontSize: context.getConditionalSubFont(),
-                color: AppColors.white,
+                color: AppColors.black,
                 fontWeight: FontWeight.w500,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -533,7 +553,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
             SizedBox(width: context.getConditionalSpacing()),
             Icon(
               Icons.arrow_forward_ios,
-              color: AppColors.white,
+              color: AppColors.black,
               size: context.getConditionalIconSize() * 0.6,
             ),
           ],

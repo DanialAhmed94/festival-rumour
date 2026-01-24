@@ -637,7 +637,7 @@ class AppStrings {
   // Home view specific strings
   static const String jobDetails = 'JOB Details';
   static const String festivalGizzaJob = 'Festival Gizza Job';
-  static const String festieHerosJob = 'FestieHeros Job';
+  static const String festieHerosJob = 'Festie Heros Job';
 
   // Job Form Fields
   static const String jobTitle = 'Job Title';

@@ -61,159 +61,180 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
 
         return Scaffold(
           backgroundColor: AppColors.grey50,
-          appBar: AppBar(
-            elevation: 0,
-            backgroundColor: Colors.white,
-            iconTheme: const IconThemeData(color: AppColors.onPrimary),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: AppColors.onPrimary),
-              onPressed: vm.goBack,
-            ),
-            title: const ResponsiveTextWidget(
-              'Edit Account',
-              textType: TextType.title,
-              fontWeight: FontWeight.bold,
-              color: AppColors.onPrimary,
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: AppDimensions.paddingM),
-                child: IntrinsicWidth(
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        (vm.isLoading && !vm.isDeletingAccount)
-                            ? null
-                            : () {
-                              // Hide keyboard
-                              FocusScope.of(context).unfocus();
-                              if (kDebugMode) {
-                                print(
-                                  '🔘 [EditAccountView] Save button tapped',
-                                );
-                                print('   isLoading: ${vm.isLoading}');
-                              }
-                              // Validate form first to show errors on screen
-                              if (vm.formKey.currentState?.validate() ??
-                                  false) {
-                                vm.saveChanges();
-                              } else {
-                                if (kDebugMode) {
-                                  print(
-                                    '❌ [EditAccountView] Form validation failed',
-                                  );
-                                }
-                              }
-                            },
-                    icon:
-                        (vm.isLoading && !vm.isDeletingAccount)
-                            ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.black,
-                                ),
-                              ),
-                            )
-                            : const Icon(
-                              Icons.save,
-                              size: 18,
-                              color: Colors.black,
-                            ),
-                    label: ResponsiveTextWidget(
-                      (vm.isLoading && !vm.isDeletingAccount)
-                          ? 'Saving...'
-                          : AppStrings.save,
-                      textType: TextType.caption,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppDimensions.paddingM,
-                        vertical: AppDimensions.paddingS,
+          body: SafeArea(
+            child: Column(
+              children: [
+
+                /// ✅ Pink Header (Same as HomeView)
+                Container(
+                  width: double.infinity,
+                  color: const Color(0xFFFC2E95),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.paddingM,
+                    vertical: AppDimensions.paddingM,
+                  ),
+                  child: Row(
+                    children: [
+                      /// Back Button
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: vm.goBack,
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppDimensions.radiusM,
+
+                      const SizedBox(width: 8),
+
+                      /// Title
+                      const Expanded(
+                        child: ResponsiveTextWidget(
+                          'Edit Account',
+                          textType: TextType.title,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          body: Stack(
-            children: [
-              SingleChildScrollView(
-                padding: const EdgeInsets.all(AppDimensions.paddingM),
-                child: Form(
-                  key: vm.formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildProfileSection(context, vm),
-                      const SizedBox(height: AppDimensions.paddingL),
 
-                      _buildPersonalInfoSection(context, vm),
-                      const SizedBox(height: AppDimensions.paddingL),
-
-                      _buildContactInfoSection(context, vm),
-                      const SizedBox(height: AppDimensions.paddingL),
-
-                      // Password section in separate form
-                      Form(
-                        key: vm.passwordFormKey,
-                        child: _buildPasswordSection(context, vm),
+                      /// Save Button
+                      IntrinsicWidth(
+                        child: ElevatedButton.icon(
+                          onPressed:
+                          (vm.isLoading && !vm.isDeletingAccount)
+                              ? null
+                              : () {
+                            FocusScope.of(context).unfocus();
+                            if (vm.formKey.currentState?.validate() ?? false) {
+                              vm.saveChanges();
+                            }
+                          },
+                          icon:
+                          (vm.isLoading && !vm.isDeletingAccount)
+                              ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                              : const Icon(
+                            Icons.save,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          label: ResponsiveTextWidget(
+                            (vm.isLoading && !vm.isDeletingAccount)
+                                ? 'Saving...'
+                                : AppStrings.save,
+                            textType: TextType.caption,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white.withOpacity(0.2),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppDimensions.paddingM,
+                              vertical: AppDimensions.paddingS,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                              BorderRadius.circular(AppDimensions.radiusM),
+                            ),
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: AppDimensions.paddingL),
-
-                      _buildDangerZoneSection(context, vm),
-                      const SizedBox(height: AppDimensions.paddingXL),
                     ],
                   ),
                 ),
-              ),
-              // Loading overlay
-              if (vm.isLoading && !vm.isDeletingAccount)
-                Container(
-                  color: Colors.black.withOpacity(0.3),
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(AppDimensions.paddingL),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(
-                          AppDimensions.radiusL,
+
+                /// ✅ Body Content
+                Expanded(
+                  child: Stack(
+                    children: [
+                      SingleChildScrollView(
+                        padding:
+                        const EdgeInsets.all(AppDimensions.paddingM),
+                        child: Form(
+                          key: vm.formKey,
+                          child: Column(
+                            crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                            children: [
+                              _buildProfileSection(context, vm),
+                              const SizedBox(
+                                  height: AppDimensions.paddingL),
+
+                              _buildPersonalInfoSection(context, vm),
+                              const SizedBox(
+                                  height: AppDimensions.paddingL),
+
+                              _buildContactInfoSection(context, vm),
+                              const SizedBox(
+                                  height: AppDimensions.paddingL),
+
+                              Form(
+                                key: vm.passwordFormKey,
+                                child: _buildPasswordSection(
+                                    context, vm),
+                              ),
+                              const SizedBox(
+                                  height: AppDimensions.paddingL),
+
+                              _buildDangerZoneSection(context, vm),
+                              const SizedBox(
+                                  height: AppDimensions.paddingXL),
+                            ],
+                          ),
                         ),
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.black,
+
+                      /// Loading Overlay
+                      if (vm.isLoading && !vm.isDeletingAccount)
+                        Container(
+                          color: Colors.black.withOpacity(0.3),
+                          child: Center(
+                            child: Container(
+                              padding: const EdgeInsets.all(
+                                  AppDimensions.paddingL),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius:
+                                BorderRadius.circular(
+                                    AppDimensions.radiusL),
+                              ),
+                              child: Column(
+                                mainAxisSize:
+                                MainAxisSize.min,
+                                children: const [
+                                  CircularProgressIndicator(
+                                    valueColor:
+                                    AlwaysStoppedAnimation<
+                                        Color>(Colors.black),
+                                  ),
+                                  SizedBox(
+                                      height:
+                                      AppDimensions.paddingM),
+                                  ResponsiveTextWidget(
+                                    'Updating Information...',
+                                    textType: TextType.body,
+                                    fontWeight:
+                                    FontWeight.w600,
+                                    color:
+                                    AppColors.onPrimary,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(height: AppDimensions.paddingM),
-                          ResponsiveTextWidget(
-                            'Updating Information...',
-                            textType: TextType.body,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.onPrimary,
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
+                    ],
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         );
+
       },
     );
   }

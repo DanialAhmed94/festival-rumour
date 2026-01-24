@@ -21,21 +21,21 @@ class _FestivalsTabState extends State<FestivalsTab> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM, vertical: AppDimensions.paddingS),
           child: TextField(
-            style: const TextStyle(color: AppColors.primary),
-            cursorColor: AppColors.primary,
+            style: const TextStyle(color: AppColors.black),
+            cursorColor: AppColors.black,
             decoration: InputDecoration(
               hintText: AppStrings.searchFestivals,
-              hintStyle: const TextStyle(color: AppColors.primary),
-              prefixIcon: const Icon(Icons.search, color: AppColors.primary),
+              hintStyle: const TextStyle(color: AppColors.grey600),
+              prefixIcon: const Icon(Icons.search, color: AppColors.black54),
               filled: true,
-              fillColor: AppColors.onPrimary.withOpacity(0.3),
+              fillColor: AppColors.grey200,
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
                 borderSide: const BorderSide(color: Colors.transparent), // No border when not focused
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
-                borderSide: const BorderSide(color: AppColors.onPrimary, width: 2), // ✅ White border when active
+                borderSide: const BorderSide(color: AppColors.black, width: 2),
               ),
             ),
             onChanged: widget.viewModel.searchFestivals,
@@ -45,7 +45,7 @@ class _FestivalsTabState extends State<FestivalsTab> {
           child: widget.viewModel.isLoadingFestivals
               ? const Center(
                   child: CircularProgressIndicator(
-                    color: AppColors.primary,
+                    color: AppColors.black,
                   ),
                 )
               : widget.viewModel.festivals.isEmpty
@@ -55,14 +55,14 @@ class _FestivalsTabState extends State<FestivalsTab> {
                         children: [
                           Icon(
                             Icons.favorite_border,
-                            color: AppColors.white,
+                            color: AppColors.black54,
                             size: 64,
                           ),
                           const SizedBox(height: AppDimensions.spaceM),
                           ResponsiveText(
                             'No favorite festivals yet',
                             style: TextStyle(
-                              color: AppColors.white,
+                              color: AppColors.black,
                               fontSize: AppDimensions.textM,
                             ),
                           ),
@@ -78,10 +78,10 @@ class _FestivalsTabState extends State<FestivalsTab> {
                           margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
                           padding: const EdgeInsets.all(AppDimensions.paddingM),
                           decoration: BoxDecoration(
-                            color: AppColors.black,
+                            color: AppColors.grey200,
                             borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                             border: Border.all(
-                              color: AppColors.white,
+                              color: AppColors.grey300,
                               width: AppDimensions.dividerThickness,
                             ),
                           ),
@@ -108,7 +108,7 @@ class _FestivalsTabState extends State<FestivalsTab> {
                                     ResponsiveText(
                                       festival['title'] ?? 'Unknown Festival',
                                       style: const TextStyle(
-                                        color: AppColors.white,
+                                        color: AppColors.black,
                                         fontSize: AppDimensions.textM,
                                         fontWeight: FontWeight.w600,
                                       ),

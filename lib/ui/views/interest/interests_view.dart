@@ -22,42 +22,59 @@ class InterestsView extends BaseView<InterestsViewModel> {
     return SafeArea(
       child: Scaffold(
         body: SafeArea(
-          child: ResponsiveContainer(
-            mobileMaxWidth: double.infinity,
-            tabletMaxWidth: double.infinity,
-            desktopMaxWidth: double.infinity,
-            child: Container(
-              padding:
-                  context.isLargeScreen
-                      ? const EdgeInsets.symmetric(
-                        horizontal: AppDimensions.paddingL,
-                        vertical: AppDimensions.paddingL,
-                      )
+          child: Column(
+            children: [
+              // Header with back button (matching uploadphotos screen)
+              Container(
+                color: const Color(0xFFFC2E95),
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.isLargeScreen
+                      ? AppDimensions.paddingL
                       : context.isMediumScreen
-                      ? const EdgeInsets.symmetric(
-                        horizontal: AppDimensions.paddingM,
-                        vertical: AppDimensions.paddingM,
-                      )
-                      : const EdgeInsets.symmetric(
-                        horizontal: AppDimensions.paddingM,
-                        vertical: AppDimensions.paddingM,
-                      ),
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage(AppAssets.interestback),
-                  fit: BoxFit.cover,
+                      ? AppDimensions.paddingM
+                      : AppDimensions.paddingM,
+                  vertical: AppDimensions.paddingS,
+                ),
+                child: Row(
+                  children: [
+                    CustomBackButton(onTap: () => context.pop()),
+                  ],
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CustomBackButton(onTap: () => context.pop()),
-                  const SizedBox(height: AppDimensions.spaceM),
+              // Main content
+              Expanded(
+                child: ResponsiveContainer(
+                  mobileMaxWidth: double.infinity,
+                  tabletMaxWidth: double.infinity,
+                  desktopMaxWidth: double.infinity,
+                  child: Container(
+                    padding:
+                        context.isLargeScreen
+                            ? const EdgeInsets.symmetric(
+                              horizontal: AppDimensions.paddingL,
+                              vertical: AppDimensions.paddingL,
+                            )
+                            : context.isMediumScreen
+                            ? const EdgeInsets.symmetric(
+                              horizontal: AppDimensions.paddingM,
+                              vertical: AppDimensions.paddingM,
+                            )
+                            : const EdgeInsets.symmetric(
+                              horizontal: AppDimensions.paddingM,
+                              vertical: AppDimensions.paddingM,
+                            ),
+                    decoration: const BoxDecoration(
+                      color: AppColors.white,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: AppDimensions.spaceM),
                   ResponsiveText(
                     AppStrings.yourFestivalInterests,
                     style: const TextStyle(
                     //letterSpacing: 0.5,
-                      color: AppColors.accent,
+                      color: Color(0xFFFC2E95),
                       fontSize: AppDimensions.textXXL, // custom scaling
                       fontWeight: FontWeight.bold,
                     ),
@@ -67,7 +84,7 @@ class InterestsView extends BaseView<InterestsViewModel> {
                     AppStrings.habitsMatch,
 
                     style: TextStyle(
-                      color: AppColors.primary,
+                      color: AppColors.black,
                       fontSize: AppDimensions.textM,
                     ),
                   ),
@@ -75,7 +92,7 @@ class InterestsView extends BaseView<InterestsViewModel> {
                   ResponsiveText(
                     AppStrings.chooseCategories,
                     style: const TextStyle(
-                      color: AppColors.primary,
+                      color: AppColors.black,
                       fontSize: AppDimensions.textL + 2,
                       fontWeight: FontWeight.w600,
                     ),
@@ -83,10 +100,13 @@ class InterestsView extends BaseView<InterestsViewModel> {
                   const SizedBox(height: AppDimensions.spaceM),
                   Expanded(child: _buildInterestsGrid(context, viewModel)),
                   const SizedBox(height: AppDimensions.spaceM),
-                  _buildActionButtons(context, viewModel),
-                ],
+                        _buildActionButtons(context, viewModel),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -125,17 +145,17 @@ class InterestsView extends BaseView<InterestsViewModel> {
         child: ResponsiveTextWidget(
           category,
           textType: TextType.body,
-          color: selected ? AppColors.onPrimary : AppColors.onSurfaceVariant,
+          color: selected ? AppColors.onPrimary : AppColors.black,
         ),
       ),
       selected: selected,
       onSelected: (_) => viewModel.toggle(category),
       selectedColor: AppColors.accent,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.white.withOpacity(0.5),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
         side: BorderSide(
-          color: selected ? AppColors.onPrimary : AppColors.onSurface,
+          color: selected ? AppColors.onPrimary : AppColors.black,
           width: selected ? 2 : 1,
         ),
       ),

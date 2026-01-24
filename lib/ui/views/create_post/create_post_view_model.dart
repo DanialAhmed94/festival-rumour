@@ -92,6 +92,44 @@ class CreatePostViewModel extends BaseViewModel {
     minimumLoadingDuration: AppDurations.buttonLoadingDuration);
   }
 
+  /// Capture image from camera
+  Future<void> captureImageFromCamera() async {
+    await handleAsync(
+      () async {
+        final XFile? pickedImage = await _picker.pickImage(
+          source: ImageSource.camera,
+        );
+
+        if (pickedImage != null) {
+          selectedMedia.add(pickedImage);
+          isVideo.add(false);
+          notifyListeners();
+        }
+      },
+      errorMessage: AppStrings.failtouploadimage,
+      minimumLoadingDuration: AppDurations.buttonLoadingDuration,
+    );
+  }
+
+  /// Capture video from camera
+  Future<void> captureVideoFromCamera() async {
+    await handleAsync(
+      () async {
+        final XFile? pickedVideo = await _picker.pickVideo(
+          source: ImageSource.camera,
+        );
+
+        if (pickedVideo != null) {
+          selectedMedia.add(pickedVideo);
+          isVideo.add(true);
+          notifyListeners();
+        }
+      },
+      errorMessage: AppStrings.failedToUploadVideo,
+      minimumLoadingDuration: AppDurations.buttonLoadingDuration,
+    );
+  }
+
   /// Remove media at index
   void removeMedia(int index) {
     if (index >= 0 && index < selectedMedia.length) {

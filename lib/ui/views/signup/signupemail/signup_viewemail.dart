@@ -46,10 +46,7 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
                // margin: EdgeInsets.zero,
                 padding:context.responsivePadding,
                 decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage(AppAssets.bottomsheet),
-                    fit: BoxFit.cover,
-                  ),
+                  color: AppColors.white,
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(AppDimensions.radiusXXL),
                   ),
@@ -76,13 +73,6 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
             ),
           ),
 
-          if (viewModel.isLoading)
-            Container(
-              color: Colors.black45,
-              alignment: Alignment.center,
-              child: const LoadingWidget(color: AppColors.onPrimary),
-            ),
-          
           /// 🔹 Error snackbar handler
           _ErrorSnackbarHandler(viewModel: viewModel),
         ],
@@ -101,7 +91,7 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
           style: TextStyle(
             fontSize: context.responsiveTextXL,
             fontWeight: FontWeight.bold,
-            color: AppColors.primary,
+            color: AppColors.black,
           ),
         ),
       ],
@@ -114,27 +104,27 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
       controller: viewModel.emailController,
       focusNode: viewModel.emailFocus,
       autofocus: true,
-      style: const TextStyle(color: AppColors.primary),
+      style: const TextStyle(color: AppColors.black),
       decoration: InputDecoration(
         labelText: AppStrings.emailLabel,
         hintText: AppStrings.emailHint,
-        labelStyle: const TextStyle(color: AppColors.primary),
-        hintStyle: const TextStyle(color: AppColors.primary),
+        labelStyle: const TextStyle(color: AppColors.black),
+        hintStyle: const TextStyle(color: AppColors.black),
         enabledBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.onSurface),
+          borderSide: BorderSide(color: AppColors.black),
         ),
         focusedBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.primary, width: 2),
+          borderSide: BorderSide(color: AppColors.black, width: 2),
         ),
         errorText: viewModel.emailError,
         errorStyle: TextStyle(
-          color: AppColors.accent,
+          color: Colors.red,
           fontSize: context.getConditionalFont(),
           fontWeight: FontWeight.w500,
         ),
       ),
       keyboardType: TextInputType.emailAddress,
-      cursorColor: AppColors.primary,
+      cursorColor: AppColors.black,
       textInputAction: TextInputAction.next,
       onSubmitted: (_) => viewModel.handleEmailSubmitted(),
       onChanged: (value) {
@@ -152,35 +142,35 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
       controller: viewModel.passwordController,
       focusNode: viewModel.passwordFocus,
       obscureText: !viewModel.isPasswordVisible,
-      style: const TextStyle(color: AppColors.primary),
+      style: const TextStyle(color: AppColors.black),
       decoration: InputDecoration(
         labelText: AppStrings.passwordLabel,
         hintText: AppStrings.passwordHint,
-        labelStyle: const TextStyle(color: AppColors.primary),
-        hintStyle: const TextStyle(color: AppColors.primary),
+        labelStyle: const TextStyle(color: AppColors.black),
+        hintStyle: const TextStyle(color: AppColors.black),
         enabledBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.onSurface),
+          borderSide: BorderSide(color: AppColors.black),
         ),
         focusedBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.primary, width: 2),
+          borderSide: BorderSide(color: AppColors.black, width: 2),
         ),
         errorText: viewModel.passwordError,
         errorStyle: TextStyle(
-          color: AppColors.accent,
+          color: Colors.red,
           fontSize: context.getConditionalFont(),
           fontWeight: FontWeight.w500,
         ),
         suffixIcon: IconButton(
           icon: Icon(
             viewModel.isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-            color: AppColors.primary,
+            color: AppColors.black,
             size: context.getConditionalIconSize(),
           ),
           onPressed: viewModel.togglePasswordVisibility,
         ),
       ),
       keyboardType: TextInputType.visiblePassword,
-      cursorColor: AppColors.primary,
+      cursorColor: AppColors.black,
       textInputAction: TextInputAction.next,
       onSubmitted: (_) => viewModel.handlePasswordSubmitted(),
       onChanged: (value) {
@@ -198,21 +188,21 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
       controller: viewModel.confirmPasswordController,
       focusNode: viewModel.confirmPasswordFocus,
       obscureText: !viewModel.isConfirmPasswordVisible,
-      style: const TextStyle(color: AppColors.primary),
+      style: const TextStyle(color: AppColors.black),
       decoration: InputDecoration(
         labelText: AppStrings.confirmPasswordLabel,
         hintText: AppStrings.confirmPasswordHint,
-        labelStyle: const TextStyle(color: AppColors.primary),
-        hintStyle: const TextStyle(color: AppColors.primary),
+        labelStyle: const TextStyle(color: AppColors.black),
+        hintStyle: const TextStyle(color: AppColors.black),
         enabledBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.onSurface),
+          borderSide: BorderSide(color: AppColors.black),
         ),
         focusedBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: AppColors.primary, width: 2),
+          borderSide: BorderSide(color: AppColors.black, width: 2),
         ),
         errorText: viewModel.confirmPasswordError,
         errorStyle: TextStyle(
-          color: AppColors.accent,
+          color: Colors.red,
           fontSize: context.getConditionalFont(),
           fontWeight: FontWeight.w500,
         ),
@@ -221,14 +211,14 @@ class SignupViewEmail extends BaseView<SignupViewEmailModel> {
             viewModel.isConfirmPasswordVisible
                 ? Icons.visibility
                 : Icons.visibility_off,
-            color: AppColors.primary,
+            color: AppColors.black,
             size: context.getConditionalIconSize(),
           ),
           onPressed: viewModel.toggleConfirmPasswordVisibility,
         ),
       ),
       keyboardType: TextInputType.visiblePassword,
-      cursorColor: AppColors.primary,
+      cursorColor: AppColors.black,
       textInputAction: TextInputAction.done,
       onSubmitted: (_) => viewModel.handleConfirmPasswordSubmitted(),
       onChanged: (value) {

@@ -20,7 +20,7 @@ class EventHeaderCard extends StatelessWidget {
         if (selectedFestival != null) {
           return Container(
             decoration: BoxDecoration(
-              color: AppColors.onSurface,
+              color: const Color(0xFFFFE3F0),
               borderRadius: BorderRadius.circular(AppDimensions.radiusL),
             ),
             padding: const EdgeInsets.all(AppDimensions.paddingM),
@@ -35,7 +35,7 @@ class EventHeaderCard extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: AppDimensions.textXL,
-                          color: AppColors.white,
+                          color: AppColors.black,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -44,7 +44,7 @@ class EventHeaderCard extends StatelessWidget {
                       Text(
                         selectedFestival.location,
                         style: const TextStyle(
-                          color: AppColors.grey400,
+                          color: AppColors.black54,
                           fontSize: AppDimensions.textS,
                         ),
                         maxLines: 1,
@@ -54,7 +54,7 @@ class EventHeaderCard extends StatelessWidget {
                       Text(
                         selectedFestival.date,
                         style: const TextStyle(
-                          color: AppColors.grey400,
+                          color: AppColors.black54,
                           fontSize: AppDimensions.textS,
                         ),
                         maxLines: 1,
@@ -115,7 +115,7 @@ class EventHeaderCard extends StatelessWidget {
         // Default/placeholder when no festival is selected
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.onSurface,
+        color: const Color(0xFFFFE3F0),
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
       ),
       padding: const EdgeInsets.all(AppDimensions.paddingM),
@@ -130,14 +130,14 @@ class EventHeaderCard extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: AppDimensions.textXL,
-                    color: AppColors.white,
+                    color: AppColors.black,
                   ),
                 ),
                 const SizedBox(height: 4),
                 const Text(
                   AppStrings.saturdayOct11RevelstorkUk,
                   style: TextStyle(
-                    color: AppColors.grey400,
+                    color: AppColors.black54,
                     fontSize: AppDimensions.textS,
                   ),
                 ),

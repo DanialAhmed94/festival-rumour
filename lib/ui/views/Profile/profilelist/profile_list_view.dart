@@ -11,6 +11,7 @@ import '../../../../core/constants/app_strings.dart';
 import '../../../../core/utils/backbutton.dart';
 import '../../../../core/utils/base_view.dart';
 import '../../../../shared/widgets/responsive_text_widget.dart';
+import '../../../../shared/widgets/responsive_widget.dart';
 import 'profile_list_view_model.dart';
 
 
@@ -78,94 +79,96 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
     }
     
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          /// 🔹 Background
-          Positioned.fill(
-            child: Image.asset(
-              AppAssets.bottomsheet,
-              fit: BoxFit.cover,
+      backgroundColor: AppColors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            /// 🔹 App Bar
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFFC2E95),
+              child: ResponsivePadding(
+                mobilePadding: EdgeInsets.symmetric(
+                  horizontal: AppDimensions.appBarHorizontalMobile,
+                  vertical: AppDimensions.appBarVerticalMobile,
+                ),
+                tabletPadding: EdgeInsets.symmetric(
+                  horizontal: AppDimensions.appBarHorizontalTablet,
+                  vertical: AppDimensions.appBarVerticalTablet,
+                ),
+                desktopPadding: EdgeInsets.symmetric(
+                  horizontal: AppDimensions.appBarHorizontalDesktop,
+                  vertical: AppDimensions.appBarVerticalDesktop,
+                ),
+                child: Row(
+                  children: [
+                    CustomBackButton(onTap: () {
+                      if (onBack != null) {
+                        onBack!();
+                      } else {
+                        Navigator.pop(context);
+                      }
+                    }),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: AppColors.white),
+                      onPressed: () => viewModel.refreshList(context),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
 
-          /// 🔹 Foreground UI
-          SafeArea(
-            child: Column(
-              children: [
-                /// 🔹 App Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM, vertical: AppDimensions.paddingM),
-                  child: Row(
-                    children: [
-                      CustomBackButton(onTap: () {
-                        if (onBack != null) {
-                          onBack!();
-                        } else {
-                          Navigator.pop(context);
+            const SizedBox(height: AppDimensions.paddingS),
+
+            /// 🔹 Tabs Row
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  _buildTabButton(
+                    label: AppStrings.followers,
+                    isActive: viewModel.currentTab == 0,
+                    onTap: () => viewModel.setTab(0),
+                  ),
+                  _buildTabButton(
+                    label: AppStrings.following,
+                    isActive: viewModel.currentTab == 1,
+                    onTap: () => viewModel.setTab(1),
+                  ),
+                  _buildTabButton(
+                    label: AppStrings.festivals,
+                    isActive: viewModel.currentTab == 2,
+                    onTap: () {
+                      viewModel.setTab(2);
+                      // Load favorite festivals when festivals tab is selected
+                      // Only load if not already loaded (prevents infinite loop on empty search results)
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        // Double-check conditions before loading to prevent race conditions and loops
+                        if (viewModel.currentTab == 2 && 
+                            !viewModel.hasLoadedFestivals && 
+                            !viewModel.isLoadingFestivals) {
+                          viewModel.loadFavoriteFestivals(context);
                         }
-                      }),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, color: AppColors.white),
-                        onPressed: () => viewModel.refreshList(context),
-                      ),
-                    ],
+                      });
+                    },
                   ),
-                ),
-
-                const SizedBox(height: AppDimensions.paddingS),
-
-                /// 🔹 Tabs Row
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    children: [
-                      _buildTabButton(
-                        label: AppStrings.followers,
-                        isActive: viewModel.currentTab == 0,
-                        onTap: () => viewModel.setTab(0),
-                      ),
-                      _buildTabButton(
-                        label: AppStrings.following,
-                        isActive: viewModel.currentTab == 1,
-                        onTap: () => viewModel.setTab(1),
-                      ),
-                      _buildTabButton(
-                        label: AppStrings.festivals,
-                        isActive: viewModel.currentTab == 2,
-                        onTap: () {
-                          viewModel.setTab(2);
-                          // Load favorite festivals when festivals tab is selected
-                          // Only load if not already loaded (prevents infinite loop on empty search results)
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            // Double-check conditions before loading to prevent race conditions and loops
-                            if (viewModel.currentTab == 2 && 
-                                !viewModel.hasLoadedFestivals && 
-                                !viewModel.isLoadingFestivals) {
-                              viewModel.loadFavoriteFestivals(context);
-                            }
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: AppDimensions.paddingS),
-
-                /// 🔹 Tab View
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _buildTabView(viewModel),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+
+            const SizedBox(height: AppDimensions.paddingS),
+
+            /// 🔹 Tab View
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _buildTabView(viewModel),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -195,13 +198,13 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingXL, vertical: AppDimensions.paddingM),
           decoration: BoxDecoration(
-            color: isActive ? AppColors.accent : AppColors.onPrimary,
+            color: isActive ? AppColors.accent : AppColors.grey200,
             borderRadius: BorderRadius.circular(AppDimensions.radiusM),
           ),
           child: ResponsiveTextWidget(
             label,
             textType: TextType.body,
-              color: isActive ? AppColors.onPrimary : AppColors.primary,
+              color: isActive ? AppColors.black : AppColors.black,
               fontWeight: FontWeight.bold,
             ),
           ),

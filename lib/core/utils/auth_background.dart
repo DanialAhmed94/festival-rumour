@@ -78,12 +78,11 @@ class _AuthBackgroundState extends State<AuthBackground> {
                   Align(
                     alignment: Alignment.topCenter,
                     child: Padding(
-                      padding: EdgeInsets.only(top: screenHeight * 0.15),
-                      child: SvgPicture.asset(
-                        AppAssets.logo,
-                        color: Colors.white,
-                        height: screenHeight * 0.20,
-                        cacheColorFilter: true,
+                      padding: EdgeInsets.only(top: screenHeight * 0.18),
+                      child: Image.asset(
+                        AppAssets.logoPng,
+                        height: screenHeight * 0.12,
+                        fit: BoxFit.contain,
                       ),
                     ),
                   ),

@@ -40,75 +40,59 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
         return true;
       },
       child: Scaffold(
-        body: Stack(
-          children: [
-            /// Fullscreen background image
-            Positioned.fill(
-              child: Image.asset(
-                AppAssets.bottomsheet,
-                fit: BoxFit.cover,
+        backgroundColor: AppColors.white,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFC2E95),
+                child: _buildSimpleTopBar(context),
               ),
-            ),
-
-            /// Dark overlay for readability
-            Positioned.fill(
-              child: Container(color: AppColors.overlayBlack45),
-            ),
-
-            /// Apply SafeArea to the WHOLE scrollable content
-            SafeArea(
-              child: CustomScrollView(
-                slivers: [
-                  /// Top Bar as Sliver (Simplified - only back button and title)
-                  SliverToBoxAdapter(
-                    child: _buildSimpleTopBar(context),
-                  ),
-                  
-                  /// Divider after app bar
-                  SliverToBoxAdapter(
-                    child: _divider(),
-                  ),
-
-                  /// Profile Header (Collapsible)
-                  SliverAppBar(
-                    expandedHeight: context.isSmallScreen
-                        ? context.screenHeight * 0.25
-                        : context.isMediumScreen
-                        ? context.screenHeight * 0.24
-                        : context.screenHeight * 0.24,
-                    floating: false,
-                    pinned: false,
-                    backgroundColor: Colors.transparent,
-                    elevation: 0,
-                    automaticallyImplyLeading: false,
-                    flexibleSpace: FlexibleSpaceBar(
-                      background: _buildProfileHeader(context, viewModel),
-                    ),
-                  ),
-
-                  /// Profile Tabs (Pinned)
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _ProfileTabsDelegate(
-                      child: Container(
-                        height: AppDimensions.buttonHeightXL,
-                        color: AppColors.black.withOpacity(0.8),
-                        child: _profileTabs(context, viewModel),
+              Expanded(
+                child: CustomScrollView(
+                  slivers: [
+                    /// Profile Header (Collapsible)
+                    SliverAppBar(
+                      expandedHeight: context.isSmallScreen
+                          ? context.screenHeight * 0.25
+                          : context.isMediumScreen
+                          ? context.screenHeight * 0.24
+                          : context.screenHeight * 0.24,
+                      floating: false,
+                      pinned: false,
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      automaticallyImplyLeading: false,
+                      flexibleSpace: FlexibleSpaceBar(
+                        background: _buildProfileHeader(context, viewModel),
                       ),
                     ),
-                  ),
 
-                  /// Dynamic Content
-                  SliverToBoxAdapter(
-                    child: Container(
-                      color: AppColors.black.withOpacity(0.8),
-                      child: _buildDynamicContent(context, viewModel),
+                    /// Profile Tabs (Pinned)
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _ProfileTabsDelegate(
+                        child: Container(
+                          height: AppDimensions.buttonHeightXL,
+                          color: AppColors.white,
+                          child: _profileTabs(context, viewModel),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+
+                    /// Dynamic Content
+                    SliverToBoxAdapter(
+                      child: Container(
+                        color: AppColors.white,
+                        child: _buildDynamicContent(context, viewModel),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -116,8 +100,19 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
 
   /// Simplified top bar - only back button and profile title
   Widget _buildSimpleTopBar(BuildContext context) {
-    return Padding(
-      padding: context.responsivePadding,
+    return ResponsivePadding(
+      mobilePadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalMobile,
+        vertical: AppDimensions.appBarVerticalMobile,
+      ),
+      tabletPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalTablet,
+        vertical: AppDimensions.appBarVerticalTablet,
+      ),
+      desktopPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalDesktop,
+        vertical: AppDimensions.appBarVerticalDesktop,
+      ),
       child: Row(
         children: [
           /// Back button
@@ -127,16 +122,21 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
             },
           ),
 
-          SizedBox(width: AppDimensions.spaceM),
+          SizedBox(width: context.getConditionalSpacing()),
 
           /// Profile title
-          ResponsiveTextWidget(
-            AppStrings.profile,
-            textType: TextType.title,
-            color: AppColors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: context.getConditionalMainFont(),
+          Expanded(
+            child: ResponsiveTextWidget(
+              AppStrings.profile,
+              textType: TextType.title,
+              color: AppColors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: context.getConditionalMainFont(),
+              textAlign: TextAlign.center,
+            ),
           ),
+
+          SizedBox(width: 48), // Balance the back button
         ],
       ),
     );
@@ -175,10 +175,10 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                           height: context.isLargeScreen ? 110 : context.isMediumScreen ? 100 : 100,
                           color: AppColors.black.withOpacity(0.3),
                           child: Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.primary,
-                              strokeWidth: 2,
-                            ),
+                        child: CircularProgressIndicator(
+                          color: AppColors.black,
+                          strokeWidth: 2,
+                        ),
                           ),
                         ),
                         errorWidget: (context, url, error) => Image.asset(
@@ -206,7 +206,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                     // Username
                     ResponsiveTextWidget(
                       vm.userDisplayName ?? 'User',
-                      color: AppColors.white,
+                      color: AppColors.black,
                       fontWeight: FontWeight.bold,
                       fontSize: AppDimensions.textL,
                     ),
@@ -219,10 +219,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                           context,
                           '${vm.postCount}',
                           AppStrings.posts,
-                          () {
-                            // Navigate to posts view
-                            Navigator.pushNamed(context, AppRoutes.posts);
-                          },
+                          null, // No navigation
                         ),
                         SizedBox(width: context.getConditionalSpacing()),
                         _buildClickableStat(
@@ -266,7 +263,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                       SizedBox(height: AppDimensions.spaceM),
                       ResponsiveTextWidget(
                         vm.userBio!,
-                        color: AppColors.white,
+                        color: AppColors.black,
                         fontSize: AppDimensions.textM,
                       ),
                     ],
@@ -299,7 +296,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.black),
                 ),
               ),
             ),
@@ -320,23 +317,23 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                     : () => vm.followUser(context)),
             style: ElevatedButton.styleFrom(
               backgroundColor: isFollowing
-                  ? AppColors.black.withOpacity(0.5)
-                  : AppColors.primary,
+                  ? AppColors.grey300
+                  : AppColors.accent,
               foregroundColor: isFollowing
-                  ? AppColors.white
+                  ? AppColors.black
                   : AppColors.black,
               disabledBackgroundColor: isFollowing
-                  ? AppColors.black.withOpacity(0.3)
-                  : AppColors.primary.withOpacity(0.7),
+                  ? AppColors.grey300.withOpacity(0.5)
+                  : AppColors.accent.withOpacity(0.7),
               disabledForegroundColor: isFollowing
-                  ? AppColors.white.withOpacity(0.7)
+                  ? AppColors.black.withOpacity(0.7)
                   : AppColors.black.withOpacity(0.7),
               padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                 side: BorderSide(
                   color: isFollowing
-                      ? AppColors.white.withOpacity(0.5)
+                      ? AppColors.black.withOpacity(0.3)
                       : Colors.transparent,
                   width: 1,
                 ),
@@ -353,16 +350,14 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            isFollowing ? AppColors.white : AppColors.black,
+                            AppColors.black,
                           ),
                         ),
                       ),
                       const SizedBox(width: AppDimensions.spaceS),
                       ResponsiveTextWidget(
                         isFollowing ? 'Unfollowing...' : 'Following...',
-                        color: isFollowing
-                            ? AppColors.white.withOpacity(0.9)
-                            : AppColors.black.withOpacity(0.9),
+                        color: AppColors.black,
                         fontWeight: FontWeight.w600,
                         fontSize: AppDimensions.textM,
                       ),
@@ -370,9 +365,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                   )
                 : ResponsiveTextWidget(
                     isFollowing ? 'Unfollow' : 'Follow',
-                    color: isFollowing
-                        ? AppColors.white
-                        : AppColors.black,
+                    color: AppColors.black,
                     fontWeight: FontWeight.bold,
                     fontSize: AppDimensions.textM,
                   ),
@@ -389,14 +382,14 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
       children: [
         ResponsiveTextWidget(
           count,
-          color: AppColors.white,
+          color: AppColors.black,
           fontWeight: FontWeight.bold,
           fontSize: AppDimensions.textM,
           textAlign: TextAlign.center,
         ),
         ResponsiveTextWidget(
           label,
-          color: AppColors.white.withOpacity(0.7),
+          color: AppColors.black.withOpacity(0.7),
           fontSize: AppDimensions.textS,
           textAlign: TextAlign.center,
         ),
@@ -409,7 +402,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
     BuildContext context,
     String count,
     String label,
-    VoidCallback onTap,
+    VoidCallback? onTap,
   ) {
     return GestureDetector(
       onTap: onTap,
@@ -426,14 +419,14 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
           children: [
             ResponsiveTextWidget(
               count,
-              color: AppColors.white,
+              color: AppColors.black,
               fontWeight: FontWeight.bold,
               fontSize: AppDimensions.textM,
               textAlign: TextAlign.center,
             ),
             ResponsiveTextWidget(
               label,
-              color: AppColors.white.withOpacity(0.7),
+              color: AppColors.black.withOpacity(0.7),
               fontSize: AppDimensions.textS,
               textAlign: TextAlign.center,
             ),
@@ -488,14 +481,14 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: isSelected ? AppColors.primary : Colors.transparent,
+              color: isSelected ? AppColors.accent : Colors.transparent,
               width: 2,
             ),
           ),
         ),
         child: ResponsiveTextWidget(
           label,
-          color: isSelected ? AppColors.primary : AppColors.white.withOpacity(0.6),
+          color: isSelected ? AppColors.accent : AppColors.black,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           fontSize: context.getConditionalSubFont(),
         ),
@@ -536,12 +529,12 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CircularProgressIndicator(
-                    color: AppColors.primary,
+                    color: AppColors.black,
                   ),
                   SizedBox(height: context.responsivePadding.top),
                   ResponsiveTextWidget(
                     'Loading posts...',
-                    color: AppColors.white.withOpacity(0.7),
+                    color: AppColors.black.withOpacity(0.7),
                     fontSize: AppDimensions.textM,
                   ),
                 ],
@@ -556,7 +549,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
             child: Center(
               child: ResponsiveTextWidget(
                 'there is nothing to show',
-                color: AppColors.white.withOpacity(0.6),
+                color: AppColors.black,
                 fontSize: context.getConditionalSubFont(),
               ),
             ),
@@ -599,8 +592,11 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Post information not available'),
-                        backgroundColor: AppColors.error,
+                        content: const Text(
+                          'Post information not available',
+                          style: TextStyle(color: AppColors.black),
+                        ),
+                        backgroundColor: Colors.red.shade200,
                       ),
                     );
                   }
@@ -648,8 +644,11 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                   }
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Failed to load post. Please try again.'),
-                      backgroundColor: AppColors.error,
+                      content: const Text(
+                        'Failed to load post. Please try again.',
+                        style: TextStyle(color: AppColors.black),
+                      ),
+                      backgroundColor: Colors.red.shade200,
                     ),
                   );
                 }
@@ -664,7 +663,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                       color: AppColors.black.withOpacity(0.3),
                       child: Center(
                         child: CircularProgressIndicator(
-                          color: AppColors.primary,
+                          color: AppColors.black,
                         ),
                       ),
                     ),
@@ -716,12 +715,12 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CircularProgressIndicator(
-                    color: AppColors.primary,
+                    color: AppColors.black,
                   ),
                   SizedBox(height: context.responsivePadding.top),
                   ResponsiveTextWidget(
                     'Loading reels...',
-                    color: AppColors.white.withOpacity(0.7),
+                    color: AppColors.black.withOpacity(0.7),
                     fontSize: AppDimensions.textM,
                   ),
                 ],
@@ -736,7 +735,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
             child: Center(
               child: ResponsiveTextWidget(
                 'No reels yet',
-                color: AppColors.white.withOpacity(0.6),
+                color: AppColors.black,
                 fontSize: context.getConditionalSubFont(),
               ),
             ),
@@ -775,8 +774,11 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Post information not available'),
-                        backgroundColor: AppColors.error,
+                        content: const Text(
+                          'Post information not available',
+                          style: TextStyle(color: AppColors.black),
+                        ),
+                        backgroundColor: Colors.red.shade200,
                       ),
                     );
                   }
@@ -824,8 +826,11 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                   }
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Failed to load post. Please try again.'),
-                      backgroundColor: AppColors.error,
+                      content: const Text(
+                        'Failed to load post. Please try again.',
+                        style: TextStyle(color: AppColors.black),
+                      ),
+                      backgroundColor: Colors.red.shade200,
                     ),
                   );
                 }
@@ -839,7 +844,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                     child: Center(
                       child: Icon(
                         Icons.play_circle_outline,
-                        color: AppColors.white,
+                        color: AppColors.black,
                         size: context.responsiveIconXL,
                       ),
                     ),
@@ -868,7 +873,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                     right: 4,
                     child: Icon(
                       Icons.videocam,
-                      color: AppColors.white,
+                      color: AppColors.black,
                       size: context.responsiveIconM,
                     ),
                   ),

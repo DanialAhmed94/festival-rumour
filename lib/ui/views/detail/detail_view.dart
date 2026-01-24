@@ -2,6 +2,7 @@ import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:flutter/material.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
+import '../../../shared/widgets/responsive_widget.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
@@ -30,45 +31,39 @@ class DetailView extends BaseView<DetailViewModel> {
         return true;
       },
       child: Scaffold(
-
-        body: Stack(
-        children: [
-          // Background image (same as profile view)
-          Positioned.fill(
-            child: Image.asset(
-              AppAssets.bottomsheet,
-              fit: BoxFit.cover,
-            ),
+        backgroundColor: AppColors.white,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFC2E95),
+                child: _buildAppBar(context, viewModel),
+              ),
+              SizedBox(height: AppDimensions.spaceL),
+              Expanded(
+                child: _buildContentCards(context),
+              ),
+            ],
           ),
-          
-          // Dark overlay for readability
-          Positioned.fill(
-            child: Container(color: Colors.black.withOpacity(0.35)),
-          ),
-          
-          // Main content
-          SafeArea(
-            child: Column(
-              children: [
-                _buildAppBar(context, viewModel),
-                SizedBox(height: AppDimensions.spaceL),
-                Expanded(
-                  child: _buildContentCards(context),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
-    ),
     );
   }
 
   Widget _buildAppBar(BuildContext context, DetailViewModel viewModel) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.paddingM,
-        vertical: AppDimensions.paddingS,
+    return ResponsivePadding(
+      mobilePadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalMobile,
+        vertical: AppDimensions.appBarVerticalMobile,
+      ),
+      tabletPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalTablet,
+        vertical: AppDimensions.appBarVerticalTablet,
+      ),
+      desktopPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalDesktop,
+        vertical: AppDimensions.appBarVerticalDesktop,
       ),
       child: Row(
         children: [
@@ -78,13 +73,15 @@ class DetailView extends BaseView<DetailViewModel> {
               viewModel.navigateBack(context);
             },
           ),
-          const SizedBox(width: AppDimensions.spaceM),
-          const ResponsiveTextWidget(
-            'Detail',
-            textType: TextType.title,
-            color: AppColors.white,
-            fontWeight: FontWeight.w700,
+          SizedBox(width: context.getConditionalSpacing()),
+          const Expanded(
+            child: ResponsiveTextWidget(
+              'Detail',
+              textType: TextType.title,
+              color: AppColors.white,
+              fontWeight: FontWeight.w700,
             ),
+          ),
         ],
       ),
     );

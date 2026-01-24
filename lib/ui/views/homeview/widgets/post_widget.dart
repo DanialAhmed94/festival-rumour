@@ -16,14 +16,16 @@ import '../post_model.dart';
 
 class PostWidget extends StatefulWidget {
   final PostModel post;
+  final Color backgroundColor;
   final Function(String)? onReactionSelected; // Callback when user selects a reaction
   final VoidCallback? onCommentsUpdated; // Callback when comments are updated
   final Function(String)? onDeletePost; // Callback when user deletes the post
   final String? collectionName; // Optional collection name (for festival-specific posts)
 
-  const PostWidget({
+  PostWidget({
     super.key, 
     required this.post,
+    required this.backgroundColor,
     this.onReactionSelected,
     this.onCommentsUpdated,
     this.onDeletePost,
@@ -221,14 +223,23 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: AppColors.postBackground,
+          backgroundColor: AppColors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          ),
           title: const Text(
             'Delete Post',
-            style: TextStyle(color: AppColors.white),
+            style: TextStyle(
+              color: AppColors.black,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           content: const Text(
             'Are you sure you want to delete this post? This action cannot be undone.',
-            style: TextStyle(color: AppColors.white),
+            style: TextStyle(
+              color: AppColors.black54,
+              height: 1.3,
+            ),
           ),
           actions: [
             TextButton(
@@ -240,7 +251,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
               },
               child: const Text(
                 'Cancel',
-                style: TextStyle(color: AppColors.primary),
+                style: TextStyle(color: AppColors.black),
               ),
             ),
             TextButton(
@@ -291,7 +302,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
           ? MediaQuery.of(context).size.height * 0.5
           : MediaQuery.of(context).size.height * 0.6,
       decoration: BoxDecoration(
-        color: AppColors.postBackground.withOpacity(0.7),
+        color: widget.backgroundColor,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(AppDimensions.postBorderRadius),
           topRight: Radius.circular(AppDimensions.postBorderRadius),
@@ -306,44 +317,58 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
       child: Column(
         children: [
 //          Header
-          ListTile(
-            leading: _buildProfileAvatar(post),
-            title: Text(
-              post.username,
-              style: const TextStyle(fontWeight: FontWeight.bold,color: AppColors.accent),
-            ),
-            subtitle: Text(post.timeAgo
-                  , style: const TextStyle(fontWeight: FontWeight.bold,color: AppColors.primary),
-            ),
-            trailing: _isOwnPost && _showDeleteOption
-                ? GestureDetector(
-                    onTap: () {
-                      // Show confirmation dialog
-                      _showDeleteConfirmation(context);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      child: const Icon(
-                        Icons.delete,
-                        color: AppColors.accent, // Yellow color
-                        size: 24,
-                      ),
-                    ),
-                  )
-                : _isOwnPost
-                    ? GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _showDeleteOption = true;
-                          });
-                        },
+          Container(
+            width: double.infinity,
+            color: Colors.transparent,
+            child: ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: AppColors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: _buildProfileAvatar(post),
+              ),
+              title: Text(
+                post.username,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.white,
+                ),
+              ),
+              subtitle: Text(post.timeAgo
+                    , style: const TextStyle(fontWeight: FontWeight.bold,color: AppColors.primary),
+              ),
+              trailing: _isOwnPost && _showDeleteOption
+                  ? GestureDetector(
+                      onTap: () {
+                        // Show confirmation dialog
+                        _showDeleteConfirmation(context);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
                         child: const Icon(
-                          Icons.more_horiz,
+                          Icons.delete,
                           color: AppColors.white,
                           size: 24,
                         ),
-                      )
-                    : const SizedBox.shrink(), // Hide for other users' posts
+                      ),
+                    )
+                  : _isOwnPost
+                      ? GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _showDeleteOption = true;
+                            });
+                          },
+                          child: const Icon(
+                            Icons.more_horiz,
+                            color: AppColors.white,
+                            size: 24,
+                          ),
+                        )
+                      : const SizedBox.shrink(), // Hide for other users' posts
+            ),
           ),
 
           // Post Content
@@ -355,7 +380,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
               alignment: Alignment.centerLeft,
               child: Text(
                 post.content,
-                style: const TextStyle(color: AppColors.primary),
+                style: const TextStyle(color: AppColors.black),
                 textAlign: TextAlign.left,
               ),
             ),
@@ -489,53 +514,57 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
           const SizedBox(height: AppDimensions.paddingL),
 
           // Reaction Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.favorite,
-                  color: AppColors.reactionLike,
-                  size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
-              const SizedBox(width: AppDimensions.reactionIconSpacing),
-              Icon(Icons.thumb_up,
-                  color: AppColors.reactionLove,
-                  size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
-              const SizedBox(width: AppDimensions.reactionIconSpacing),
-              Text("${post.totalReactions > 0 ? post.totalReactions : post.likes}",style: TextStyle(color: AppColors.white),),
+          Container(
+            width: double.infinity,
+            color: Colors.transparent,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.favorite,
+                    color: AppColors.reactionLike,
+                    size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
+                const SizedBox(width: AppDimensions.reactionIconSpacing),
+                Icon(Icons.thumb_up,
+                    color: AppColors.reactionLove,
+                    size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
+                const SizedBox(width: AppDimensions.reactionIconSpacing),
+                Text("${post.totalReactions > 0 ? post.totalReactions : post.likes}",style: TextStyle(color: AppColors.white),),
 
-               SizedBox(width: context.isLargeScreen 
-                 ? context.screenWidth * 0.4
-                 : context.isMediumScreen 
-                   ? context.screenWidth * 0.35
-                   : context.screenWidth * 0.3),
+                 SizedBox(width: context.isLargeScreen 
+                   ? context.screenWidth * 0.4
+                   : context.isMediumScreen 
+                     ? context.screenWidth * 0.35
+                     : context.screenWidth * 0.3),
 
-              InkWell(
-                onTap: () async {
-                  // Navigate to comment screen using your app router
-                  // Pass both post and collection name if available
-                  final arguments = widget.collectionName != null
-                      ? {'post': widget.post, 'collectionName': widget.collectionName}
-                      : widget.post;
-                  final result = await Navigator.pushNamed(
-                    context,
-                    AppRoutes.comments,
-                    arguments: arguments,
-                  );
-                  // If comments were updated, refresh posts
-                  if (result == true && widget.onCommentsUpdated != null) {
-                    widget.onCommentsUpdated!();
-                  }
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text("${post.comments} ",style: TextStyle(color: AppColors.white),),
-                    const SizedBox(width: AppDimensions.reactionIconSpacing),
-                    Text("${AppStrings.comments} ",style: TextStyle(color: AppColors.white),),
-                  ],
+                InkWell(
+                  onTap: () async {
+                    // Navigate to comment screen using your app router
+                    // Pass both post and collection name if available
+                    final arguments = widget.collectionName != null
+                        ? {'post': widget.post, 'collectionName': widget.collectionName}
+                        : widget.post;
+                    final result = await Navigator.pushNamed(
+                      context,
+                      AppRoutes.comments,
+                      arguments: arguments,
+                    );
+                    // If comments were updated, refresh posts
+                    if (result == true && widget.onCommentsUpdated != null) {
+                      widget.onCommentsUpdated!();
+                    }
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text("${post.comments} ",style: TextStyle(color: AppColors.white),),
+                      const SizedBox(width: AppDimensions.reactionIconSpacing),
+                      Text("${AppStrings.comments} ",style: TextStyle(color: AppColors.white),),
+                    ],
+                  ),
                 ),
-              ),
 
-            ],
+              ],
+            ),
           ),
 
 

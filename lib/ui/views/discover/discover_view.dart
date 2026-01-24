@@ -92,42 +92,77 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
           widget.viewModel.unfocusSearch();
         },
       child: Scaffold(
-        extendBodyBehindAppBar: true,
-        body: Stack(
-          children: [
-            _buildBackground(),
-            SafeArea(
-              child: ResponsiveContainer(
-                mobileMaxWidth: double.infinity,
-                tabletMaxWidth: AppDimensions.tabletWidth,
-                desktopMaxWidth: AppDimensions.desktopWidth,
-                child: SingleChildScrollView(
-
-                  child: ResponsivePadding(
-                    mobilePadding: const EdgeInsets.all(AppDimensions.paddingS),
-                    tabletPadding: const EdgeInsets.all(AppDimensions.paddingM),
-                    desktopPadding: const EdgeInsets.all(AppDimensions.paddingXL),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildTopBar(context, widget.viewModel),
-                        _divider(),
-                        _buildSearchBarWithDropdown(context, widget.viewModel),
-                        SizedBox(height: AppDimensions.spaceS),
-                        const EventHeaderCard(),
-                        SizedBox(height: AppDimensions.spaceS),
-                        _buildGetReadyText(),
-                        SizedBox(height: AppDimensions.spaceS),
-                        _buildActionTiles(context),
-                        SizedBox(height: AppDimensions.spaceS),
-                        _buildGridOptions(context, widget.viewModel),
-                      ],
+        backgroundColor: AppColors.white,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Home-style header
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFC2E95),
+                child: ResponsivePadding(
+                  mobilePadding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.appBarHorizontalMobile,
+                    vertical: AppDimensions.appBarVerticalMobile,
+                  ),
+                  tabletPadding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.appBarHorizontalTablet,
+                    vertical: AppDimensions.appBarVerticalTablet,
+                  ),
+                  desktopPadding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.appBarHorizontalDesktop,
+                    vertical: AppDimensions.appBarVerticalDesktop,
+                  ),
+                  child: Row(
+                    children: [
+                      CustomBackButton(onTap: widget.onBack ?? () {}),
+                      SizedBox(width: context.getConditionalSpacing()),
+                      Expanded(
+                        child: ResponsiveTextWidget(
+                          AppStrings.overview,
+                          textType: TextType.title,
+                          fontSize: context.getConditionalMainFont(),
+                          color: AppColors.white,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      _buildFavoriteButton(context, widget.viewModel),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ResponsiveContainer(
+                  mobileMaxWidth: double.infinity,
+                  tabletMaxWidth: AppDimensions.tabletWidth,
+                  desktopMaxWidth: AppDimensions.desktopWidth,
+                  child: SingleChildScrollView(
+                    child: ResponsivePadding(
+                      mobilePadding: const EdgeInsets.all(AppDimensions.paddingS),
+                      tabletPadding: const EdgeInsets.all(AppDimensions.paddingM),
+                      desktopPadding: const EdgeInsets.all(AppDimensions.paddingXL),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _divider(),
+                          _buildSearchBarWithDropdown(context, widget.viewModel),
+                          SizedBox(height: AppDimensions.spaceS),
+                          const EventHeaderCard(),
+                          SizedBox(height: AppDimensions.spaceS),
+                          _buildGetReadyText(),
+                          SizedBox(height: AppDimensions.spaceS),
+                          _buildActionTiles(context),
+                          SizedBox(height: AppDimensions.spaceS),
+                          _buildGridOptions(context, widget.viewModel),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         ),
       ),
@@ -135,14 +170,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
   }
 
   /// ---------------- BACKGROUND ----------------
-  Widget _buildBackground() {
-    return Positioned.fill(
-      child: Image.asset(
-        AppAssets.bottomsheet,
-        fit: BoxFit.cover,
-      ),
-    );
-  }
+  // Background image removed (Discover now uses solid white background to match app-wide header style)
 
   /// ---------------- TOP BAR ----------------
   Widget _buildTopBar(BuildContext context, DiscoverViewModel viewModel) {
@@ -201,7 +229,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
     return const ResponsiveTextWidget(
       AppStrings.getReady,
       textType: TextType.body,
-      color: AppColors.white,
+      color: AppColors.black,
       fontWeight: FontWeight.bold,
     );
   }
@@ -222,12 +250,18 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
         ActionTile(
           iconPath: AppAssets.handicon,
           text: countMeInText,
+          backgroundColor: AppColors.accent,
+          textColor: AppColors.black,
+          trailingIconColor: AppColors.black,
           onTap: () => _showShareLocationDialog(context),
         ),
         SizedBox(height: AppDimensions.spaceS),
         ActionTile(
           iconPath: AppAssets.iconcharcter,
           text: AppStrings.inviteYourFestieBestie,
+          backgroundColor: const Color(0xFFFC6158),
+          textColor: AppColors.white,
+          trailingIconColor: AppColors.white,
           onTap: () => _shareFestival(context),
         ),
       ],
@@ -290,7 +324,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
       child: const Divider(
         color: AppColors.primary,
         thickness: 1,
-        height: 20, // 👈 end at very right
+        height: 8, // move search bar a bit up
       ),
     );
   }
@@ -310,7 +344,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
             padding: context.responsivePadding,
             height: context.getConditionalButtonSize(),
             decoration: BoxDecoration(
-              color: AppColors.onPrimary,
+              color: AppColors.grey200,
               borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
             ),
             child: Row(
@@ -319,7 +353,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
                 // Search icon
                 Icon(
                   Icons.search, 
-                  color: AppColors.onSurfaceVariant, 
+                  color: AppColors.grey700,
                   size: context.getConditionalIconSize(),
                 ),
                 SizedBox(width: context.getConditionalSpacing()),
@@ -332,7 +366,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
                     decoration: InputDecoration(
                       hintText: AppStrings.searchHint,
                       hintStyle: TextStyle(
-                        color: AppColors.primary,
+                        color: AppColors.grey700,
                         fontWeight: FontWeight.w600,
                         fontSize: context.getConditionalFont(),
                       ),
@@ -347,11 +381,11 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
                       contentPadding: EdgeInsets.zero,
                     ),
                     style: TextStyle(
-                      color: AppColors.primary,
+                      color: AppColors.black,
                       fontWeight: FontWeight.w600,
                       fontSize: context.getConditionalFont(),
                     ),
-                    cursorColor: AppColors.primary,
+                    cursorColor: AppColors.black,
                     onChanged: (value) {
                       viewModel.setSearchQuery(value, context);
                     },
@@ -368,7 +402,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
                       ? IconButton(
                           icon: Icon(
                             Icons.clear, 
-                            color: AppColors.primary, 
+                            color: AppColors.grey700,
                             size: context.getConditionalIconSize(),
                           ),
                           onPressed: () {
@@ -402,7 +436,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
         maxHeight: MediaQuery.of(context).size.height * 0.4,
       ),
       decoration: BoxDecoration(
-        color: AppColors.onPrimary,
+        color: AppColors.grey200,
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
         boxShadow: [
           BoxShadow(
@@ -420,7 +454,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
         itemCount: viewModel.filteredFestivals.length,
         separatorBuilder: (context, index) => Divider(
           height: 1,
-          color: AppColors.primary.withOpacity(0.2),
+          color: AppColors.black.withOpacity(0.08),
           indent: AppDimensions.spaceM,
           endIndent: AppDimensions.spaceM,
         ),
@@ -451,12 +485,12 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
               width: context.getConditionalIconSize() * 1.5,
               height: context.getConditionalIconSize() * 1.5,
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
+                color: AppColors.black.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(AppDimensions.radiusS),
               ),
               child: Icon(
                 Icons.festival,
-                color: AppColors.primary,
+                color: AppColors.grey800,
                 size: context.getConditionalIconSize(),
               ),
             ),
@@ -470,7 +504,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
                     festival.title,
                     textType: TextType.body,
                     fontSize: context.getConditionalFont(),
-                    color: AppColors.primary,
+                    color: AppColors.black,
                     fontWeight: FontWeight.w600,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -481,7 +515,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
                       festival.location,
                       textType: TextType.caption,
                       fontSize: context.getConditionalFont() * 0.85,
-                      color: AppColors.primary.withOpacity(0.7),
+                      color: AppColors.black.withOpacity(0.6),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -493,7 +527,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
             // Arrow icon
             Icon(
               Icons.arrow_forward_ios,
-              color: AppColors.primary.withOpacity(0.5),
+              color: AppColors.grey700,
               size: context.getConditionalIconSize() * 0.7,
             ),
           ],

@@ -36,10 +36,7 @@ class WelcomeView extends BaseView<WelcomeViewModel> {
                 width: double.infinity,
                 padding: context.responsivePadding,
                 decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage(AppAssets.bottomsheet),
-                    fit: BoxFit.cover,
-                  ),
+                  color: AppColors.white,
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(AppDimensions.radiusXL),
                   ),
@@ -64,7 +61,7 @@ class WelcomeView extends BaseView<WelcomeViewModel> {
                       ),
                       SizedBox(height: context.getConditionalSpacing()),
                       _LoginButton(
-                        color: AppColors.black,
+                        color: AppColors.grey800,
                         icon: AppAssets.appleIcon,
                         label: AppStrings.loginWithApple,
                         onPressed: viewModel.loginWithApple,
@@ -180,12 +177,12 @@ class _SignupText extends StatelessWidget {
       child: Text.rich(
         TextSpan(
           text: AppStrings.dontHaveAccount,
-          style: TextStyle(color: AppColors.primary, fontSize: context.responsiveTextM),
+          style: TextStyle(color: AppColors.black, fontSize: context.responsiveTextM),
           children: [
             TextSpan(
               text: AppStrings.signupNow,
               style: TextStyle(
-                color: AppColors.primary,
+                color: AppColors.black,
                 fontWeight: FontWeight.bold,
                 fontSize: context.responsiveTextL,
               ),

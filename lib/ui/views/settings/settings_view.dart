@@ -18,167 +18,182 @@ class SettingsView extends BaseView<SettingsViewModel> {
   Widget buildView(BuildContext context, SettingsViewModel viewModel) {
     return Scaffold(
       backgroundColor: AppColors.primary,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: AppColors.primary,
-        iconTheme: const IconThemeData(color: AppColors.onPrimary),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.onPrimary),
-          onPressed: () {
-            if (onBack != null) {
-              onBack!();
-            } else {
-              Navigator.pop(context);
-            }
-          },
-        ),
-        title: const ResponsiveTextWidget(
-          AppStrings.settings,
-          textType: TextType.title,
-          fontWeight: FontWeight.bold,
-          color: AppColors.onPrimary,
-        ),
-        actions: [
-          // Pro label removed
+
+    body: SafeArea(
+      child: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            color: const Color(0xFFFC2E95),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.paddingM,
+              vertical: AppDimensions.paddingM,
+            ),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () {
+                    if (onBack != null) {
+                      onBack!();
+                    } else {
+                      Navigator.pop(context);
+                    }
+                  },
+                ),
+                const SizedBox(width: 8),
+                const ResponsiveTextWidget(
+                  AppStrings.settings,
+                  textType: TextType.title,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal:
+                      context.isSmallScreen
+                          ? AppDimensions.paddingM
+                          : context.isMediumScreen
+                          ? AppDimensions.paddingL
+                          : AppDimensions.paddingXL,
+                  vertical:
+                      context.isSmallScreen
+                          ? AppDimensions.paddingS
+                          : context.isMediumScreen
+                          ? AppDimensions.paddingM
+                          : AppDimensions.paddingL,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    /// 🔹 General Section
+                    const ResponsiveTextWidget(
+                      AppStrings.general,
+                      textType: TextType.body,
+                      fontWeight: FontWeight.bold,
+                      fontSize: AppDimensions.textM,
+                      color: AppColors.grey700,
+                    ),
+                    const SizedBox(height: AppDimensions.paddingS),
+
+                    _buildTile(
+                      icon: Icons.person_outline,
+                      iconColor: AppColors.amber,
+                      title: AppStrings.editAccountDetails,
+                      onTap: viewModel.editAccount,
+                    ),
+                    _buildSwitchTile(
+                      icon: Icons.notifications_none,
+                      iconColor: AppColors.teal,
+                      title: AppStrings.notification,
+                      value: viewModel.notifications,
+                      onChanged: viewModel.toggleNotifications,
+                      subtitle: AppStrings.enableOrDisableNotifications,
+                    ),
+                    _buildSwitchTile(
+                      icon: Icons.lock_outline,
+                      iconColor: AppColors.purple,
+                      title: AppStrings.privacySettingsPro,
+                      subtitle: AppStrings.includingAnonymousToggle,
+                      value: viewModel.privacy,
+                      onChanged:
+                          (value) => _showPrivacyUpgradeDialog(context, viewModel),
+                    ),
+                    _buildTile(
+                      icon: Icons.military_tech_outlined,
+                      iconColor: AppColors.orange,
+                      title: AppStrings.badges,
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        size: AppDimensions.iconS,
+                        color: AppColors.grey600,
+                      ),
+                      onTap: () => _showBadgesDialog(context),
+                    ),
+                    _buildTile(
+                      icon: Icons.leaderboard_outlined,
+                      iconColor: AppColors.brown,
+                      title: AppStrings.leaderBoard,
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        size: AppDimensions.iconS,
+                        color: AppColors.grey600,
+                      ),
+                      onTap: viewModel.openLeaderboard,
+                    ),
+                    _buildTile(
+                      icon: Icons.work_outline,
+                      iconColor: AppColors.blue,
+                      title: 'My Jobs',
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        size: AppDimensions.iconS,
+                        color: AppColors.grey600,
+                      ),
+                      onTap: viewModel.openMyJobs,
+                    ),
+                    _buildTile(
+                      icon: Icons.logout,
+                      iconColor: AppColors.red,
+                      title: AppStrings.logout,
+                      titleColor: AppColors.red,
+                      onTap: () => _showLogoutConfirmation(context, viewModel),
+                    ),
+                    _buildTile(
+                      icon: Icons.delete_forever,
+                      iconColor: AppColors.red,
+                      title: AppStrings.deleteAccount,
+                      titleColor: AppColors.red,
+                      onTap: () => _showDeleteAccountConfirmation(context, viewModel),
+                    ),
+
+                    const SizedBox(height: AppDimensions.paddingL),
+
+                    /// 🔹 Others Section
+                    const ResponsiveTextWidget(
+                      AppStrings.others,
+                      textType: TextType.body,
+                      fontWeight: FontWeight.bold,
+                      fontSize: AppDimensions.textM,
+                      color: AppColors.grey700,
+                    ),
+                    const SizedBox(height: AppDimensions.paddingS),
+                    _buildTile(
+                      icon: Icons.star_outline,
+                      iconColor: AppColors.yellow,
+                      title: AppStrings.rateUs,
+                      onTap: () => _showRateAppDialog(context, viewModel),
+                    ),
+                    _buildTile(
+                      icon: Icons.share_outlined,
+                      iconColor: AppColors.blueAccent,
+                      title: AppStrings.shareApp,
+                      onTap: viewModel.shareApp,
+                    ),
+                    _buildTile(
+                      icon: Icons.privacy_tip_outlined,
+                      iconColor: AppColors.pink,
+                      title: AppStrings.privacyPolicy,
+                      onTap: viewModel.openPrivacyPolicy,
+                    ),
+                    _buildTile(
+                      icon: Icons.article_outlined,
+                      iconColor: AppColors.deepOrange,
+                      title: AppStrings.termsAndConditions,
+                      onTap: viewModel.openTerms,
+                    ),
+                  ],
+                ),
+              ),
+          ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(
-          horizontal:
-              context.isSmallScreen
-                  ? AppDimensions.paddingM
-                  : context.isMediumScreen
-                  ? AppDimensions.paddingL
-                  : AppDimensions.paddingXL,
-          vertical:
-              context.isSmallScreen
-                  ? AppDimensions.paddingS
-                  : context.isMediumScreen
-                  ? AppDimensions.paddingM
-                  : AppDimensions.paddingL,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            /// 🔹 General Section
-            const ResponsiveTextWidget(
-              AppStrings.general,
-              textType: TextType.body,
-              fontWeight: FontWeight.bold,
-              fontSize: AppDimensions.textM,
-              color: AppColors.grey700,
-            ),
-            const SizedBox(height: AppDimensions.paddingS),
-
-            _buildTile(
-              icon: Icons.person_outline,
-              iconColor: AppColors.amber,
-              title: AppStrings.editAccountDetails,
-              onTap: viewModel.editAccount,
-            ),
-            _buildSwitchTile(
-              icon: Icons.notifications_none,
-              iconColor: AppColors.teal,
-              title: AppStrings.notification,
-              value: viewModel.notifications,
-              onChanged: viewModel.toggleNotifications,
-              subtitle: AppStrings.enableOrDisableNotifications,
-            ),
-            _buildSwitchTile(
-              icon: Icons.lock_outline,
-              iconColor: AppColors.purple,
-              title: AppStrings.privacySettingsPro,
-              subtitle: AppStrings.includingAnonymousToggle,
-              value: viewModel.privacy,
-              onChanged:
-                  (value) => _showPrivacyUpgradeDialog(context, viewModel),
-            ),
-            _buildTile(
-              icon: Icons.military_tech_outlined,
-              iconColor: AppColors.orange,
-              title: AppStrings.badges,
-              trailing: const Icon(
-                Icons.arrow_forward_ios,
-                size: AppDimensions.iconS,
-                color: AppColors.grey600,
-              ),
-              onTap: () => _showBadgesDialog(context),
-            ),
-            _buildTile(
-              icon: Icons.leaderboard_outlined,
-              iconColor: AppColors.brown,
-              title: AppStrings.leaderBoard,
-              trailing: const Icon(
-                Icons.arrow_forward_ios,
-                size: AppDimensions.iconS,
-                color: AppColors.grey600,
-              ),
-              onTap: viewModel.openLeaderboard,
-            ),
-            _buildTile(
-              icon: Icons.work_outline,
-              iconColor: AppColors.blue,
-              title: 'My Jobs',
-              trailing: const Icon(
-                Icons.arrow_forward_ios,
-                size: AppDimensions.iconS,
-                color: AppColors.grey600,
-              ),
-              onTap: viewModel.openMyJobs,
-            ),
-            _buildTile(
-              icon: Icons.logout,
-              iconColor: AppColors.red,
-              title: AppStrings.logout,
-              titleColor: AppColors.red,
-              onTap: () => _showLogoutConfirmation(context, viewModel),
-            ),
-            _buildTile(
-              icon: Icons.delete_forever,
-              iconColor: AppColors.red,
-              title: AppStrings.deleteAccount,
-              titleColor: AppColors.red,
-              onTap: () => _showDeleteAccountConfirmation(context, viewModel),
-            ),
-
-            const SizedBox(height: AppDimensions.paddingL),
-
-            /// 🔹 Others Section
-            const ResponsiveTextWidget(
-              AppStrings.others,
-              textType: TextType.body,
-              fontWeight: FontWeight.bold,
-              fontSize: AppDimensions.textM,
-              color: AppColors.grey700,
-            ),
-            const SizedBox(height: AppDimensions.paddingS),
-            _buildTile(
-              icon: Icons.star_outline,
-              iconColor: AppColors.yellow,
-              title: AppStrings.rateUs,
-              onTap: () => _showRateAppDialog(context, viewModel),
-            ),
-            _buildTile(
-              icon: Icons.share_outlined,
-              iconColor: AppColors.blueAccent,
-              title: AppStrings.shareApp,
-              onTap: viewModel.shareApp,
-            ),
-            _buildTile(
-              icon: Icons.privacy_tip_outlined,
-              iconColor: AppColors.pink,
-              title: AppStrings.privacyPolicy,
-              onTap: viewModel.openPrivacyPolicy,
-            ),
-            _buildTile(
-              icon: Icons.article_outlined,
-              iconColor: AppColors.deepOrange,
-              title: AppStrings.termsAndConditions,
-              onTap: viewModel.openTerms,
-            ),
-          ],
-        ),
-      ),
+    ),
     );
   }
 

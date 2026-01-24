@@ -354,7 +354,7 @@ class FestivalViewModel extends BaseViewModel {
         SnackBar(
           content: Text(
             'Showing $filterName festivals',
-            style: const TextStyle(color: AppColors.white),
+            style: const TextStyle(color: AppColors.black),
           ),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,

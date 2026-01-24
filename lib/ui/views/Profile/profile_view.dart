@@ -128,84 +128,59 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
         return true; // Default: allow normal back navigation
       },
       child: Scaffold(
-        // floatingActionButton: _buildFloatingButton(context), // ✅ Add FAB here
-        // floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        body: Stack(
-
-          children: [
-
-            /// 🔹 Fullscreen background image
-            Positioned.fill(
-              child: Image.asset(
-                AppAssets.bottomsheet,
-                fit: BoxFit.cover,
+        backgroundColor: AppColors.white,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFC2E95),
+                child: _profileTopBarWidget(context, widget.viewModel),
               ),
-            ),
-
-            /// 🔹 Dark overlay for readability
-            Positioned.fill(
-              child: Container(color: AppColors.overlayBlack45),
-            ),
-
-            /// 🔹 Apply SafeArea to the WHOLE scrollable content
-            SafeArea(
-              child: CustomScrollView(
-                slivers: [
-
-                  /// 🔹 Top Bar as Sliver
-                  SliverToBoxAdapter(
-                    child: _profileTopBarWidget(context, widget.viewModel),
-                  ),
-                  
-                  /// 🔹 Divider after app bar
-                  SliverToBoxAdapter(
-                      child: _divider(),
-                  ),
-                  
-                 // SizedBox(height: AppDimensions.spaceXS),
-
-                  /// 🔹 Profile Header (Collapsible)
-                  SliverAppBar(
-
-                    expandedHeight: context.isSmallScreen
-                        ? context.screenHeight * 0.25
-                        : context.isMediumScreen
-                        ? context.screenHeight * 0.24
-                        : context.screenHeight * 0.24,
-                    floating: false,
-                    pinned: false,
-                    backgroundColor: Colors.transparent,
-                    elevation: 0,
-                    automaticallyImplyLeading: false,
-                    flexibleSpace: FlexibleSpaceBar(
-                      background: _buildProfileHeader(context, widget.viewModel),
-                    ),
-                  ),
-
-
-                  /// 🔹 Profile Tabs (Pinned)
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _ProfileTabsDelegate(
-                      child: Container(
-                        height: AppDimensions.buttonHeightXL,
-                        color: AppColors.black.withOpacity(0.8),
-                        child: _profileTabs(context, widget.viewModel),
+              Expanded(
+                child: CustomScrollView(
+                  slivers: [
+                    /// 🔹 Profile Header (Collapsible)
+                    SliverAppBar(
+                      expandedHeight: context.isSmallScreen
+                          ? context.screenHeight * 0.25
+                          : context.isMediumScreen
+                          ? context.screenHeight * 0.24
+                          : context.screenHeight * 0.24,
+                      floating: false,
+                      pinned: false,
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      automaticallyImplyLeading: false,
+                      flexibleSpace: FlexibleSpaceBar(
+                        background: _buildProfileHeader(context, widget.viewModel),
                       ),
                     ),
-                  ),
 
-                  /// 🔹 Dynamic Content
-                  SliverToBoxAdapter(
-                    child: Container(
-                      color: AppColors.black.withOpacity(0.8),
-                      child: _buildDynamicContent(context, widget.viewModel),
+                    /// 🔹 Profile Tabs (Pinned)
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _ProfileTabsDelegate(
+                        child: Container(
+                          height: AppDimensions.buttonHeightXL,
+                          color: AppColors.white,
+                          child: _profileTabs(context, widget.viewModel),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+
+                    /// 🔹 Dynamic Content
+                    SliverToBoxAdapter(
+                      child: Container(
+                        color: AppColors.white,
+                        child: _buildDynamicContent(context, widget.viewModel),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -257,7 +232,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                                   color: AppColors.black.withOpacity(0.3),
                                   child: Center(
                                     child: CircularProgressIndicator(
-                                      color: AppColors.primary,
+                                      color: AppColors.black,
                                       strokeWidth: 2,
                                     ),
                                   ),
@@ -287,7 +262,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                             // Username
                             ResponsiveTextWidget(
                               userDisplayName ?? 'User',
-                              color: AppColors.white,
+                              color: AppColors.black,
                               fontWeight: FontWeight.bold,
                               fontSize: AppDimensions.textL,
                             ),
@@ -302,13 +277,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                                       context,
                                       vm.postCount.toString(),
                                       AppStrings.posts,
-                                      () {
-                                        if (widget.onNavigateToSub != null) {
-                                          widget.onNavigateToSub!('posts');
-                                        } else {
-                                          Navigator.pushNamed(context, AppRoutes.posts);
-                                        }
-                                      },
+                                      null, // No navigation
                                     );
                                   },
                                 ),
@@ -405,7 +374,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                           : AppStrings.bioDescription;
                       return ResponsiveTextWidget(
                         bioText,
-                        color: AppColors.white,
+                        color: AppColors.black,
                         fontSize: context.getConditionalFont(),
                         textAlign: TextAlign.left,
                       );
@@ -441,8 +410,19 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
   }
   /// ---------------- TOP BAR ---------------- 
   Widget _profileTopBarWidget(BuildContext context, ProfileViewModel viewModel) {
-    return Padding(
-      padding: context.responsivePadding,
+    return ResponsivePadding(
+      mobilePadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalMobile,
+        vertical: AppDimensions.appBarVerticalMobile,
+      ),
+      tabletPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalTablet,
+        vertical: AppDimensions.appBarVerticalTablet,
+      ),
+      desktopPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalDesktop,
+        vertical: AppDimensions.appBarVerticalDesktop,
+      ),
       child: Row(
         children: [
           /// Back button
@@ -476,15 +456,18 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
             },
           ),
 
-          SizedBox(width: AppDimensions.spaceM),
+          SizedBox(width: context.getConditionalSpacing()),
 
           /// Profile title
-          ResponsiveTextWidget(
-            AppStrings.profile,
-            textType: TextType.title,
-            color: AppColors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: context.getConditionalMainFont(),
+          Expanded(
+            child: ResponsiveTextWidget(
+              AppStrings.profile,
+              textType: TextType.title,
+              color: AppColors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: context.getConditionalMainFont(),
+              textAlign: TextAlign.center,
+            ),
           ),
 
           /// Spacer to push icons to the right
@@ -612,12 +595,12 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CircularProgressIndicator(
-                    color: AppColors.primary,
+                    color: AppColors.black,
                   ),
                   SizedBox(height: context.responsivePadding.top),
                   ResponsiveTextWidget(
                     'Loading posts...',
-                    color: AppColors.white.withOpacity(0.7),
+                    color: AppColors.black.withOpacity(0.7),
                     fontSize: AppDimensions.textM,
                   ),
                 ],
@@ -633,7 +616,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
             child: Center(
               child: ResponsiveTextWidget(
                 'there is nothing to show',
-                color: AppColors.white,
+                color: AppColors.black,
                 fontSize: AppDimensions.textM,
               ),
             ),
@@ -692,7 +675,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                       barrierDismissible: false,
                       builder: (context) => Center(
                         child: CircularProgressIndicator(
-                          color: AppColors.primary,
+                          color: AppColors.black,
                         ),
                       ),
                     );
@@ -750,7 +733,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                           color: AppColors.black.withOpacity(0.3),
                           child: Center(
                             child: CircularProgressIndicator(
-                              color: AppColors.primary,
+                              color: AppColors.black,
                             ),
                           ),
                         ),
@@ -812,7 +795,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                         )
                       : ResponsiveTextWidget(
                           'Load More',
-                          color: AppColors.white,
+                          color: AppColors.black,
                           fontSize: AppDimensions.textM,
                         ),
                 ),
@@ -841,12 +824,12 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CircularProgressIndicator(
-                    color: AppColors.primary,
+                    color: AppColors.black,
                   ),
                   SizedBox(height: context.responsivePadding.top),
                   ResponsiveTextWidget(
                     'Loading reels...',
-                    color: AppColors.white.withOpacity(0.7),
+                    color: AppColors.black.withOpacity(0.7),
                     fontSize: AppDimensions.textM,
                   ),
                 ],
@@ -862,7 +845,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
             child: Center(
               child: ResponsiveTextWidget(
                 'No reels yet',
-                color: AppColors.white,
+                color: AppColors.black,
                 fontSize: AppDimensions.textM,
               ),
             ),
@@ -917,7 +900,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                       barrierDismissible: false,
                       builder: (context) => Center(
                         child: CircularProgressIndicator(
-                          color: AppColors.primary,
+                          color: AppColors.black,
                         ),
                       ),
                     );
@@ -971,7 +954,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                         child: Center(
                           child: Icon(
                             Icons.play_circle_outline,
-                            color: AppColors.white,
+                            color: AppColors.black,
                             size: context.responsiveIconXL,
                           ),
                         ),
@@ -1000,7 +983,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                         right: 4,
                         child: Icon(
                           Icons.videocam,
-                          color: AppColors.white,
+                          color: AppColors.black,
                           size: context.responsiveIconM,
                         ),
                       ),
@@ -1039,7 +1022,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                         )
                       : ResponsiveTextWidget(
                           'Load More',
-                          color: AppColors.white,
+                          color: AppColors.black,
                           fontSize: AppDimensions.textM,
                         ),
                 ),
@@ -1059,7 +1042,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
         ResponsiveTextWidget(
           count,
           textType: TextType.title,
-          color: AppColors.white,
+          color: AppColors.black,
           fontWeight: FontWeight.bold,
          // fontSize: AppDimensions.textM,
           fontSize: context.isHighResolutionPhone ? 16 : 12,
@@ -1070,7 +1053,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
         ResponsiveTextWidget(
           label,
           textType: TextType.caption,
-          color: AppColors.white,
+          color: AppColors.black,
         //fontSize: AppDimensions.textXS,
           fontSize: context.isHighResolutionPhone ? 10 : 8,
           maxLines: 1,
@@ -1081,7 +1064,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
     );
   }
 
-  Widget _buildClickableStat(BuildContext context, String count, String label, VoidCallback onTap) {
+  Widget _buildClickableStat(BuildContext context, String count, String label, VoidCallback? onTap) {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque, // Make entire area tappable
@@ -1148,7 +1131,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
     return IconButton(
       icon: Icon(
         icon,
-        color: selectedTab == index ? AppColors.accent : AppColors.white,
+        color: selectedTab == index ? AppColors.accent : AppColors.black,
         size: context.responsiveIconM,
       ),
       onPressed: () => viewModel.setSelectedTab(index),
@@ -1188,7 +1171,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                     child: IconButton(
                       icon: Icon(
                         Icons.close, 
-                        color: AppColors.white, 
+                        color: AppColors.black, 
                         size: context.responsiveIconL,
                       ),
                       onPressed: () => Navigator.pop(context),

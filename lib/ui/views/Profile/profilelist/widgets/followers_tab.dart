@@ -19,20 +19,20 @@ class FollowersTab extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM, vertical: AppDimensions.paddingS),
           child: TextField(
-            style: const TextStyle(color: AppColors.primary),
-            cursorColor: AppColors.primary,
+            style: const TextStyle(color: AppColors.black),
+            cursorColor: AppColors.black,
             decoration: InputDecoration(
               hintText: AppStrings.searchFollowers,
-              hintStyle: const TextStyle(color: AppColors.primary),
-              prefixIcon: const Icon(Icons.search, color: AppColors.primary),
+              hintStyle: const TextStyle(color: AppColors.grey600),
+              prefixIcon: const Icon(Icons.search, color: AppColors.black54),
               filled: true,
-              fillColor: AppColors.onPrimary.withOpacity(0.3),
+              fillColor: AppColors.grey200,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
-                borderSide: const BorderSide(color: AppColors.onPrimary, width: 2), // ✅ White border when active
+                borderSide: const BorderSide(color: AppColors.black, width: 2),
               ),
             ),
             onChanged: viewModel.searchFollowers,
@@ -51,13 +51,13 @@ class FollowersTab extends StatelessWidget {
                         Icon(
                           Icons.people_outline,
                           size: 64,
-                          color: AppColors.white,
+                          color: AppColors.black54,
                         ),
                         const SizedBox(height: AppDimensions.paddingM),
                         ResponsiveText(
                           'No followers yet',
                           style: TextStyle(
-                            color: AppColors.white,
+                            color: AppColors.black,
                             fontSize: AppDimensions.textL,
                           ),
                         ),
@@ -67,7 +67,7 @@ class FollowersTab extends StatelessWidget {
                 )
               : viewModel.isLoadingInitialFollowers
                   ? const Center(
-                      child: CircularProgressIndicator(),
+                      child: CircularProgressIndicator(color: AppColors.black),
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
@@ -78,7 +78,7 @@ class FollowersTab extends StatelessWidget {
                           if (viewModel.isLoadingMoreFollowers) {
                             return const Padding(
                               padding: EdgeInsets.all(AppDimensions.paddingM),
-                              child: Center(child: CircularProgressIndicator()),
+                              child: Center(child: CircularProgressIndicator(color: AppColors.black)),
                             );
                           }
                           // Trigger load more when reaching the end
@@ -94,10 +94,10 @@ class FollowersTab extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
                 padding: const EdgeInsets.all(AppDimensions.paddingM),
                 decoration: BoxDecoration(
-                  color: AppColors.black,
+                  color: AppColors.grey200,
                   borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                   border: Border.all(
-                    color: AppColors.white,
+                    color: AppColors.grey300,
                     width: AppDimensions.dividerThickness,
                   ),
                 ),
@@ -125,7 +125,7 @@ class FollowersTab extends StatelessWidget {
                           ResponsiveText(
                             follower['name'] ?? 'Unknown User',
                             style: const TextStyle(
-                              color: AppColors.white,
+                              color: AppColors.black,
                               fontSize: AppDimensions.textL,
                             //  fontWeight: FontWeight.w600,
                             ),
@@ -165,10 +165,10 @@ class FollowersTab extends StatelessWidget {
                     ),
                     const SizedBox(width: AppDimensions.spaceS),
                     PopupMenuButton<String>(
-                      color: AppColors.primary,
+                      color: AppColors.white,
                       icon: const Icon(
                         Icons.more_vert,
-                        color: AppColors.white,
+                        color: AppColors.black,
                       ),
                       onSelected: (value) {
                         if (value == 'Message') {
@@ -184,7 +184,7 @@ class FollowersTab extends StatelessWidget {
                             style: TextStyle(
                               fontSize: AppDimensions.textM,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.white,
+                              color: AppColors.black,
                             ),
                           ),
                         ),

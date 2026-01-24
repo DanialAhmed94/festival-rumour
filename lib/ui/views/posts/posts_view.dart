@@ -115,6 +115,7 @@ class PostsView extends BaseView<PostsViewModel> {
                                 final post = vm.posts[index];
                                 return PostWidget(
                                   post: post,
+                                  backgroundColor: AppColors.postPinkPurple50,
                                   collectionName: vm.collectionName,
                                   onReactionSelected: (emotion) {
                                     // Handle reaction selection

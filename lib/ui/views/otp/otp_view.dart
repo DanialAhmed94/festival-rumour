@@ -9,6 +9,7 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_durations.dart';
 import '../../../core/utils/backbutton.dart';
+import '../../../core/utils/auth_background.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/responsive_widget.dart';
 import '../../../shared/extensions/context_extensions.dart';
@@ -53,13 +54,18 @@ class OtpView extends BaseView<OtpViewModel> {
         resizeToAvoidBottomInset: true,
         body: Stack(
           children: [
+            // Background
+            const AuthBackground(),
+
             // Main content
-            Positioned.fill(
+            Align(
+              alignment: Alignment.bottomCenter,
               child: ResponsiveContainer(
                 mobileMaxWidth: double.infinity,
                 tabletMaxWidth: double.infinity,
                 desktopMaxWidth: double.infinity,
                 child: Container(
+                  width: double.infinity,
                   padding: EdgeInsets.symmetric(
                     horizontal:
                         context.isSmallScreen
@@ -75,9 +81,9 @@ class OtpView extends BaseView<OtpViewModel> {
                             : AppDimensions.paddingXL,
                   ),
                   decoration: const BoxDecoration(
-                    image: DecorationImage(
-                      image: AssetImage(AppAssets.bottomsheet),
-                      fit: BoxFit.cover,
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(AppDimensions.radiusXXL),
                     ),
                   ),
                   child: Selector<OtpViewModel, String?>(
@@ -161,20 +167,6 @@ class OtpView extends BaseView<OtpViewModel> {
                 },
               ),
             ),
-            // Loading overlay
-            if (viewModel.isLoading)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black.withOpacity(0.3),
-                  child: const Center(
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        AppColors.accent,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -379,7 +371,7 @@ class OtpView extends BaseView<OtpViewModel> {
                   width: AppDimensions.iconS,
                   height: AppDimensions.iconS,
                   child: CircularProgressIndicator(
-                    color: AppColors.onPrimary,
+                    color: AppColors.white,
                     strokeWidth: AppDimensions.borderWidthS,
                   ),
                 )
@@ -411,14 +403,14 @@ class OtpView extends BaseView<OtpViewModel> {
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          AppColors.primary,
+                          AppColors.black,
                         ),
                       ),
                     )
                     : const Icon(
                       Icons.refresh,
                       size: AppDimensions.iconS,
-                      color: AppColors.primary,
+                      color: AppColors.black,
                     ),
             label: ResponsiveTextWidget(
               viewModel.isResending
@@ -429,8 +421,8 @@ class OtpView extends BaseView<OtpViewModel> {
               textType: TextType.body,
               color:
                   canResend
-                      ? AppColors.primary
-                      : AppColors.primary.withOpacity(0.5),
+                      ? AppColors.black
+                      : AppColors.black.withOpacity(0.5),
               fontSize: AppDimensions.textM,
               fontWeight: FontWeight.w500,
             ),
@@ -441,7 +433,7 @@ class OtpView extends BaseView<OtpViewModel> {
             ResponsiveTextWidget(
               'Please request a new code to continue.',
               textType: TextType.body,
-              color: AppColors.primary.withOpacity(0.7),
+              color: AppColors.black.withOpacity(0.7),
               fontSize: AppDimensions.textS,
             ),
           ],

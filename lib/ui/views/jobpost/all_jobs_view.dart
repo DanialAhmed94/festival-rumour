@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/utils/base_view.dart';
+import '../../../core/utils/backbutton.dart';
 import '../../../core/router/app_router.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/extensions/context_extensions.dart';
@@ -24,19 +25,35 @@ class AllJobsView extends BaseView<AllJobsViewModel> {
   Widget buildView(BuildContext context, AllJobsViewModel viewModel) {
     return Scaffold(
       backgroundColor: AppColors.primary,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: AppColors.primary,
-        iconTheme: const IconThemeData(color: AppColors.onPrimary),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.onPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const ResponsiveTextWidget(
-          'Browse Jobs',
-          textType: TextType.title,
-          fontWeight: FontWeight.bold,
-          color: AppColors.onPrimary,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: SafeArea(
+          bottom: false,
+          child: Container(
+            color: const Color(0xFFFC2E95),
+            padding: EdgeInsets.symmetric(
+              horizontal:
+                  context.isSmallScreen ? AppDimensions.paddingS : AppDimensions.paddingM,
+              vertical: AppDimensions.paddingS,
+            ),
+            child: Row(
+              children: [
+                // Back button (same as Home screen)
+                CustomBackButton(onTap: () => Navigator.pop(context)),
+                const SizedBox(width: AppDimensions.spaceS),
+                Expanded(
+                  child: ResponsiveTextWidget(
+                    'Browse Jobs',
+                    textType: TextType.title,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.white,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
       body: Consumer<AllJobsViewModel>(
@@ -75,10 +92,11 @@ class AllJobsView extends BaseView<AllJobsViewModel> {
           if (vm.categories.length > 1) {
             return Column(
               children: [
+                SizedBox(height: AppDimensions.spaceS),
                 // Category tabs
                 Container(
                   height: AppDimensions.buttonHeightXL,
-                  color: AppColors.black.withOpacity(0.8),
+                  color: const Color(0xFF3A2D46),
                   child: Row(
                     children: vm.categories.asMap().entries.map((entry) {
                       final index = entry.key;
@@ -233,8 +251,8 @@ class AllJobsView extends BaseView<AllJobsViewModel> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.black.withOpacity(0.8),
-            AppColors.black.withOpacity(0.6),
+            Color(0xFF3A2D46),
+            Color(0xFF4A3A5A),
           ],
         ),
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),

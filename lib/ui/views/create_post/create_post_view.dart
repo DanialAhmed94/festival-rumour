@@ -43,52 +43,43 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // Background Image
-          Positioned.fill(
-            child: Image.asset(
-              AppAssets.bottomsheet,
-              fit: BoxFit.cover,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFFC2E95),
+              child: _buildAppBar(context),
             ),
-          ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Text Input Card
+                    _buildTextInputCard(context, viewModel),
+                    const SizedBox(height: 16),
 
-          // Main Content
-          SafeArea(
-            child: Column(
-              children: [
-                _buildAppBar(context),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Text Input Card
-                        _buildTextInputCard(context, viewModel),
-                        const SizedBox(height: 16),
+                    // Media Preview Card
+                    if (viewModel.hasMedia) ...[
+                      _buildMediaPreviewCard(context, viewModel),
+                      const SizedBox(height: 16),
+                    ],
 
-                        // Media Preview Card
-                        if (viewModel.hasMedia) ...[
-                          _buildMediaPreviewCard(context, viewModel),
-                          const SizedBox(height: 16),
-                        ],
+                    // Media Selection Buttons Card
+                    _buildMediaButtonsCard(context, viewModel),
+                    const SizedBox(height: 16),
 
-                        // Media Selection Buttons Card
-                        _buildMediaButtonsCard(context, viewModel),
-                        const SizedBox(height: 16),
-
-                        // Upload Post Button
-                        _buildUploadButton(context, viewModel),
-                        SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
-                      ],
-                    ),
-                  ),
+                    // Upload Post Button
+                    _buildUploadButton(context, viewModel),
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -116,11 +107,11 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
           const SizedBox(width: AppDimensions.spaceS),
 
           // Logo
-          SvgPicture.asset(
-            AppAssets.logo,
-            color: AppColors.primary,
+          Image.asset(
+            AppAssets.logoPng,
             width: context.getConditionalLogoSize(),
             height: context.getConditionalLogoSize(),
+            fit: BoxFit.contain,
           ),
           const SizedBox(width: AppDimensions.spaceS),
 
@@ -383,6 +374,52 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: viewModel.isLoading
+                        ? null
+                        : () => viewModel.captureImageFromCamera(),
+                    icon: const Icon(
+                      Icons.photo_camera,
+                      size: 20,
+                      color: AppColors.white,
+                    ),
+                    label: const Text('Camera Photo'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFC2E95),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: viewModel.isLoading
+                        ? null
+                        : () => viewModel.captureVideoFromCamera(),
+                    icon: const Icon(
+                      Icons.videocam,
+                      size: 20,
+                      color: AppColors.white,
+                    ),
+                    label: const Text('Camera Video'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFC2E95),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -409,13 +446,18 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: AppColors.white,
-                        strokeWidth: 2.5,
-                        value: viewModel.uploadProgress > 0 ? viewModel.uploadProgress : null,
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: AppColors.black,
+                          strokeWidth: 2.5,
+                          value: viewModel.uploadProgress > 0
+                              ? viewModel.uploadProgress
+                              : null,
+                        ),
                       ),
                     ),
                     SizedBox(width: 12),
@@ -429,7 +471,7 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                                 ? viewModel.uploadStatus 
                                 : 'Uploading...',
                             style: const TextStyle(
-                              color: AppColors.white,
+                              color: AppColors.black,
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -440,7 +482,7 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                             Text(
                               '${(viewModel.uploadProgress * 100).toStringAsFixed(0)}% (${viewModel.currentUploadIndex}/${viewModel.totalUploadItems})',
                               style: const TextStyle(
-                                color: AppColors.white,
+                                color: AppColors.black,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w400,
                               ),

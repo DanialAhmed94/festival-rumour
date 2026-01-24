@@ -51,7 +51,7 @@ class MapView extends BaseView<MapViewModel> {
     });
 
     return Scaffold(
-      backgroundColor: AppColors.black,
+      backgroundColor: AppColors.white,
       body: Stack(
         children: [
           /// -------------------------------------------
@@ -59,8 +59,8 @@ class MapView extends BaseView<MapViewModel> {
           /// -------------------------------------------
           viewModel.festivalLocation == null
               ? const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              )
+                  child: CircularProgressIndicator(color: AppColors.black),
+                )
               : _StaticGoogleMap(viewModel: viewModel),
 
           // Overlay content

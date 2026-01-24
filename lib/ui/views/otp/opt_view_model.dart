@@ -51,7 +51,6 @@ class OtpViewModel extends BaseViewModel {
   String _otpCode = "";
   String? _errorText;
   OtpErrorInfo? _errorInfo;
-  bool _isLoading = false;
   bool _isResending = false;
   final FocusNode _otpFocus = FocusNode();
   bool _isFocusChanging = false;
@@ -74,7 +73,7 @@ class OtpViewModel extends BaseViewModel {
   String get otpCode => _otpCode;
   String? get errorText => _errorText;
   OtpErrorInfo? get errorInfo => _errorInfo;
-  bool get isLoading => _isLoading || busy;
+  // isLoading is inherited from BaseViewModel and managed by handleAsync
   bool get isResending => _isResending;
   FocusNode get otpFocus => _otpFocus;
   String? get phoneNumber => _phoneNumber;
@@ -186,7 +185,6 @@ class OtpViewModel extends BaseViewModel {
     _otpCode = "";
     _errorText = null;
     _errorInfo = null;
-    _isLoading = false;
     _isResending = false;
     _isOtpVerified = false;
     _verificationAttempts = 0;

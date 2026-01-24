@@ -55,10 +55,21 @@ class _UsernameViewState extends State<UsernameView> {
            //   fit: StackFit.expand,
               children: [
                 /// 🔹 Background
-                Image.asset(AppAssets.usernameback, fit: BoxFit.cover),
+                SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: Image.asset(
+                    AppAssets.background,
+                    fit: BoxFit.cover,
+                  ),
+                ),
 
                 /// 🔹 Overlay
-                Container(color: AppColors.overlayBlack45),
+                Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  color: Colors.black.withOpacity(0.7),
+                ),
 
                 /// 🔹 Content (keyboard-aware positioning)
                 Positioned(
@@ -105,10 +116,10 @@ class _UsernameViewState extends State<UsernameView> {
                                   mainAxisSize: MainAxisSize.max,
                                   children: [
                           /// Logo
-                          SvgPicture.asset(
-                            AppAssets.logo,
-                            height: 150,
-                            color: AppColors.primary,
+                          Image.asset(
+                            AppAssets.logoPng,
+                            height: MediaQuery.of(context).size.height * 0.12,
+                            fit: BoxFit.contain,
                           ),
                           SizedBox(height: context.getConditionalSpacing()),
 
@@ -117,7 +128,7 @@ class _UsernameViewState extends State<UsernameView> {
                             padding: context.responsivePadding,
                             margin: context.responsiveMargin,
                             decoration: BoxDecoration(
-                              color: AppColors.onPrimary.withOpacity(0.9),
+                              color: AppColors.white,
                               borderRadius: BorderRadius.circular(AppDimensions.radiusL),
                             ),
                             child: Column(
@@ -136,7 +147,7 @@ class _UsernameViewState extends State<UsernameView> {
                                     ResponsiveTextWidget(
                                       AppStrings.asterisk,
                                       textType: TextType.body,
-                                      color: AppColors.error,
+                                      color: AppColors.black,
                                     ),
                                   ],
                                 ),
@@ -158,7 +169,7 @@ class _UsernameViewState extends State<UsernameView> {
                                       _passwordFocusNode.requestFocus();
                                     },
                                     style: const TextStyle(
-                                      color: AppColors.white,
+                                      color: AppColors.black,
                                       fontSize: 16,
                                       height: 1.2,
                                     ),
@@ -168,7 +179,7 @@ class _UsernameViewState extends State<UsernameView> {
                                         ? AppColors.success.withOpacity(0.1)
                                         : AppColors.primary.withOpacity(0.3),
                                       hintText: AppStrings.enterYourEmail,
-                                      hintStyle: const TextStyle(color: AppColors.white70),
+                                      hintStyle: const TextStyle(color: AppColors.black),
                                       errorText: viewModel.emailError,
                                       errorStyle:  TextStyle(
                                         color: AppColors.error,
@@ -179,7 +190,7 @@ class _UsernameViewState extends State<UsernameView> {
                                         Icons.email,
                                         color: viewModel.isEmailValid
                                           ? AppColors.success
-                                          : AppColors.white70,
+                                          : AppColors.black,
                                         size: context.responsiveIconS,
                                       ),
                                       suffixIcon: viewModel.isEmailValid
@@ -194,7 +205,7 @@ class _UsernameViewState extends State<UsernameView> {
                                         borderSide: BorderSide(
                                           color: viewModel.isEmailValid
                                             ? AppColors.success
-                                            : AppColors.white,
+                                            : AppColors.black,
                                           width: AppDimensions.borderWidthS,
                                         ),
                                       ),
@@ -203,7 +214,7 @@ class _UsernameViewState extends State<UsernameView> {
                                         borderSide: BorderSide(
                                           color: viewModel.isEmailValid
                                             ? AppColors.success
-                                            : AppColors.white60,
+                                            : AppColors.black,
                                           width: AppDimensions.dividerThickness,
                                         ),
                                       ),
@@ -232,7 +243,7 @@ class _UsernameViewState extends State<UsernameView> {
                                     ResponsiveTextWidget(
                                       AppStrings.asterisk,
                                       textType: TextType.body,
-                                      color: AppColors.error
+                                      color: AppColors.black
                                     ),
                                 ],
                               ),
@@ -256,7 +267,7 @@ class _UsernameViewState extends State<UsernameView> {
                                       }
                                     },
                                     style: const TextStyle(
-                                      color: AppColors.white,
+                                      color: AppColors.black,
                                       fontSize: 16,
                                       height: 1.2,
                                     ),
@@ -266,7 +277,7 @@ class _UsernameViewState extends State<UsernameView> {
                                         ? AppColors.success.withOpacity(0.1)
                                         : AppColors.primary.withOpacity(0.3),
                                       hintText: AppStrings.passwordPlaceholder,
-                                      hintStyle: const TextStyle(color: AppColors.white70),
+                                      hintStyle: const TextStyle(color: AppColors.black),
                                       errorText: viewModel.passwordError,
                                       errorStyle:  TextStyle(
                                         color: AppColors.error,
@@ -277,7 +288,7 @@ class _UsernameViewState extends State<UsernameView> {
                                         Icons.lock,
                                         color: viewModel.isPasswordValid
                                           ? AppColors.success
-                                          : AppColors.white70,
+                                          : AppColors.black,
                                         size: context.responsiveIconS,
                                       ),
                                       suffixIcon: Row(
@@ -308,7 +319,7 @@ class _UsernameViewState extends State<UsernameView> {
                                               viewModel.isPasswordVisible
                                                   ? Icons.visibility
                                                   : Icons.visibility_off,
-                                              color: AppColors.white70,
+                                              color: AppColors.black,
                                               size: context.responsiveIconS,
                                             ),
                                             onPressed: viewModel.togglePasswordVisibility,
@@ -320,7 +331,7 @@ class _UsernameViewState extends State<UsernameView> {
                                         borderSide: BorderSide(
                                           color: viewModel.isPasswordValid
                                             ? AppColors.success
-                                            : AppColors.white,
+                                            : AppColors.black,
                                           width: AppDimensions.borderWidthS,
                                         ),
                                       ),
@@ -329,7 +340,7 @@ class _UsernameViewState extends State<UsernameView> {
                                         borderSide: BorderSide(
                                           color: viewModel.isPasswordValid
                                             ? AppColors.success
-                                            : AppColors.white60,
+                                            : AppColors.black,
                                           width: AppDimensions.dividerThickness,
                                         ),
                                       ),
@@ -363,7 +374,7 @@ class _UsernameViewState extends State<UsernameView> {
                                          ResponsiveTextWidget(
                                           AppStrings.rememberMe,
                                           fontSize: context.responsiveTextS,
-                                      color: AppColors.primary),
+                                      color: AppColors.black),
                                       ],
                                     ),
                                     GestureDetector(
@@ -447,7 +458,7 @@ class _UsernameViewState extends State<UsernameView> {
                                     const ResponsiveTextWidget(
                                       AppStrings.dontHaveAccount,
                                       textType: TextType.body,
-                                      color: AppColors.primary),
+                                      color: AppColors.black),
                                     SizedBox(width: AppDimensions.spaceXS),
                                     GestureDetector(
                                       onTap: () => viewModel.goToSignUp(context),

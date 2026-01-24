@@ -166,23 +166,24 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
   }
 
   Widget _buildContent(BuildContext context, ForgotPasswordViewModel viewModel) {
+    final screenHeight = MediaQuery.of(context).size.height;
     return Column(
       mainAxisSize: MainAxisSize.max,
       children: [
         /// Logo
-        SvgPicture.asset(
-          AppAssets.logo,
-          height: 120,
-          color: AppColors.primary,
+        Image.asset(
+          AppAssets.logoPng,
+          height: screenHeight * 0.12,
+          fit: BoxFit.contain,
         ),
         SizedBox(height: context.getConditionalSpacing() * 1.5),
 
-        /// Main Card
+        /// Main Card (white background)
         Container(
           padding: context.responsivePadding,
           margin: context.responsiveMargin,
           decoration: BoxDecoration(
-            color: AppColors.onPrimary.withOpacity(0.95),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
             boxShadow: [
               BoxShadow(
@@ -210,8 +211,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
         /// Title
         ResponsiveTextWidget(
           AppStrings.forgotPasswordTitle,
-        //  textType: TextType.headline,
-          color: AppColors.primary,
+          color: Colors.black,
           fontWeight: FontWeight.bold,
           textAlign: TextAlign.center,
         ),
@@ -221,7 +221,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
         ResponsiveTextWidget(
           AppStrings.forgotPasswordSubtitle,
           textType: TextType.body,
-          color: AppColors.primary.withOpacity(0.8),
+          color: Colors.black.withOpacity(0.8),
           textAlign: TextAlign.center,
         ),
         SizedBox(height: context.getConditionalSpacing() * 1.5),
@@ -249,7 +249,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
         ResponsiveTextWidget(
           AppStrings.email,
           textType: TextType.body,
-          color: AppColors.accent,
+          color: Colors.black,
           fontWeight: FontWeight.bold,
         ),
         SizedBox(height: context.getConditionalSpacing() * 0.5),
@@ -260,7 +260,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
           child: TextField(
             controller: viewModel.emailController,
             focusNode: viewModel.emailFocus,
-            cursorColor: AppColors.primary,
+            cursorColor: Colors.black,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.done,
             textAlignVertical: TextAlignVertical.center,
@@ -271,17 +271,15 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
               }
             },
             style: const TextStyle(
-              color: AppColors.white,
+              color: Colors.black,
               fontSize: 16,
               height: 1.2,
             ),
             decoration: InputDecoration(
               filled: true,
-              fillColor: viewModel.isEmailValid
-                  ? AppColors.success.withOpacity(0.1)
-                  : AppColors.primary.withOpacity(0.3),
+              fillColor: Colors.grey[200],
               hintText: AppStrings.emailAddressHint,
-              hintStyle: const TextStyle(color: AppColors.white70),
+              hintStyle: TextStyle(color: Colors.black54),
               errorText: viewModel.emailError,
               errorStyle: TextStyle(
                 color: AppColors.error,
@@ -290,33 +288,27 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
               ),
               prefixIcon: Icon(
                 Icons.email_outlined,
-                color: viewModel.isEmailValid
-                    ? AppColors.success
-                    : AppColors.white70,
+                color: Colors.black,
                 size: context.responsiveIconS,
               ),
               suffixIcon: viewModel.isEmailValid
                   ? Icon(
-                      Icons.check_circle,
-                      color: AppColors.success,
-                      size: context.responsiveIconS,
-                    )
+                Icons.check_circle,
+                color: Colors.black,
+                size: context.responsiveIconS,
+              )
                   : null,
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusS),
                 borderSide: BorderSide(
-                  color: viewModel.isEmailValid
-                      ? AppColors.success
-                      : AppColors.white,
+                  color: Colors.black,
                   width: AppDimensions.borderWidthS,
                 ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppDimensions.radiusS),
                 borderSide: BorderSide(
-                  color: viewModel.isEmailValid
-                      ? AppColors.success
-                      : AppColors.white60,
+                  color: Colors.black54,
                   width: AppDimensions.dividerThickness,
                 ),
               ),
@@ -338,8 +330,8 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
         backgroundColor: viewModel.canSendResetEmail
-            ? AppColors.accent
-            : AppColors.grey600,
+            ? Colors.black
+            : Colors.grey,
         padding: const EdgeInsets.all(AppDimensions.paddingM),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusS),
@@ -351,42 +343,42 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
           : null,
       child: viewModel.isLoading
           ? Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(
-                  width: AppDimensions.iconS,
-                  height: AppDimensions.iconS,
-                  child: CircularProgressIndicator(
-                    color: AppColors.white,
-                    strokeWidth: 2,
-                  ),
-                ),
-                SizedBox(width: context.responsiveSpaceS),
-                ResponsiveTextWidget(
-                  AppStrings.sendingResetLink,
-                  textType: TextType.body,
-                  color: AppColors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ],
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.send,
-                  color: AppColors.white,
-                  size: context.responsiveIconS,
-                ),
-                SizedBox(width: context.responsiveSpaceS),
-                ResponsiveTextWidget(
-                  AppStrings.sendResetLink,
-                  textType: TextType.body,
-                  color: AppColors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ],
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: AppDimensions.iconS,
+            height: AppDimensions.iconS,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2,
             ),
+          ),
+          SizedBox(width: context.responsiveSpaceS),
+          ResponsiveTextWidget(
+            AppStrings.sendingResetLink,
+            textType: TextType.body,
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ],
+      )
+          : Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.send,
+            color: Colors.white,
+            size: context.responsiveIconS,
+          ),
+          SizedBox(width: context.responsiveSpaceS),
+          ResponsiveTextWidget(
+            AppStrings.sendResetLink,
+            textType: TextType.body,
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ],
+      ),
     );
   }
 
@@ -397,7 +389,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
         ResponsiveTextWidget(
           AppStrings.alreadyHaveAccount,
           textType: TextType.body,
-          color: AppColors.primary,
+          color: Colors.black,
         ),
         SizedBox(width: AppDimensions.spaceXS),
         GestureDetector(
@@ -405,7 +397,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
           child: ResponsiveTextWidget(
             AppStrings.signIn,
             fontSize: context.getConditionalFont(),
-            color: AppColors.accent,
+            color: Colors.black,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -425,12 +417,12 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: AppColors.success.withOpacity(0.1),
+            color: Colors.grey[200],
             shape: BoxShape.circle,
           ),
           child: const Icon(
             Icons.mark_email_read_outlined,
-            color: AppColors.success,
+            color: Colors.black,
             size: 40,
           ),
         ),
@@ -439,8 +431,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
         /// Success Title
         ResponsiveTextWidget(
           AppStrings.resetEmailSent,
-         // textType: TextType.headline,
-          color: AppColors.primary,
+          color: Colors.black,
           fontWeight: FontWeight.bold,
           textAlign: TextAlign.center,
         ),
@@ -450,7 +441,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
         ResponsiveTextWidget(
           AppStrings.resetEmailSentMessage,
           textType: TextType.body,
-          color: AppColors.primary.withOpacity(0.8),
+          color: Colors.black.withOpacity(0.8),
           textAlign: TextAlign.center,
         ),
         SizedBox(height: context.getConditionalSpacing() * 1.5),
@@ -459,7 +450,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
         Container(
           padding: const EdgeInsets.all(AppDimensions.paddingM),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
+            color: Colors.grey[200],
             borderRadius: BorderRadius.circular(AppDimensions.radiusS),
           ),
           child: Column(
@@ -467,7 +458,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
               ResponsiveTextWidget(
                 AppStrings.didntReceiveEmail,
                 textType: TextType.body,
-                color: AppColors.primary,
+                color: Colors.black,
                 fontWeight: FontWeight.w600,
                 textAlign: TextAlign.center,
               ),
@@ -475,7 +466,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
               ResponsiveTextWidget(
                 AppStrings.checkSpamFolder,
                 textType: TextType.caption,
-                color: AppColors.primary.withOpacity(0.7),
+                color: Colors.black54,
                 textAlign: TextAlign.center,
               ),
             ],
@@ -487,8 +478,8 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
         ElevatedButton(
           style: ElevatedButton.styleFrom(
             backgroundColor: viewModel.canResendEmail
-                ? AppColors.accent
-                : AppColors.grey600,
+                ? Colors.black
+                : Colors.grey,
             padding: const EdgeInsets.all(AppDimensions.paddingM),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppDimensions.radiusS),
@@ -500,42 +491,42 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView>
               : null,
           child: viewModel.isLoading
               ? Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(
-                      width: AppDimensions.iconS,
-                      height: AppDimensions.iconS,
-                      child: CircularProgressIndicator(
-                        color: AppColors.white,
-                        strokeWidth: 2,
-                      ),
-                    ),
-                    SizedBox(width: context.responsiveSpaceS),
-                    ResponsiveTextWidget(
-                      AppStrings.resendingEmail,
-                      textType: TextType.body,
-                      color: AppColors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ],
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.refresh,
-                      color: AppColors.white,
-                      size: context.responsiveIconS,
-                    ),
-                    SizedBox(width: context.responsiveSpaceS),
-                    ResponsiveTextWidget(
-                      viewModel.resendButtonText,
-                      textType: TextType.body,
-                      color: AppColors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ],
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(
+                width: AppDimensions.iconS,
+                height: AppDimensions.iconS,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
                 ),
+              ),
+              SizedBox(width: context.responsiveSpaceS),
+              ResponsiveTextWidget(
+                AppStrings.resendingEmail,
+                textType: TextType.body,
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ],
+          )
+              : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.refresh,
+                color: Colors.white,
+                size: context.responsiveIconS,
+              ),
+              SizedBox(width: context.responsiveSpaceS),
+              ResponsiveTextWidget(
+                viewModel.resendButtonText,
+                textType: TextType.body,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ],
+          ),
         ),
         SizedBox(height: context.getConditionalSpacing()),
 

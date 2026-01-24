@@ -7,6 +7,9 @@ class ActionTile extends StatelessWidget {
   final String text;
   final bool isSelected; // 👈 add this
   final VoidCallback? onTap;
+  final Color? backgroundColor;
+  final Color? textColor;
+  final Color? trailingIconColor;
 
   const ActionTile({
     super.key,
@@ -14,6 +17,9 @@ class ActionTile extends StatelessWidget {
     required this.text,
     this.isSelected = false, // 👈 default false
     this.onTap,
+    this.backgroundColor,
+    this.textColor,
+    this.trailingIconColor,
   });
 
   @override
@@ -23,9 +29,8 @@ class ActionTile extends StatelessWidget {
       child: Container(
         width: double.infinity,
         decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.accent.withOpacity(0.15)
-              : AppColors.onSurface,
+          color: backgroundColor ??
+              (isSelected ? AppColors.accent.withOpacity(0.15) : AppColors.onSurface),
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
           border: Border.all(
             color: isSelected ? AppColors.accent : Colors.transparent,
@@ -56,8 +61,8 @@ class ActionTile extends StatelessWidget {
                     child: Text(
                       text,
                       style: TextStyle(
-                        color:
-                        isSelected ? AppColors.accent : AppColors.primary,
+                        color: textColor ??
+                            (isSelected ? AppColors.accent : AppColors.primary),
                         fontWeight:
                         isSelected ? FontWeight.bold : FontWeight.normal,
                       ),
@@ -76,10 +81,12 @@ class ActionTile extends StatelessWidget {
                   key: ValueKey('check'),
                   color: AppColors.accent,
                   size: 18)
-                  : const Icon(Icons.arrow_forward_ios,
-                  key: ValueKey('arrow'),
-                  color: AppColors.white,
-                  size: 12),
+                  : Icon(
+                      Icons.arrow_forward_ios,
+                      key: const ValueKey('arrow'),
+                      color: trailingIconColor ?? AppColors.white,
+                      size: 12,
+                    ),
             ),
           ],
         ),

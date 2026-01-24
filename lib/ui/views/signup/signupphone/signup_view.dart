@@ -47,10 +47,7 @@ class SignupView extends BaseView<SignupViewModel> {
                   vertical: context.responsivePadding.left,
                 ),
                 decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage(AppAssets.bottomsheet),
-                    fit: BoxFit.cover,
-                  ),
+                  color: AppColors.white,
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(AppDimensions.radiusXXL),
                   ),
@@ -66,6 +63,7 @@ class SignupView extends BaseView<SignupViewModel> {
                       _buildDescription(context, fromFestival),
                       SizedBox(height: context.responsiveSpaceXL),
                       _buildContinueButton(context, viewModel),
+                      SizedBox(height: AppDimensions.paddingL),
                     ],
                   ),
                 ),
@@ -73,16 +71,6 @@ class SignupView extends BaseView<SignupViewModel> {
             ),
           ),
 
-          /// 🔹 Loader overlay
-          if (viewModel.isLoading)
-            Container(
-              color: AppColors.overlay,
-              alignment: Alignment.center,
-              child: const LoadingWidget(color: AppColors.onPrimary),
-            ),
-
-          /// 🔹 Error snackbar handler
-          _ErrorSnackbarHandler(viewModel: viewModel),
         ],
       ),
     );
@@ -96,9 +84,9 @@ class SignupView extends BaseView<SignupViewModel> {
         ResponsiveTextWidget(
           fromFestival ? "Verify Contact" : AppStrings.signUp,
           style: TextStyle(
-            fontSize: context.responsiveTextXXL,
+            fontSize: context.responsiveTextXL,
             fontWeight: FontWeight.bold,
-            color: AppColors.primary,
+            color: AppColors.black,
           ),
         ),
       ],
@@ -136,11 +124,12 @@ class SignupView extends BaseView<SignupViewModel> {
                       padding: EdgeInsets.zero,
                       textStyle: const TextStyle(
                         fontSize: AppDimensions.textM,
-                        color: AppColors.white,
+                        color: AppColors.black,
                         fontWeight: FontWeight.w500,
                       ),
                       showFlag: true,
                       showFlagDialog: true,
+                      flagWidth: 32,
                     ),
                   ),
                 ),
@@ -148,7 +137,7 @@ class SignupView extends BaseView<SignupViewModel> {
                 /// 🔽 Dropdown Arrow Icon (new)
                 const Icon(
                   Icons.keyboard_arrow_down_rounded,
-                  color: AppColors.white,
+                  color: AppColors.black,
                   size: 22,
                 ),
               ],
@@ -164,16 +153,16 @@ class SignupView extends BaseView<SignupViewModel> {
             controller: viewModel.phoneNumberController,
             focusNode: viewModel.phoneFocus,
             autofocus: true,
-            style: const TextStyle(color: AppColors.white),
+            style: const TextStyle(color: AppColors.black),
             decoration: InputDecoration(
               hintText: AppStrings.phoneHint,
-              hintStyle: const TextStyle(color: AppColors.white),
+              hintStyle: const TextStyle(color: AppColors.black),
               enabledBorder: const UnderlineInputBorder(
-                borderSide: BorderSide(color: AppColors.white),
+                borderSide: BorderSide(color: AppColors.black),
               ),
               focusedBorder: const UnderlineInputBorder(
                 borderSide: BorderSide(
-                  color: AppColors.primary,
+                  color: AppColors.black,
                   width: AppDimensions.borderWidthM,
                 ),
               ),
@@ -185,7 +174,7 @@ class SignupView extends BaseView<SignupViewModel> {
               ),
             ),
             keyboardType: TextInputType.phone,
-            cursorColor: AppColors.primary,
+            cursorColor: AppColors.black,
             textInputAction: TextInputAction.done,
             onChanged: (value) => viewModel.validatePhone(),
             onSubmitted: (_) => viewModel.goToOtp(),
@@ -201,7 +190,7 @@ class SignupView extends BaseView<SignupViewModel> {
           ? "Please verify your phone number to continue."
           : AppStrings.otpdescription,
       style: TextStyle(
-        color: AppColors.white,
+        color: AppColors.black,
         fontSize: context.responsiveTextM,
       ),
     );
@@ -222,63 +211,24 @@ class SignupView extends BaseView<SignupViewModel> {
           ),
         ),
         onPressed: viewModel.isLoading ? null : viewModel.goToOtp,
-        child:
-            viewModel.isLoading
-                ? SizedBox(
-                  width: context.responsiveIconS,
-                  height: context.responsiveIconS,
-                  child: CircularProgressIndicator(
-                    color: AppColors.accent,
-                    strokeWidth: 2,
-                  ),
-                )
-                : ResponsiveTextWidget(
-                  AppStrings.continueText,
-                  textType: TextType.body,
-                  fontSize: context.responsiveTextL,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.onPrimary,
+        child: viewModel.isLoading
+            ? SizedBox(
+                width: context.responsiveIconS,
+                height: context.responsiveIconS,
+                child: const CircularProgressIndicator(
+                  color: AppColors.white,
+                  strokeWidth: 2,
                 ),
+              )
+            : ResponsiveTextWidget(
+                AppStrings.continueText,
+                textType: TextType.body,
+                fontSize: context.responsiveTextL,
+                fontWeight: FontWeight.bold,
+                color: AppColors.onPrimary,
+              ),
       ),
     );
   }
 }
 
-/// Error snackbar handler widget - only shows when error changes
-class _ErrorSnackbarHandler extends StatelessWidget {
-  final SignupViewModel viewModel;
-
-  const _ErrorSnackbarHandler({required this.viewModel});
-
-  @override
-  Widget build(BuildContext context) {
-    return Selector<SignupViewModel, String?>(
-      selector: (_, vm) => vm.snackbarError,
-      builder: (context, snackbarError, child) {
-        if (snackbarError != null && snackbarError.isNotEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted && snackbarError == viewModel.snackbarError) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(snackbarError),
-                  backgroundColor: AppColors.accent,
-                  duration: const Duration(seconds: 3),
-                  action: SnackBarAction(
-                    label: 'Dismiss',
-                    textColor: AppColors.onPrimary,
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                      viewModel.clearSnackbarError();
-                    },
-                  ),
-                ),
-              );
-              viewModel.clearSnackbarError();
-            }
-          });
-        }
-        return const SizedBox.shrink();
-      },
-    );
-  }
-}
