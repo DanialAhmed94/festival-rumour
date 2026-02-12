@@ -30,7 +30,7 @@ class ToiletView extends BaseView<ToiletViewModel> {
         return true;
       },
       child: Scaffold(
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.screenBackground,
         body: Container(
           child: SafeArea(
             child: Column(
@@ -227,7 +227,7 @@ class ToiletView extends BaseView<ToiletViewModel> {
     final toilet = viewModel.selectedToilet!;
 
     return Scaffold(
-      backgroundColor: AppColors.primary,
+      backgroundColor: AppColors.screenBackground,
       body: Container(
         child: SafeArea(
           child: Column(

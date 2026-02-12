@@ -39,9 +39,12 @@ import '../../ui/views/settings/edit_account_view.dart';
 import '../../ui/views/leaderboard/leaderboard_view.dart';
 import '../../ui/views/posts/posts_view.dart';
 import '../../ui/views/chat/create_chat_room_view.dart';
+import '../../ui/views/chat/add_chat_members_view.dart';
+import '../../ui/views/chat/chat_room_detail_view.dart';
 import '../../ui/views/rumors/rumors_view.dart';
 import '../../ui/views/test/firebase_test_view.dart';
 import '../../ui/views/create_post/create_post_view.dart';
+import '../../ui/views/edit_post/edit_post_view.dart';
 import '../../ui/views/search_users/search_users_view.dart';
 import '../../ui/views/Profile/view_user_profile_view.dart';
 import '../../ui/views/homeview/post_model.dart';
@@ -76,6 +79,8 @@ class AppRoutes {
   static const String detail = '/detail';
   static const String chatRoom = '/chat_room';
   static const String createChatRoom = '/create_chat_room';
+  static const String addChatMembers = '/add_chat_members';
+  static const String chatRoomDetail = '/chat_room_detail';
   static const String toilets = '/toilets';
   static const String performance = '/performance';
   static const String event = '/event';
@@ -87,6 +92,7 @@ class AppRoutes {
   static const String viewAll = '/view_all';
   static const String forgotpassword = '/forgot_password';
   static const String createPost = '/create_post';
+  static const String editPost = '/edit_post';
   static const String searchUsers = '/search_users';
   static const String viewUserProfile = '/view_user_profile';
   static const String myJobs = '/my_jobs';
@@ -94,13 +100,30 @@ class AppRoutes {
   static const String jobDetail = '/job_detail';
 }
 
+/// Push only the given initial route (no "/" then "/welcome" chain). Fixes empty stack after splash.
+/// Signature matches InitialRouteListFactory: List<Route> Function(String initialRoute).
+List<Route<dynamic>> onGenerateInitialRoutes(String initialRoute) {
+  debugPrint('[APP] onGenerateInitialRoutes() initialRoute=$initialRoute');
+  final route = onGenerateRoute(RouteSettings(name: initialRoute));
+  return [route];
+}
+
 Route<dynamic> onGenerateRoute(RouteSettings settings) {
+  debugPrint('[APP] onGenerateRoute() name=${settings.name}');
+  // Fallback if "/" or empty is ever requested (e.g. from deep link)
+  final routeName = settings.name ?? '/';
+  if (routeName == '/' || routeName.isEmpty) {
+    debugPrint('[APP] onGenerateRoute() "/" or empty -> WelcomeView');
+    return MaterialPageRoute(builder: (_) => const WelcomeView());
+  }
   switch (settings.name) {
     case AppRoutes.welcome:
-      return SmoothPageRoute(page: const WelcomeView());
+      debugPrint('[APP] onGenerateRoute() building WelcomeView');
+      return MaterialPageRoute(builder: (_) => const WelcomeView());
 
     case AppRoutes.splash:
-      return SmoothPageRoute(page: const SplashView());
+      debugPrint('[APP] onGenerateRoute() building SplashView');
+      return MaterialPageRoute(builder: (_) => const SplashView());
 
     case AppRoutes.signup:
       final fromFestival = settings.arguments as bool? ?? false;
@@ -116,8 +139,8 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const NameView());
 
     case AppRoutes.festivals:
-      // final args = settings.arguments as List<dynamic>;
-      return SmoothPageRoute(page: const FestivalView());
+      debugPrint('[APP] onGenerateRoute() building FestivalView');
+      return MaterialPageRoute(builder: (_) => const FestivalView());
 
     case AppRoutes.otp:
       final fromFestival = settings.arguments as bool? ?? false;
@@ -281,6 +304,27 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
     case AppRoutes.createChatRoom:
       return SmoothPageRoute(page: const CreateChatRoomView());
 
+    case AppRoutes.addChatMembers:
+      final addMembersArgs = settings.arguments as Map<String, dynamic>?;
+      return SmoothPageRoute(
+        page: const AddChatMembersView(),
+        settings: RouteSettings(
+          name: AppRoutes.addChatMembers,
+          arguments: addMembersArgs,
+        ),
+      );
+
+    case AppRoutes.chatRoomDetail:
+      final detailArgs = settings.arguments;
+      final roomId = detailArgs is String ? detailArgs : (detailArgs is Map ? detailArgs['chatRoomId'] as String? : null);
+      return SmoothPageRoute(
+        page: const ChatRoomDetailView(),
+        settings: RouteSettings(
+          name: AppRoutes.chatRoomDetail,
+          arguments: roomId,
+        ),
+      );
+
     case AppRoutes.toilets:
       return SmoothPageRoute(page: const ToiletView());
 
@@ -323,6 +367,16 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
         settings: RouteSettings(
           name: AppRoutes.createPost,
           arguments: collectionName, // Pass collection name as arguments
+        ),
+      );
+
+    case AppRoutes.editPost:
+      // Arguments: PostModel or Map {'post': PostModel, 'collectionName': String?}
+      return SmoothPageRoute(
+        page: const EditPostView(),
+        settings: RouteSettings(
+          name: AppRoutes.editPost,
+          arguments: settings.arguments,
         ),
       );
 

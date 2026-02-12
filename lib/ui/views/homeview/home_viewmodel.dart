@@ -127,7 +127,9 @@ class HomeViewModel extends BaseViewModel {
                   final newPost = PostModel.fromFirestore(
                     _createDocumentSnapshot(data),
                   );
-                  newPosts.add(newPost);
+                  if (newPost.userId != null && newPost.userId!.isNotEmpty) {
+                    newPosts.add(newPost);
+                  }
                 } catch (e) {
                   if (kDebugMode) {
                     print('Error parsing new post: $e');
@@ -255,16 +257,13 @@ class HomeViewModel extends BaseViewModel {
       // Fetch posts from Firestore
       final postsData = await _firestoreService.getPosts();
       
-      // Convert Firestore data to PostModel list
+      // Single pass: parse and drop posts with null/empty userId (no extra iteration)
       allPosts = postsData.map((data) {
         try {
-          return PostModel.fromFirestore(
-            _createDocumentSnapshot(data),
-          );
+          final post = PostModel.fromFirestore(_createDocumentSnapshot(data));
+          return (post.userId != null && post.userId!.isNotEmpty) ? post : null;
         } catch (e) {
-          if (kDebugMode) {
-            print('Error parsing post: $e');
-          }
+          if (kDebugMode) print('Error parsing post: $e');
           return null;
         }
       }).whereType<PostModel>().toList();
@@ -310,16 +309,13 @@ class HomeViewModel extends BaseViewModel {
       _lastDocument = result['lastDocument'];
       _hasMorePosts = result['hasMore'] as bool? ?? false;
 
-      // Convert Firestore data to PostModel list
+      // Single pass: parse and drop posts with null/empty userId (no extra iteration)
       allPosts = postsData.map((data) {
         try {
-          return PostModel.fromFirestore(
-            _createDocumentSnapshot(data),
-          );
+          final post = PostModel.fromFirestore(_createDocumentSnapshot(data));
+          return (post.userId != null && post.userId!.isNotEmpty) ? post : null;
         } catch (e) {
-          if (kDebugMode) {
-            print('Error parsing post: $e');
-          }
+          if (kDebugMode) print('Error parsing post: $e');
           return null;
         }
       }).whereType<PostModel>().toList();
@@ -362,16 +358,13 @@ class HomeViewModel extends BaseViewModel {
       _lastDocument = result['lastDocument'];
       _hasMorePosts = result['hasMore'] as bool? ?? false;
 
-      // Convert Firestore data to PostModel list
+      // Single pass: parse and drop posts with null/empty userId (no extra iteration)
       final newPosts = postsData.map((data) {
         try {
-          return PostModel.fromFirestore(
-            _createDocumentSnapshot(data),
-          );
+          final post = PostModel.fromFirestore(_createDocumentSnapshot(data));
+          return (post.userId != null && post.userId!.isNotEmpty) ? post : null;
         } catch (e) {
-          if (kDebugMode) {
-            print('Error parsing post: $e');
-          }
+          if (kDebugMode) print('Error parsing new post: $e');
           return null;
         }
       }).whereType<PostModel>().toList();
@@ -657,12 +650,14 @@ class HomeViewModel extends BaseViewModel {
   }
 
   void _applyFilter() {
-    // Single pass filtering for better performance
+    // Single pass: userId, status, and search in one iteration (no extra loops)
     final searchLower = searchQuery.toLowerCase();
     final hasSearch = searchQuery.isNotEmpty;
 
     posts = allPosts.where((post) {
-    // Apply status filter
+      if (post.userId == null || post.userId!.isEmpty) return false;
+
+      // Apply status filter
       if (selectedFilter == AppStrings.live && post.status != AppStrings.live) {
         return false;
       } else if (selectedFilter == AppStrings.upcoming && post.status != AppStrings.upcoming) {
@@ -1087,6 +1082,17 @@ class HomeViewModel extends BaseViewModel {
       if (kDebugMode) {
         print('❌ Error deleting post: $e');
       }
+    }
+  }
+
+  /// Navigate to edit post screen (global feed: pass post only; collectionName null).
+  Future<void> navigateToEditPost(BuildContext context, PostModel post) async {
+    final result = await _navigationService.navigateTo<bool>(
+      AppRoutes.editPost,
+      arguments: post,
+    );
+    if (result == true) {
+      refreshPostsAfterComment();
     }
   }
 }

@@ -25,10 +25,10 @@ class MyJobsView extends BaseView<MyJobsViewModel> {
   @override
   Widget buildView(BuildContext context, MyJobsViewModel viewModel) {
     return Scaffold(
-      backgroundColor: AppColors.primary,
+      backgroundColor: AppColors.screenBackground,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.screenBackground,
         iconTheme: const IconThemeData(color: AppColors.onPrimary),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppColors.onPrimary),

@@ -8,9 +8,11 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/utils/base_view.dart';
+import '../../../core/utils/backbutton.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/post_data_service.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
+import '../../../shared/widgets/responsive_widget.dart';
 import '../homeview/widgets/post_widget.dart';
 import '../Profile/profile_viewmodel.dart';
 import 'posts_view_model.dart';
@@ -73,27 +75,16 @@ class PostsView extends BaseView<PostsViewModel> {
     });
 
     return Scaffold(
-      body: Stack(
-        children: [
-          /// 🔹 Fullscreen background image
-          Positioned.fill(
-            child: Image.asset(
-              AppAssets.bottomsheet,
-              fit: BoxFit.cover,
+      backgroundColor: AppColors.screenBackground,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFFC2E95),
+              child: _buildAppBar(context),
             ),
-          ),
-
-          /// 🔹 Dark overlay for readability
-          Positioned.fill(
-            child: Container(color: AppColors.overlayBlack45),
-          ),
-
-          /// 🔹 Main content
-          SafeArea(
-            child: Column(
-              children: [
-                _buildAppBar(context),
-                Expanded(
+            Expanded(
                   child: Consumer<PostsViewModel>(
                     builder: (context, vm, child) {
                       if (kDebugMode && vm.posts.isEmpty) {
@@ -104,7 +95,7 @@ class PostsView extends BaseView<PostsViewModel> {
                           ? Center(
                               child: ResponsiveTextWidget(
                                 'No posts to display',
-                                color: AppColors.white,
+                                color: AppColors.black,
                                 fontSize: AppDimensions.textM,
                               ),
                             )
@@ -140,32 +131,45 @@ class PostsView extends BaseView<PostsViewModel> {
               ],
             ),
           ),
-        ],
-      ),
     );
   }
 
   Widget _buildAppBar(BuildContext context) {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: AppColors.white),
-        onPressed: () {
-          if (onBack != null) {
-            onBack!(); // Navigate back to discover screen
-          } else {
-            Navigator.pop(context);
-          }
-        },
+    return ResponsivePadding(
+      mobilePadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalMobile,
+        vertical: AppDimensions.appBarVerticalMobile,
       ),
-      title: const ResponsiveTextWidget(
-        'Posts',
-        textType: TextType.title,
-        color: AppColors.white,
-        fontWeight: FontWeight.w600,
+      tabletPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalTablet,
+        vertical: AppDimensions.appBarVerticalTablet,
       ),
-      centerTitle: true,
+      desktopPadding: EdgeInsets.symmetric(
+        horizontal: AppDimensions.appBarHorizontalDesktop,
+        vertical: AppDimensions.appBarVerticalDesktop,
+      ),
+      child: Row(
+        children: [
+          CustomBackButton(
+            onTap: () {
+              if (onBack != null) {
+                onBack!();
+              } else {
+                Navigator.pop(context);
+              }
+            },
+          ),
+          SizedBox(width: context.getConditionalSpacing()),
+          const Expanded(
+            child: ResponsiveTextWidget(
+              'Posts',
+              textType: TextType.title,
+              color: AppColors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -457,8 +457,8 @@ class AppStrings {
   static const String noNews = 'No news found';
 
   // Onboarding
-  static const String welcome = 'Welcome';
-  static const String FestivalRumour = 'FestivalRumour';
+  static const String welcome = 'Welcome to';
+  static const String FestivalRumour = 'Festival App';
   static const String getStarted = 'Get Started';
   static const String learnMore = 'Learn More';
   static const String continueText = 'Continue';

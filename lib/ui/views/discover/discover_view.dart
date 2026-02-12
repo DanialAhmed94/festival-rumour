@@ -92,7 +92,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
           widget.viewModel.unfocusSearch();
         },
       child: Scaffold(
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.screenBackground,
         body: SafeArea(
           child: Column(
             children: [
@@ -280,22 +280,22 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
       children: [
         GridOption(
           title: AppStrings.location,
-          icon: AppAssets.mapicon,
+          icon: AppAssets.locationIconSvg,
           onNavigateToSub: widget.onNavigateToSub,
         ),
         GridOption(
           title: AppStrings.chatRooms,
-          icon: AppAssets.chaticon,
+          icon: AppAssets.chatroomIconSvg,
           onTap: () => widget.viewModel.goToChatRooms(context),
         ),
         GridOption(
           title: AppStrings.rumors,
-          icon: AppAssets.rumors,
+          icon: AppAssets.rumoursIconSvg,
           onTap: () => widget.viewModel.goToRumors(context),
         ),
         GridOption(
           title: AppStrings.detail,
-          icon: AppAssets.detailicon,
+          icon: AppAssets.detailIconSvg,
           onNavigateToSub: widget.onNavigateToSub,
         ),
       ],

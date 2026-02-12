@@ -23,7 +23,7 @@ class PerformanceView extends BaseView<PerformanceViewModel> {
     }
     
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: Container(
         child: SafeArea(
           child: Column(
@@ -242,7 +242,7 @@ class PerformanceView extends BaseView<PerformanceViewModel> {
 
   Widget _buildPerformancePreview(BuildContext context, PerformanceViewModel viewModel) {
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
           children: [

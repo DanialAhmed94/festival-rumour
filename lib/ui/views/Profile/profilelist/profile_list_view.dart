@@ -79,7 +79,7 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
     }
     
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
           children: [

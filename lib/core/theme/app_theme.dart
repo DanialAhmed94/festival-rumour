@@ -228,6 +228,8 @@ class AppTheme {
       // Material Tap Target Size
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
 
+      scaffoldBackgroundColor: AppColors.screenBackground,
+
       // Page Transitions
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
@@ -299,6 +301,7 @@ class AppTheme {
 
       visualDensity: VisualDensity.adaptivePlatformDensity,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      scaffoldBackgroundColor: AppColors.screenBackground,
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: CupertinoPageTransitionsBuilder(),

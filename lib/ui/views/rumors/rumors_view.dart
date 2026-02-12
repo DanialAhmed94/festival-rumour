@@ -138,7 +138,7 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
           FocusScope.of(context).unfocus();
         },
       child: Scaffold(
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.screenBackground,
         resizeToAvoidBottomInset: false,
         body: SafeArea(
           child: Column(

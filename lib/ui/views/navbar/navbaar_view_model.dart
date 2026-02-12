@@ -30,10 +30,6 @@ class NavBaarViewModel extends BaseViewModel {
     setIndex(1);
   }
 
-  void goToProfile() {
-    setIndex(2);
-  }
-
   @override
   void init() {
     super.init();

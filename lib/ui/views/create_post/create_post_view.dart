@@ -42,7 +42,7 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
     );
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -59,6 +59,10 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                   children: [
                     // Text Input Card
                     _buildTextInputCard(context, viewModel),
+                    const SizedBox(height: 16),
+
+                    // URL Input Card
+                    _buildUrlInputCard(context, viewModel),
                     const SizedBox(height: 16),
 
                     // Media Preview Card
@@ -103,15 +107,6 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
           // Back Button
           CustomBackButton(
             onTap: () => Navigator.pop(context),
-          ),
-          const SizedBox(width: AppDimensions.spaceS),
-
-          // Logo
-          Image.asset(
-            AppAssets.logoPng,
-            width: context.getConditionalLogoSize(),
-            height: context.getConditionalLogoSize(),
-            fit: BoxFit.contain,
           ),
           const SizedBox(width: AppDimensions.spaceS),
 
@@ -161,6 +156,53 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
             height: 1.5,
           ),
           cursorColor: AppColors.accent,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUrlInputCard(BuildContext context, CreatePostViewModel viewModel) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Row(
+          children: [
+            Icon(
+              Icons.link,
+              color: AppColors.onSurfaceVariant,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: viewModel.postUrlController,
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  hintText: 'Add link (optional)',
+                  hintStyle: TextStyle(
+                    color: AppColors.onSurfaceVariant,
+                    fontSize: 16,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                  isDense: true,
+                ),
+                style: const TextStyle(
+                  color: AppColors.onSurface,
+                  fontSize: 16,
+                ),
+                cursorColor: AppColors.accent,
+                onChanged: (_) => viewModel.notifyListeners(),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -497,7 +539,7 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                     padding: const EdgeInsets.only(top: 8),
                     child: LinearProgressIndicator(
                       value: viewModel.uploadProgress,
-                      backgroundColor: AppColors.white, // Remaining/unfilled part - white
+                      backgroundColor: AppColors.screenBackground, // Remaining/unfilled part
                       valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent), // Active progress - yellow
                       minHeight: 3,
                     ),

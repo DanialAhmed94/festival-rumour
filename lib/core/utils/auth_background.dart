@@ -26,15 +26,15 @@ class _AuthBackgroundState extends State<AuthBackground> {
     final mediaQuery = MediaQuery.of(context);
     final screenHeight = mediaQuery.size.height;
     final screenWidth = mediaQuery.size.width;
-    
+    debugPrint('[APP] AuthBackground.didChangeDependencies() size=${screenWidth}x$screenHeight');
     // Cache dimensions only if they changed
     if (_cachedScreenHeight != screenHeight || _cachedScreenWidth != screenWidth) {
       _cachedScreenHeight = screenHeight;
       _cachedScreenWidth = screenWidth;
-      
       // Preload background image
       if (!_imagePreloaded) {
         _imagePreloaded = true;
+        debugPrint('[APP] AuthBackground precacheImage(${AppAssets.background})');
         precacheImage(const AssetImage(AppAssets.background), context);
       }
     }
@@ -45,7 +45,7 @@ class _AuthBackgroundState extends State<AuthBackground> {
     // Use cached dimensions or get from MediaQuery if not cached
     final screenHeight = _cachedScreenHeight ?? MediaQuery.of(context).size.height;
     final screenWidth = _cachedScreenWidth ?? MediaQuery.of(context).size.width;
-
+    debugPrint('[APP] AuthBackground.build()');
     return RepaintBoundary(
       child: Scaffold(
         resizeToAvoidBottomInset: false,

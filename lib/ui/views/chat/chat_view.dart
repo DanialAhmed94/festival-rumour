@@ -55,7 +55,7 @@ class ChatView extends BaseView<ChatViewModel> {
         return true;
       },
       child: Scaffold(
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.screenBackground,
         body: Stack(
           children: [
             // Main content
@@ -631,36 +631,49 @@ class ChatView extends BaseView<ChatViewModel> {
           ),
           Expanded(
             child: Center(
-              child: ResponsiveTextWidget(
-                viewModel.currentChatRoom?['name'] ??
-                    AppStrings.lunaCommunityRoom,
-                textType: TextType.body,
-                color: AppColors.white,
-                fontWeight: FontWeight.w600,
-                textAlign: TextAlign.center,
-              ),
+              child: viewModel.canOpenChatRoomDetail
+                  ? GestureDetector(
+                      onTap: () => viewModel.navigateToChatRoomDetail(context),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: ResponsiveTextWidget(
+                                viewModel.currentChatRoom?['name'] ??
+                                    AppStrings.lunaCommunityRoom,
+                                textType: TextType.body,
+                                color: AppColors.white,
+                                fontWeight: FontWeight.w600,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.info_outline, color: AppColors.white, size: 20),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ResponsiveTextWidget(
+                      viewModel.currentChatRoom?['name'] ??
+                          AppStrings.lunaCommunityRoom,
+                      textType: TextType.body,
+                      color: AppColors.white,
+                      fontWeight: FontWeight.w600,
+                      textAlign: TextAlign.center,
+                    ),
             ),
           ),
-          // Add a spacer to balance the back button
-          const SizedBox(width: 48), // Same width as IconButton
-          // IconButton(
-          //   icon: const Icon(Icons.share, color: AppColors.white),
-          //   onPressed: () {
-          //     // Handle share action
-          //   },
-          // ),
-          // IconButton(
-          //   icon: const Icon(Icons.favorite_border, color: AppColors.white),
-          //   onPressed: () {
-          //     // Handle favorite action
-          //   },
-          // ),
-          // IconButton(
-          //   icon: const Icon(Icons.more_vert, color: AppColors.white),
-          //   onPressed: () {
-          //     // Handle more options
-          //   },
-          // ),
+          if (viewModel.canAddMembersToCurrentRoom)
+            IconButton(
+              icon: const Icon(Icons.person_add, color: AppColors.white),
+              onPressed: () => viewModel.navigateToAddMembers(context),
+            )
+          else
+            const SizedBox(width: 48),
         ],
       ),
     );
@@ -685,7 +698,7 @@ class ChatView extends BaseView<ChatViewModel> {
                 ),
                 child: const Icon(
                   Icons.chat_bubble_outline,
-                  color: AppColors.primary,
+                  color: AppColors.black,
                   size: 40,
                 ),
               ),
@@ -889,7 +902,7 @@ class ChatView extends BaseView<ChatViewModel> {
   ) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1009,7 +1022,7 @@ class ChatView extends BaseView<ChatViewModel> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: AppColors.white,
+          backgroundColor: AppColors.screenBackground,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           ),

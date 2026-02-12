@@ -67,12 +67,19 @@ class AppAssets {
   static const String performance1 = 'assets/images/performanceimage.jpg';
 
   // Logos
-  static const String caLogo = 'assets/logos/CA logo.png';
-  static const String festivalResourceLogo = 'assets/logos/Festival Resource Log.png';
-  static const String fetiefoodieLogo = 'assets/logos/fetiefoodie logo.png';
   // New logo assets
+  static const String festivalChatIcon = 'assets/icons/festivalChat.png';
+  static const String locationIcon = 'assets/icons/locationIcon.png';
+  static const String chatroomIcon = 'assets/icons/chatroomIcon.png';
+  static const String detailIcon = 'assets/icons/detailIcon.png';
+  static const String rumoursIcon = 'assets/icons/rumoursIcon.png';
+  // SVG icons for discover grid (assets/svgs)
+  static const String locationIconSvg = 'assets/svgs/LOCATION.svg';
+  static const String chatroomIconSvg = 'assets/svgs/CHAT ROOMS.svg';
+  static const String rumoursIconSvg = 'assets/svgs/RUMORS.svg';
+  static const String detailIconSvg = 'assets/svgs/DETAIL.svg';
   static const String crapAdviserLogo = 'assets/logos/crapAdviser-logo.png';
-  static const String organiserLogo = 'assets/logos/orgnaiser-logo.png';
+  static const String organiserLogo = 'assets/logos/Festival Resource Log.png';
   static const String festieFoodieLogo = 'assets/logos/festieFoodie-logo.png';
   static const String forwardIcon = 'assets/logos/forwardIcon.png';
 

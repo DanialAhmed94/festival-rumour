@@ -20,6 +20,7 @@ class CreatePostViewModel extends BaseViewModel {
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
   final TextEditingController postTextController = TextEditingController();
+  final TextEditingController postUrlController = TextEditingController();
 
   // Store selected media files (images and videos)
   List<XFile> selectedMedia = [];
@@ -51,12 +52,16 @@ class CreatePostViewModel extends BaseViewModel {
   /// Getter to check if media is selected
   bool get hasMedia => selectedMedia.isNotEmpty;
 
-  /// Getter to check if post is valid (has text or media)
-  bool get canPost => postTextController.text.trim().isNotEmpty || hasMedia;
+  /// Getter to check if post is valid (has text, URL, or media)
+  bool get canPost =>
+      postTextController.text.trim().isNotEmpty ||
+      postUrlController.text.trim().isNotEmpty ||
+      hasMedia;
 
   @override
   void dispose() {
     postTextController.dispose();
+    postUrlController.dispose();
     super.dispose();
   }
 
@@ -401,12 +406,15 @@ class CreatePostViewModel extends BaseViewModel {
         }
       }
 
+      final postUrl = postUrlController.text.trim();
+      final postUrlOrNull = postUrl.isEmpty ? null : postUrl;
+
       // Prepare post data for Firestore
       final postData = {
         'username': username,
         'content': postContent.isNotEmpty 
             ? postContent 
-            : (hasMedia ? (isVideoPost ? "🎥 Shared a video" : "📸 Shared ${selectedMedia.length == 1 ? 'a media' : '${selectedMedia.length} media items'}") : ""),
+            : (hasMedia ? (isVideoPost ? "🎥 Shared a video" : "📸 Shared ${selectedMedia.length == 1 ? 'a media' : '${selectedMedia.length} media items'}") : (postUrlOrNull != null ? "🔗 Shared a link" : "")),
         'imagePath': imagePath,
         'likes': 0,
         'comments': 0,
@@ -417,6 +425,7 @@ class CreatePostViewModel extends BaseViewModel {
         'createdAt': DateTime.now(), // Will be converted to Timestamp in Firestore
         'userPhotoUrl': userPhotoUrl, // User's profile photo URL
         'userId': currentUser?.uid, // User ID to fetch profile photo if needed
+        'postUrl': postUrlOrNull, // Optional URL attached to the post
       };
 
       // Save post to Firestore (use festival collection if in rumors context)
@@ -452,10 +461,12 @@ class CreatePostViewModel extends BaseViewModel {
         createdAt: DateTime.now(),
         userPhotoUrl: userPhotoUrl,
         userId: currentUser?.uid,
+        postUrl: postUrlOrNull,
       );
 
       // Clear form after successful upload
       postTextController.clear();
+      postUrlController.clear();
       clearAllMedia();
       
       // Reset upload progress

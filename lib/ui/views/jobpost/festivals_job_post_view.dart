@@ -32,7 +32,7 @@ class FestivalsJobPostView extends BaseView<FestivalsJobPostViewModel> {
     return GestureDetector(
       onTap: viewModel.unfocusAllFields,
       child: Scaffold(
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.screenBackground,
         appBar: PreferredSize(
           preferredSize: const Size.fromHeight(kToolbarHeight),
           child: SafeArea(

@@ -7,6 +7,7 @@ import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/di/locator.dart';
+import '../../../core/router/app_router.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
@@ -96,6 +97,21 @@ class ChatViewModel extends BaseViewModel {
 
   List<Map<String, dynamic>> get privateChats => _privateChats;
 
+  /// True when user is in a private room (creator or joined) — can open room detail
+  bool get canOpenChatRoomDetail {
+    if (!_isInChatRoom || _currentChatRoom == null) return false;
+    final isPublic = _currentChatRoom!['isPublic'] as bool? ?? true;
+    return !isPublic;
+  }
+
+  /// True when user is in a private room they created (can add members)
+  bool get canAddMembersToCurrentRoom {
+    if (!_isInChatRoom || _currentChatRoom == null) return false;
+    final isPublic = _currentChatRoom!['isPublic'] as bool? ?? true;
+    if (isPublic) return false;
+    return isChatRoomCreatedByUser(_currentChatRoom!);
+  }
+
   /// Check if the current user is the creator of a chat room
   bool isChatRoomCreatedByUser(Map<String, dynamic> chat) {
     final currentUser = _authService.currentUser;
@@ -103,6 +119,39 @@ class ChatViewModel extends BaseViewModel {
     
     final createdBy = chat['createdBy'] as String?;
     return createdBy != null && createdBy == currentUser.uid;
+  }
+
+  /// Navigate to chat room detail (room info + members; creator can remove others, member can leave).
+  Future<void> navigateToChatRoomDetail(BuildContext context) async {
+    if (_chatRoomId == null) return;
+    final result = await _navigationService.navigateTo<dynamic>(
+      AppRoutes.chatRoomDetail,
+      arguments: _chatRoomId,
+    );
+    if (result == true) {
+      exitChatRoom(removeFromList: true);
+      return;
+    }
+    await _loadChatRoomData();
+    notifyListeners();
+  }
+
+  /// Navigate to Add members screen; on success refresh chat room data
+  Future<void> navigateToAddMembers(BuildContext context) async {
+    if (_chatRoomId == null || _currentChatRoom == null) return;
+    final members = _currentChatRoom!['members'] as List<dynamic>? ?? [];
+    final currentMemberIds = members.map((e) => e.toString()).toList();
+    final result = await _navigationService.navigateTo<bool>(
+      AppRoutes.addChatMembers,
+      arguments: {
+        'chatRoomId': _chatRoomId!,
+        'currentMemberIds': currentMemberIds,
+      },
+    );
+    if (result == true) {
+      await _loadChatRoomData();
+      notifyListeners();
+    }
   }
 
   /// Delete a private chat room created by the user
@@ -341,6 +390,7 @@ class ChatViewModel extends BaseViewModel {
           'name': data['name'] as String? ?? 'Chat Room',
           'isPublic': data['isPublic'] as bool? ?? false,
           'members': data['members'] as List<dynamic>? ?? [],
+          'createdBy': data['createdBy'] as String?,
         };
         notifyListeners();
       }
@@ -415,7 +465,14 @@ class ChatViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  void exitChatRoom() {
+  void exitChatRoom({bool removeFromList = false}) {
+    // Only remove from list when user left the group via room detail, not on back
+    if (removeFromList) {
+      final roomId = _chatRoomId;
+      if (roomId != null) {
+        _privateChats.removeWhere((chat) => chat['chatRoomId'] == roomId);
+      }
+    }
     _isInChatRoom = false;
     _currentChatRoom = null;
     _chatRoomId = null;

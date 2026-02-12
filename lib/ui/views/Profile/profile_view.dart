@@ -128,7 +128,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
         return true; // Default: allow normal back navigation
       },
       child: Scaffold(
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.screenBackground,
         body: SafeArea(
           child: Column(
             children: [

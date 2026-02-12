@@ -45,6 +45,13 @@ class AuthService {
   /// Check if user is signed in
   bool get isSignedIn => currentUser != null;
 
+  /// Cached user photo URL so screens (e.g. festival) show it immediately when returning from another route.
+  String? _cachedUserPhotoUrl;
+  String? get cachedUserPhotoUrl => _cachedUserPhotoUrl;
+  void setCachedUserPhotoUrl(String? url) {
+    _cachedUserPhotoUrl = url;
+  }
+
   /// Update user's phone number in Firebase User object
   /// Save the phone number in Firestore or Database instead of FirebaseAuth
   Future<void> savePhoneToFirestore(String uid, String phoneNumber) async {

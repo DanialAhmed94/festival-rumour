@@ -85,6 +85,9 @@ class AppColors {
   static const Color background = Color(0xFFFFFFFF);     // White background
   static const Color onBackground = Color(0xFF000000);   // Black text
 
+  /// Default screen background (cream) — used for scaffold/screen backgrounds app-wide.
+  static const Color screenBackground = Color(0xFFFDFFD2);
+
   // Outline Colors
   static const Color outline = Color(0xFF9E9E9E);
   static const Color outlineVariant = Color(0xFFBDBDBD);

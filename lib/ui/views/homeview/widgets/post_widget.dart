@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_strings.dart';
@@ -20,15 +21,17 @@ class PostWidget extends StatefulWidget {
   final Function(String)? onReactionSelected; // Callback when user selects a reaction
   final VoidCallback? onCommentsUpdated; // Callback when comments are updated
   final Function(String)? onDeletePost; // Callback when user deletes the post
+  final Function(PostModel)? onEditPost; // Callback when user edits the post
   final String? collectionName; // Optional collection name (for festival-specific posts)
 
   PostWidget({
-    super.key, 
+    super.key,
     required this.post,
     required this.backgroundColor,
     this.onReactionSelected,
     this.onCommentsUpdated,
     this.onDeletePost,
+    this.onEditPost,
     this.collectionName,
   });
 
@@ -50,8 +53,6 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
   Color _reactionColor = AppColors.white; // default Like color
   PageController? _pageController;
   int _currentPage = 0;
-  bool _showDeleteOption = false; // Show delete option when more icon is tapped
-  
   /// Check if the current user owns this post
   bool get _isOwnPost {
     final currentUser = _authService.currentUser;
@@ -223,7 +224,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: AppColors.white,
+          backgroundColor: AppColors.screenBackground,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           ),
@@ -245,9 +246,6 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
             TextButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop();
-                setState(() {
-                  _showDeleteOption = false;
-                });
               },
               child: const Text(
                 'Cancel',
@@ -339,35 +337,48 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
               subtitle: Text(post.timeAgo
                     , style: const TextStyle(fontWeight: FontWeight.bold,color: AppColors.primary),
               ),
-              trailing: _isOwnPost && _showDeleteOption
-                  ? GestureDetector(
-                      onTap: () {
-                        // Show confirmation dialog
-                        _showDeleteConfirmation(context);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        child: const Icon(
-                          Icons.delete,
-                          color: AppColors.white,
-                          size: 24,
-                        ),
+              trailing: _isOwnPost
+                  ? PopupMenuButton<String>(
+                      icon: const Icon(
+                        Icons.more_horiz,
+                        color: AppColors.white,
+                        size: 24,
                       ),
-                    )
-                  : _isOwnPost
-                      ? GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _showDeleteOption = true;
-                            });
-                          },
-                          child: const Icon(
-                            Icons.more_horiz,
-                            color: AppColors.white,
-                            size: 24,
+                      color: AppColors.screenBackground,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+                      ),
+                      onSelected: (value) {
+                        if (value == 'edit' && widget.onEditPost != null) {
+                          widget.onEditPost!(widget.post);
+                        } else if (value == 'delete') {
+                          _showDeleteConfirmation(context);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem<String>(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined, size: 20),
+                              SizedBox(width: 12),
+                              Text('Edit'),
+                            ],
                           ),
-                        )
-                      : const SizedBox.shrink(), // Hide for other users' posts
+                        ),
+                        const PopupMenuItem<String>(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                              SizedBox(width: 12),
+                              Text('Delete', style: TextStyle(color: Colors.red)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(), // Hide for other users' posts
             ),
           ),
 
@@ -385,6 +396,52 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
               ),
             ),
           ),
+          // Post URL (when user attached a link)
+          if (post.postUrl != null && post.postUrl!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.postContentPaddingHorizontal,
+              ),
+              child: InkWell(
+                onTap: () async {
+                  String urlString = post.postUrl!.trim();
+                  if (urlString.isEmpty) return;
+                  if (!urlString.contains(RegExp(r'^https?://', caseSensitive: false))) {
+                    urlString = 'https://$urlString';
+                  }
+                  final uri = Uri.tryParse(urlString);
+                  if (uri != null) {
+                    try {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } catch (_) {}
+                  }
+                },
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.link,
+                      size: 18,
+                      color: AppColors.white,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        post.postUrl!,
+                        style: const TextStyle(
+                          color: AppColors.white,
+                          fontSize: 14,
+                          decoration: TextDecoration.none,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: AppDimensions.reactionIconSpacing),
 
 

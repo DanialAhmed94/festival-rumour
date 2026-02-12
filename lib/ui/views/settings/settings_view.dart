@@ -17,7 +17,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
   @override
   Widget buildView(BuildContext context, SettingsViewModel viewModel) {
     return Scaffold(
-      backgroundColor: AppColors.primary,
+      backgroundColor: AppColors.screenBackground,
 
     body: SafeArea(
       child: Column(
@@ -274,7 +274,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           ),
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.screenBackground,
           elevation: 8,
           child: Container(
             padding: EdgeInsets.all(
@@ -403,7 +403,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           ),
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.screenBackground,
           title: const ResponsiveTextWidget(
             'Confirm Logout',
             textType: TextType.heading,
@@ -445,8 +445,13 @@ class SettingsView extends BaseView<SettingsViewModel> {
                       ),
                 );
 
-                // 🔥 PERFORM LOGOUT
-                await viewModel.logout();
+                try {
+                  await viewModel.logout();
+                } finally {
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                }
               },
 
               child: const ResponsiveTextWidget(
@@ -477,7 +482,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           ),
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.screenBackground,
           title: const ResponsiveTextWidget(
             AppStrings.deleteAccount,
             textType: TextType.heading,
@@ -503,7 +508,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(dialogContext);
 
                 // 🔥 SHOW LOADER
@@ -519,7 +524,13 @@ class SettingsView extends BaseView<SettingsViewModel> {
                       ),
                 );
 
-                viewModel.deleteAccount();
+                try {
+                  await viewModel.deleteAccount();
+                } finally {
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                }
               },
               child: const ResponsiveTextWidget(
                 AppStrings.confirm,
@@ -549,7 +560,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           ),
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.screenBackground,
           title: const ResponsiveTextWidget(
             'Premium Feature',
             textType: TextType.heading,
@@ -604,7 +615,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           ),
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.screenBackground,
           child: Container(
             padding: EdgeInsets.all(
               context.isSmallScreen

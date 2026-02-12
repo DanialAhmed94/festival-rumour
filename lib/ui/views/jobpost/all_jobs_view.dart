@@ -24,7 +24,7 @@ class AllJobsView extends BaseView<AllJobsViewModel> {
   @override
   Widget buildView(BuildContext context, AllJobsViewModel viewModel) {
     return Scaffold(
-      backgroundColor: AppColors.primary,
+      backgroundColor: AppColors.screenBackground,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(kToolbarHeight),
         child: SafeArea(

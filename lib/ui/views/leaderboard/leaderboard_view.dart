@@ -16,7 +16,7 @@ class LeaderboardView extends BaseView<LeaderboardViewModel> {
   @override
   Widget buildView(BuildContext context, LeaderboardViewModel viewModel) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.screenBackground,
       body: Column(
         children: [
           /// ✅ Pink AppBar (Same as HomeView)

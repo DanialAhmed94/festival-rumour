@@ -19,7 +19,7 @@ class NotificationView extends BaseView<NotificationViewModel> {
   @override
   Widget buildView(BuildContext context, NotificationViewModel viewModel) {
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
           children: [

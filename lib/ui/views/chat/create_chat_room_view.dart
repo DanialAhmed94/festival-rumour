@@ -22,7 +22,7 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
   Widget buildView(BuildContext context, CreateChatRoomViewModel viewModel) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -82,6 +82,7 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const SizedBox(height: 24),
           _buildTitleSection(context, viewModel),
           const SizedBox(height: 20),
           _buildContactsHeader(),

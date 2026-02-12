@@ -19,6 +19,7 @@ class WelcomeView extends BaseView<WelcomeViewModel> {
 
   @override
   Widget buildView(BuildContext context, WelcomeViewModel viewModel) {
+    debugPrint('[APP] WelcomeView.buildView() isLoading=${viewModel.isLoading}');
     return Scaffold(
       resizeToAvoidBottomInset: false,
       body: Stack(
@@ -34,7 +35,12 @@ class WelcomeView extends BaseView<WelcomeViewModel> {
               desktopMaxWidth: AppDimensions.desktopWidth,
               child: Container(
                 width: double.infinity,
-                padding: context.responsivePadding,
+                padding: EdgeInsets.only(
+                  left: AppDimensions.paddingL,
+                  right: AppDimensions.paddingL,
+                  top: context.responsivePadding.top,
+                  bottom: context.responsivePadding.bottom,
+                ),
                 decoration: const BoxDecoration(
                   color: AppColors.white,
                   borderRadius: BorderRadius.vertical(
@@ -184,7 +190,7 @@ class _SignupText extends StatelessWidget {
               style: TextStyle(
                 color: AppColors.black,
                 fontWeight: FontWeight.bold,
-                fontSize: context.responsiveTextL,
+                fontSize: context.responsiveTextM,
               ),
             ),
           ],

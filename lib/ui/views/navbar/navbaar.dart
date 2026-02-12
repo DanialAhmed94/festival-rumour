@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/utils/custom_navbar.dart';
-import '../Profile/profile_view.dart';
 import '../homeview/home_view.dart';
 import '../discover/discover_view.dart';
 import '../detail/detail_view.dart';
@@ -83,10 +82,6 @@ class _NavBarBodyState extends State<_NavBarBody> {
     _cachedMainViews = [
       const HomeView(),
       DiscoverView(
-        onBack: widget.viewModel.goToHome,
-        onNavigateToSub: widget.viewModel.setSubNavigation,
-      ),
-      ProfileView(
         onBack: widget.viewModel.goToHome,
         onNavigateToSub: widget.viewModel.setSubNavigation,
       ),

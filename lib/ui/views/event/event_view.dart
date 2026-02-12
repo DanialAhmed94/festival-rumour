@@ -23,7 +23,7 @@ class EventView extends BaseView<EventViewModel> {
     }
     
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -254,7 +254,7 @@ class EventView extends BaseView<EventViewModel> {
 
   Widget _buildEventPreview(BuildContext context, EventViewModel viewModel) {
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
           children: [

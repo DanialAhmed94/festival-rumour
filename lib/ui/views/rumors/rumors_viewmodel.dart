@@ -152,14 +152,16 @@ class RumorsViewModel extends BaseViewModel {
         _lastDocument = result['lastDocument'];
         _hasMorePosts = result['hasMore'] as bool? ?? false;
 
-        // Convert to PostModel
+        // Convert to PostModel; exclude posts with null/empty userId
         allPosts.clear();
         for (var postData in postsData) {
           try {
             final post = PostModel.fromFirestore(
               _createDocumentSnapshot(postData),
             );
-            allPosts.add(post);
+            if (post.userId != null && post.userId!.isNotEmpty) {
+              allPosts.add(post);
+            }
           } catch (e, stackTrace) {
             if (kDebugMode) {
               print('Error parsing post: $e');
@@ -269,7 +271,7 @@ class RumorsViewModel extends BaseViewModel {
                 final post = PostModel.fromFirestore(
                   _createDocumentSnapshot(postData),
                 );
-                if (post.postId != null) {
+                if (post.postId != null && post.userId != null && post.userId!.isNotEmpty) {
                   streamPostsMap[post.postId!] = post;
                 }
               } catch (e) {
@@ -641,13 +643,15 @@ class RumorsViewModel extends BaseViewModel {
         _lastDocument = result['lastDocument'];
         _hasMorePosts = result['hasMore'] as bool? ?? false;
 
-        // Convert to PostModel and add to existing list
+        // Convert to PostModel and add to existing list; exclude posts with null/empty userId
         for (var postData in postsData) {
           try {
             final post = PostModel.fromFirestore(
               _createDocumentSnapshot(postData),
             );
-            allPosts.add(post);
+            if (post.userId != null && post.userId!.isNotEmpty) {
+              allPosts.add(post);
+            }
           } catch (e) {
             if (kDebugMode) {
               print('Error parsing post: $e');
@@ -701,6 +705,9 @@ class RumorsViewModel extends BaseViewModel {
     final hasSearch = searchQuery.isNotEmpty;
 
     posts = allPosts.where((post) {
+      // Exclude posts with no userId (orphaned/invalid posts)
+      if (post.userId == null || post.userId!.isEmpty) return false;
+
       // Apply status filter
       if (selectedFilter == AppStrings.live && post.status != AppStrings.live) {
         return false;

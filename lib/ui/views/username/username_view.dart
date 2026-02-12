@@ -121,7 +121,8 @@ class _UsernameViewState extends State<UsernameView> {
                             height: MediaQuery.of(context).size.height * 0.12,
                             fit: BoxFit.contain,
                           ),
-                          SizedBox(height: context.getConditionalSpacing()),
+                          SizedBox(height: AppDimensions.spaceXL),
+                          SizedBox(height: AppDimensions.spaceL),
 
                           /// Login Card
                           Container(

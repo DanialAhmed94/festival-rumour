@@ -13,7 +13,6 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
-import '../../../shared/widgets/loading_widget.dart';
 import '../../../shared/widgets/responsive_widget.dart';
 import 'festival_view_model.dart';
 
@@ -94,7 +93,6 @@ class FestivalView extends BaseView<FestivalViewModel> {
                 /// Content section (white background) - logos section and everything below it
                 Expanded(
                   child: Container(
-                    color: AppColors.white,
                     child: ResponsiveContainer(
                       mobileMaxWidth: double.infinity,
                       tabletMaxWidth: AppDimensions.tabletWidth,
@@ -103,19 +101,11 @@ class FestivalView extends BaseView<FestivalViewModel> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           SizedBox(height: AppDimensions.spaceS),
+                          _buildCreatePostBar(context, viewModel),
+                          SizedBox(height: AppDimensions.spaceS),
                           _buildLogosSection(context, viewModel),
                           SizedBox(height: AppDimensions.spaceS),
-                          _buildAnimatedGlobalFeedRow(context, viewModel),
-                          SizedBox(height: AppDimensions.spaceS),
-                          Center(
-                            child: ResponsiveTextWidget(
-                              'Let\'s Go',
-                              textType: TextType.body,
-                              color: AppColors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 32,
-                            ),
-                          ),
+                          _buildFilterTabBar(context, viewModel),
                           SizedBox(
                             height:
                                 context.isSmallScreen
@@ -144,78 +134,6 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
-  void _showFilterMenu(BuildContext context, FestivalViewModel viewModel) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.onPrimary.withOpacity(0.9),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder:
-          (context) => Container(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Filter Festivals',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _buildFilterOption(
-                  context,
-                  viewModel,
-                  AppStrings.live,
-                  Icons.live_tv,
-                ),
-                _buildFilterOption(
-                  context,
-                  viewModel,
-                  AppStrings.upcoming,
-                  Icons.schedule,
-                ),
-                _buildFilterOption(
-                  context,
-                  viewModel,
-                  AppStrings.past,
-                  Icons.history,
-                ),
-              ],
-            ),
-          ),
-    );
-  }
-
-  Widget _buildFilterOption(
-    BuildContext context,
-    FestivalViewModel viewModel,
-    String filter,
-    IconData icon,
-  ) {
-    final isSelected = viewModel.currentFilter == filter;
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? AppColors.accent : AppColors.primary,
-      ),
-      title: Text(
-        filter,
-        style: TextStyle(
-          color: isSelected ? AppColors.accent : AppColors.primary,
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-        ),
-      ),
-      onTap: () {
-        viewModel.setFilter(context, filter);
-        Navigator.pop(context);
-      },
-    );
-  }
-
   Widget _buildTopBarWithSearch(
     BuildContext context,
     FestivalViewModel viewModel,
@@ -224,48 +142,6 @@ class FestivalView extends BaseView<FestivalViewModel> {
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingS),
       child: Row(
         children: [
-          // User Profile Picture (tappable)
-          GestureDetector(
-            onTap: () => viewModel.navigateToProfile(context),
-            child: Container(
-              height: context.getConditionalLogoSize(),
-              width: context.getConditionalLogoSize(),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.white,
-                  width: 2,
-                ),
-              ),
-              child: ClipOval(
-                child: viewModel.userPhotoUrl != null && 
-                       viewModel.userPhotoUrl!.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: viewModel.userPhotoUrl!,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          color: AppColors.black.withOpacity(0.3),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.white,
-                              strokeWidth: 2,
-                            ),
-                          ),
-                        ),
-                        errorWidget: (context, url, error) => Image.asset(
-                          AppAssets.profile,
-                          fit: BoxFit.cover,
-                        ),
-                      )
-                    : Image.asset(
-                        AppAssets.profile,
-                        fit: BoxFit.cover,
-                      ),
-              ),
-            ),
-          ),
-          SizedBox(width: AppDimensions.spaceM),
-
           // Search Bar (same design as home view)
           Expanded(
             child: Container(
@@ -353,9 +229,21 @@ class FestivalView extends BaseView<FestivalViewModel> {
                   ),
                   
                   SizedBox(width: context.getConditionalSpacing()),
-                  
-                  /// 🔹 Filter Dropdown Button
-                  _buildFilterDropdown(context, viewModel),
+
+                  /// Settings icon - navigates to settings screen
+                  IconButton(
+                    onPressed: () => viewModel.navigateToSettings(context),
+                    icon: Icon(
+                      Icons.settings,
+                      color: AppColors.white,
+                      size: context.getConditionalIconSize(),
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: AppDimensions.searchBarClearButtonWidth,
+                      minHeight: AppDimensions.searchBarClearButtonWidth,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -371,7 +259,21 @@ class FestivalView extends BaseView<FestivalViewModel> {
     PageController pageController,
   ) {
     if (viewModel.isLoading && viewModel.festivals.isEmpty) {
-      return LoadingWidget(message: AppStrings.loadingfestivals);
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: AppColors.black),
+            const SizedBox(height: AppDimensions.spaceM),
+            ResponsiveTextWidget(
+              'Loading',
+              textType: TextType.body,
+              color: AppColors.black,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
     }
 
     // Show filtered festivals if there's a search query, otherwise show all festivals
@@ -472,6 +374,140 @@ class FestivalView extends BaseView<FestivalViewModel> {
   }
 
 
+  /// "What's on your mind?" bar above the logos row — white container, avatar, pill input, camera icon.
+  Widget _buildCreatePostBar(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
+    final horizontalPadding = context.isSmallScreen
+        ? AppDimensions.paddingS
+        : context.isMediumScreen
+            ? AppDimensions.paddingM
+            : AppDimensions.paddingL;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingS,
+          vertical: AppDimensions.paddingS,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.black.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+              spreadRadius: 0,
+            ),
+            BoxShadow(
+              color: AppColors.black.withOpacity(0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+              spreadRadius: 0,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // User avatar (left)
+            GestureDetector(
+              onTap: () => viewModel.navigateToProfile(context),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: viewModel.userPhotoUrl != null &&
+                          viewModel.userPhotoUrl!.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: viewModel.userPhotoUrl!,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(
+                            color: AppColors.grey300,
+                            child: const Center(
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                          ),
+                          errorWidget: (_, __, ___) => Image.asset(
+                            AppAssets.profile,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : Container(
+                          color: AppColors.grey300,
+                          child: const Center(
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppDimensions.spaceS),
+            // Pill-shaped input (center)
+            Expanded(
+              child: GestureDetector(
+                onTap: () => viewModel.navigateToCreatePost(context),
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.paddingM,
+                    vertical: AppDimensions.paddingXS,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.grey200,
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Write's on your mind?",
+                    style: TextStyle(
+                      color: AppColors.grey600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppDimensions.spaceS),
+            // Camera icon (right)
+            IconButton(
+              onPressed: () => viewModel.navigateToCreatePost(context),
+              icon: const Icon(
+                Icons.camera_alt,
+                color: AppColors.black,
+                size: 24,
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(
+                minWidth: 40,
+                minHeight: 40,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLogosSection(BuildContext context, FestivalViewModel viewModel) {
     return Container(
       padding: EdgeInsets.symmetric(
@@ -489,26 +525,8 @@ class FestivalView extends BaseView<FestivalViewModel> {
                 : AppDimensions.paddingM,
       ),
       decoration: const BoxDecoration(color: Colors.transparent),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Center(
-            child: _buildScrollableLogos(context, viewModel),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: ResponsiveTextWidget(
-              'Download our App Suite',
-              textType: TextType.body,
-              color: AppColors.black,
-              fontWeight: FontWeight.bold,
-              fontSize:
-                  context.isSmallScreen
-                      ? AppDimensions.textM
-                      : AppDimensions.textL,
-            ),
-          ),
-        ],
+      child: Center(
+        child: _buildScrollableLogos(context, viewModel),
       ),
     );
   }
@@ -561,99 +579,101 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
-  Widget _buildAnimatedGlobalFeedRow(
+  /// Tab bar for Live / Upcoming / Past (same style as chat rooms tabs).
+  Widget _buildFilterTabBar(
     BuildContext context,
     FestivalViewModel viewModel,
   ) {
-    return _AnimatedGlobalFeedRow(
-      onTap: () => viewModel.navigateToGlobalFeed(context),
+    final selectedIndex = viewModel.selectedFilterTab;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
+      decoration: BoxDecoration(
+        color: AppColors.black,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
+      ),
+      child: Row(
+        children: [
+          _buildFilterTab(
+            context,
+            viewModel,
+            index: 0,
+            label: AppStrings.live,
+            icon: Icons.live_tv,
+            isSelected: selectedIndex == 0,
+          ),
+          _buildFilterTab(
+            context,
+            viewModel,
+            index: 1,
+            label: AppStrings.upcoming,
+            icon: Icons.schedule,
+            isSelected: selectedIndex == 1,
+          ),
+          _buildFilterTab(
+            context,
+            viewModel,
+            index: 2,
+            label: AppStrings.past,
+            icon: Icons.history,
+            isSelected: selectedIndex == 2,
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildFilterDropdown(
+  Widget _buildFilterTab(
     BuildContext context,
-    FestivalViewModel viewModel,
-  ) {
-    return PopupMenuButton<String>(
-      icon: const Icon(
-        Icons.filter_list,
-        color: AppColors.white,
-        size: 20,
+    FestivalViewModel viewModel, {
+    required int index,
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+  }) {
+    final filter = index == 0 ? 'live' : index == 1 ? 'upcoming' : 'past';
+    final isSmall = context.isSmallScreen;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => viewModel.setFilter(context, filter),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            vertical: AppDimensions.paddingS,
+            horizontal: isSmall ? AppDimensions.paddingS : AppDimensions.paddingM,
+          ),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: isSmall ? 14.0 : AppDimensions.iconS,
+                  color: isSelected ? AppColors.black : AppColors.white,
+                ),
+                SizedBox(width: isSmall ? 4 : AppDimensions.spaceS),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: isSmall ? 12 : 14,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? AppColors.black : AppColors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
-      color: AppColors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-      onSelected: (value) {
-        viewModel.setFilter(context, value);
-      },
-      itemBuilder: (BuildContext context) => [
-        PopupMenuItem<String>(
-          value: AppStrings.live.toLowerCase(),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.live_tv,
-                color: AppColors.accent,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                AppStrings.live,
-                style: const TextStyle(
-                  color: AppColors.black,
-                  fontSize: AppDimensions.textM,
-                ),
-              ),
-            ],
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: AppStrings.upcoming.toLowerCase(),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.schedule,
-                color: AppColors.accent,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                AppStrings.upcoming,
-                style: const TextStyle(
-                  color: AppColors.black,
-                  fontSize: AppDimensions.textM,
-                ),
-              ),
-            ],
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: AppStrings.past.toLowerCase(),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.history,
-                color: AppColors.accent,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                AppStrings.past,
-                style: const TextStyle(
-                  color: AppColors.black,
-                  fontSize: AppDimensions.textM,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
 
-/// Scrollable Logos Widget with Navigation Arrows
+/// Scrollable Logos Widget
 class _ScrollableLogosWidget extends StatefulWidget {
   final FestivalViewModel viewModel;
 
@@ -667,247 +687,149 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final iconTileSize = context.isSmallScreen ? 56.0 : context.isMediumScreen ? 64.0 : 72.0;
+    final logoSize = context.isSmallScreen ? 44.0 : context.isMediumScreen ? 52.0 : 56.0;
+    final festivalChatWidth = logoSize * 2.4;
+    final festivalChatHeight = logoSize * 1.5;
+
     return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left navigation arrow
-        Transform.scale(
-          scaleX: -1, // Flip horizontally for left arrow
-          child: Image.asset(
-            AppAssets.forwardIcon,
-            width: 24,
-            height: 24,
-            color: AppColors.black,
-          ),
+        // 1. Festival CHAT badge – taps navigate to global feed
+        _buildFestivalChatBadge(
+          context,
+          width: festivalChatWidth,
+          height: festivalChatHeight,
+          onTap: () => widget.viewModel.navigateToGlobalFeed(context),
         ),
-        const SizedBox(width: 12),
-        // Logos - using Row to show all three without scrolling
-        Flexible(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildLogoItem(
-                context,
-                AppAssets.crapAdviserLogo,
-                onTap: () => widget.viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
-              ),
-              const SizedBox(width: 16),
-              _buildLogoItem(
-                context,
-                AppAssets.organiserLogo,
-                onTap: () => widget.viewModel.openAppStoreIOS(caAppStoreUrl),
-              ),
-              const SizedBox(width: 16),
-              _buildLogoItem(
-                context,
-                AppAssets.festieFoodieLogo,
-                onTap: () => widget.viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Right navigation arrow
-        Image.asset(
-          AppAssets.forwardIcon,
-          width: 24,
-          height: 24,
-          color: AppColors.black,
+        SizedBox(width: context.isSmallScreen ? 12 : 16),
+        // 2. Three App Store icons with "Download our App Suite" directly under them
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildAppStoreLogoItem(
+                  context,
+                  AppAssets.crapAdviserLogo,
+                  containerSize: iconTileSize,
+                  onTap: () => widget.viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
+                ),
+                SizedBox(width: context.isSmallScreen ? 12 : 16),
+                _buildAppStoreLogoItem(
+                  context,
+                  AppAssets.organiserLogo,
+                  containerSize: iconTileSize,
+                  onTap: () => widget.viewModel.openAppStoreIOS(caAppStoreUrl),
+                ),
+                SizedBox(width: context.isSmallScreen ? 12 : 16),
+                _buildAppStoreLogoItem(
+                  context,
+                  AppAssets.festieFoodieLogo,
+                  containerSize: iconTileSize,
+                  onTap: () => widget.viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ResponsiveTextWidget(
+              'Download our App Suite',
+              textType: TextType.body,
+              color: AppColors.black,
+              fontWeight: FontWeight.bold,
+              fontSize: context.isSmallScreen ? AppDimensions.textM : AppDimensions.textL,
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildLogoItem(
-    BuildContext context,
-    String assetPath, {
-    VoidCallback? onTap,
+  Widget _buildFestivalChatBadge(
+    BuildContext context, {
+    required double width,
+    required double height,
+    required VoidCallback onTap,
   }) {
-    final logoSize =
-        context.isSmallScreen
-            ? 60.0
-            : context.isMediumScreen
-            ? 70.0
-            : 80.0;
-
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: logoSize,
-        height: logoSize,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.asset(
-            assetPath,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                color: AppColors.grey600,
-                child: Center(
-                  child: Icon(
-                    Icons.image_not_supported,
-                    color: AppColors.grey400,
-                    size: logoSize * 0.5,
-                  ),
-                ),
-              );
-            },
+          child: Center(
+            child: Image.asset(
+              AppAssets.festivalChatIcon,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return Icon(
+                  Icons.image_not_supported,
+                  color: AppColors.grey400,
+                  size: height * 0.4,
+                );
+              },
+            ),
           ),
         ),
       ),
     );
   }
-}
 
-/// Animated Global Feed Row Widget
-/// Animates in once with a delay after screen load
-class _AnimatedGlobalFeedRow extends StatefulWidget {
-  final VoidCallback onTap;
+  /// iOS-style app launcher tile: white rounded container larger than the icon, icon centered inside.
+  Widget _buildAppStoreLogoItem(
+    BuildContext context,
+    String assetPath, {
+    required double containerSize,
+    VoidCallback? onTap,
+  }) {
+    final iconSize = containerSize * 0.72;
+    final cornerRadius = containerSize * 0.22;
 
-  const _AnimatedGlobalFeedRow({required this.onTap});
-
-  @override
-  State<_AnimatedGlobalFeedRow> createState() => _AnimatedGlobalFeedRowState();
-}
-
-class _AnimatedGlobalFeedRowState extends State<_AnimatedGlobalFeedRow>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  late Animation<double> _slideAnimation;
-  bool _hasAnimated = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 700),
-      vsync: this,
-    );
-
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-
-    _slideAnimation = Tween<double>(
-      begin: 20.0,
-      end: 0.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-
-    // Delay animation by 400ms after screen load
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (mounted && !_hasAnimated) {
-        _hasAnimated = true;
-        _controller.forward();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: Transform.translate(
-        offset: Offset(0, _slideAnimation.value),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: Container(
-            margin: EdgeInsets.symmetric(
-              horizontal:
-                  context.isSmallScreen
-                      ? AppDimensions.paddingS
-                      : context.isMediumScreen
-                      ? AppDimensions.paddingM
-                      : AppDimensions.paddingL,
-              vertical: AppDimensions.spaceS,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: containerSize,
+        height: containerSize,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(cornerRadius),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.black.withOpacity(0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
-            padding: EdgeInsets.symmetric(
-              horizontal:
-                  context.isSmallScreen
-                      ? AppDimensions.paddingM
-                      : AppDimensions.paddingL,
-              vertical:
-                  context.isSmallScreen
-                      ? AppDimensions.paddingS
-                      : AppDimensions.paddingM,
+            BoxShadow(
+              color: AppColors.black.withOpacity(0.04),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
             ),
-            decoration: BoxDecoration(
-              color: AppColors.black.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ResponsiveTextWidget(
-                    'The world is buzzing (feed) 👀',
-                    textType: TextType.body,
-                    color: AppColors.white.withOpacity(0.9),
-                    fontWeight: FontWeight.bold,
-                    fontSize:
-                        context.isSmallScreen
-                            ? AppDimensions.textM
-                            : AppDimensions.textL,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                SizedBox(
-                  width:
-                      context.isSmallScreen
-                          ? AppDimensions.spaceS
-                          : AppDimensions.spaceM,
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal:
-                        context.isSmallScreen
-                            ? AppDimensions.paddingS
-                            : AppDimensions.paddingM,
-                    vertical:
-                        context.isSmallScreen
-                            ? AppDimensions.paddingXS
-                            : AppDimensions.paddingS,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: AppColors.white.withOpacity(0.5),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ResponsiveTextWidget(
-                        'Jump In',
-                        textType: TextType.body,
-                        color: AppColors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize:
-                            context.isSmallScreen
-                                ? AppDimensions.textS
-                                : AppDimensions.textM,
-                      ),
-                      SizedBox(width: context.isSmallScreen ? 4 : 6),
-                      Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: context.isSmallScreen ? 12 : 14,
-                        color: AppColors.white,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(cornerRadius),
+          child: Center(
+            child: SizedBox(
+              width: iconSize,
+              height: iconSize,
+              child: Image.asset(
+                assetPath,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(
+                    Icons.image_not_supported,
+                    color: AppColors.grey400,
+                    size: iconSize * 0.6,
+                  );
+                },
+              ),
             ),
           ),
         ),

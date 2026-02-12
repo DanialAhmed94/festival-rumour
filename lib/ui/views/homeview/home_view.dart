@@ -134,7 +134,7 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
         children: [
           // Background (no image)
           const Positioned.fill(
-            child: ColoredBox(color: AppColors.white),
+            child: ColoredBox(color: AppColors.screenBackground),
           ),
 
           // Main Content
@@ -196,16 +196,6 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
             onTap: () => viewModel.navigateToFestival(),
           ),
           SizedBox(width: context.getConditionalSpacing()),
-          // Logo with responsive sizing
-          Image.asset(
-            AppAssets.logoPng,
-            width: context.getConditionalLogoSize(),
-           // The getter 'responsivePaddingL' isn't defined for the type 'BuildContext'.
-            
-            height: context.getConditionalLogoSize(),
-            fit: BoxFit.contain,
-          ),
-          
           // Title - Flexible to prevent overflow
           Expanded(
             child: ResponsiveTextWidget(
@@ -296,8 +286,10 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
                 viewModel.refreshPostsAfterComment();
               },
               onDeletePost: (postId) {
-                // Handle post deletion
                 viewModel.deletePost(postId, context);
+              },
+              onEditPost: (postModel) {
+                viewModel.navigateToEditPost(context, postModel);
               },
             ),
             // Conditional spacing between posts

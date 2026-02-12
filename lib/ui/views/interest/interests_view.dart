@@ -151,7 +151,7 @@ class InterestsView extends BaseView<InterestsViewModel> {
       selected: selected,
       onSelected: (_) => viewModel.toggle(category),
       selectedColor: AppColors.accent,
-      backgroundColor: AppColors.white.withOpacity(0.5),
+      backgroundColor: AppColors.screenBackground.withOpacity(0.5),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
         side: BorderSide(

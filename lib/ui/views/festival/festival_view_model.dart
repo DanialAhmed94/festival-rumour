@@ -39,7 +39,7 @@ class FestivalViewModel extends BaseViewModel {
   List<FestivalModel> filteredFestivals = []; // Filtered festivals for search
   int currentPage = 0;
   String searchQuery = ''; // Search query
-  String currentFilter = 'all'; // Current filter (default to all)
+  String currentFilter = 'live'; // Current filter: live, upcoming, past (default Live)
   late FocusNode searchFocusNode; // Search field focus node
   TextEditingController searchController =
       TextEditingController(); // Search field controller
@@ -54,15 +54,18 @@ class FestivalViewModel extends BaseViewModel {
 
   FestivalViewModel() {
     searchFocusNode = FocusNode();
+    // Use cached photo immediately so it doesn't reload when returning from create post etc.
+    _userPhotoUrl = _authService.cachedUserPhotoUrl;
     _loadUserPhoto();
   }
 
-  /// Load user profile photo URL
+  /// Load user profile photo URL and update cache so it's available when returning to this screen.
   Future<void> _loadUserPhoto() async {
     try {
       final currentUser = _authService.currentUser;
       if (currentUser == null) {
         _userPhotoUrl = null;
+        _authService.setCachedUserPhotoUrl(null);
         notifyListeners();
         return;
       }
@@ -74,6 +77,7 @@ class FestivalViewModel extends BaseViewModel {
             userData['photoUrl'] != null &&
             (userData['photoUrl'] as String).isNotEmpty) {
           _userPhotoUrl = userData['photoUrl'] as String;
+          _authService.setCachedUserPhotoUrl(_userPhotoUrl);
           notifyListeners();
           return;
         }
@@ -85,12 +89,14 @@ class FestivalViewModel extends BaseViewModel {
 
       // Fallback to Firebase Auth photoURL
       _userPhotoUrl = currentUser.photoURL;
+      _authService.setCachedUserPhotoUrl(_userPhotoUrl);
       notifyListeners();
     } catch (e) {
       if (kDebugMode) {
         print('Error loading user photo: $e');
       }
       _userPhotoUrl = null;
+      _authService.setCachedUserPhotoUrl(null);
       notifyListeners();
     }
   }
@@ -99,6 +105,23 @@ class FestivalViewModel extends BaseViewModel {
   void navigateToProfile(BuildContext context) {
     _navigationService.navigateTo(AppRoutes.profile);
   }
+
+  /// Navigate to settings screen
+  void navigateToSettings(BuildContext context) {
+    _navigationService.navigateTo(AppRoutes.settings);
+  }
+
+  /// Navigate to create post screen; on success go to Profile (back from Profile → Festival)
+  Future<void> navigateToCreatePost(BuildContext context) async {
+    final createdPost = await _navigationService.navigateTo<dynamic>(AppRoutes.createPost);
+    if (createdPost != null) {
+      _navigationService.navigateTo(AppRoutes.profile);
+    }
+  }
+
+  /// Selected tab index for Live (0), Upcoming (1), Past (2).
+  int get selectedFilterTab =>
+      currentFilter == 'live' ? 0 : currentFilter == 'upcoming' ? 1 : 2;
 
   Future<void> loadFestivals() async {
     await handleAsync(
@@ -136,10 +159,8 @@ class FestivalViewModel extends BaseViewModel {
           throw Exception(response.message ?? 'Failed to load festivals');
         }
 
-        // Show all festivals (no filtering)
-        festivals.clear();
-        festivals.addAll(allFestivals);
-        _applySearchFilter();
+        // Apply current filter (Live / Upcoming / Past)
+        _applyFilter();
       },
       errorMessage: AppStrings.failedToLoadFestivals,
       minimumLoadingDuration: AppDurations.minimumLoadingDuration,
@@ -254,8 +275,22 @@ class FestivalViewModel extends BaseViewModel {
   }
 
   /// Navigate to Global Feed (Home)
+  /// Updates FestivalProvider with current allFestivals so edit post / other screens have the list.
   void navigateToGlobalFeed(BuildContext context) {
+    if (allFestivals.isNotEmpty) {
+      final festivalProvider =
+          Provider.of<FestivalProvider>(context, listen: false);
+      festivalProvider.setAllFestivals(allFestivals);
+      if (kDebugMode) {
+        print('🎪 FestivalProvider updated with ${allFestivals.length} festivals (festival chat tap)');
+      }
+    }
     _navigationService.navigateTo(AppRoutes.home);
+  }
+
+  /// Navigate to Chat (chat rooms list)
+  void navigateToChat(BuildContext context) {
+    _navigationService.navigateTo(AppRoutes.chat);
   }
 
   void goToNextSlide() {
@@ -316,7 +351,7 @@ class FestivalViewModel extends BaseViewModel {
     currentFilter = filter;
     _applyFilter();
 
-    // Reset to first page when filter changes
+    // Reset to first page when tab changes
     if (festivals.isNotEmpty) {
       final int base =
           (festivals.length * AppDimensions.pageBaseMultiplier) + 1;
@@ -331,36 +366,6 @@ class FestivalViewModel extends BaseViewModel {
           if (kDebugMode) print('Error jumping to page: $e');
         }
       }
-    }
-
-    // Show snackbar to notify user
-    String filterName;
-    switch (filter) {
-      case 'live':
-        filterName = AppStrings.live;
-        break;
-      case 'upcoming':
-        filterName = AppStrings.upcoming;
-        break;
-      case 'past':
-        filterName = AppStrings.past;
-        break;
-      default:
-        filterName = 'All';
-    }
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Showing $filterName festivals',
-            style: const TextStyle(color: AppColors.black),
-          ),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
     }
 
     notifyListeners();

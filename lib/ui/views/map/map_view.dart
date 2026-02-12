@@ -51,7 +51,7 @@ class MapView extends BaseView<MapViewModel> {
     });
 
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: Stack(
         children: [
           /// -------------------------------------------

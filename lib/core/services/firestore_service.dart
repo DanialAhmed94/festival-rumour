@@ -502,16 +502,45 @@ class FirestoreService {
     }
   }
 
+  /// Update an existing post in Firestore (e.g. content, postUrl).
+  /// [postId] - Document ID of the post
+  /// [updates] - Map of fields to update (e.g. {'content': '...', 'postUrl': '...'})
+  /// [collectionName] - Optional collection name (defaults to 'festivalrumorglobalfeed')
+  Future<void> updatePost(
+    String postId,
+    Map<String, dynamic> updates, {
+    String? collectionName,
+  }) async {
+    try {
+      final targetCollection = collectionName ?? defaultPostsCollection;
+      updates['updatedAt'] = FieldValue.serverTimestamp();
+      await _firestore.collection(targetCollection).doc(postId).update(updates);
+      if (kDebugMode) {
+        print('Post updated in "$targetCollection": $postId');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.updatePost',
+      );
+      rethrow;
+    }
+  }
+
   /// Save post to Firestore
   ///
   /// [postData] - Map containing post data (username, content, imagePath, etc.)
   /// [collectionName] - Optional collection name (defaults to 'festivalrumorglobalfeed')
   /// [mediaCount] - Post counter increment (always 1 per post, regardless of media items count)
+  /// [skipUserPostCountIncrement] - If true, skips incrementing user's post count (e.g. when copying post to festival)
   /// Returns the document ID of the created post
   Future<String> savePost(
     Map<String, dynamic> postData, {
     String? collectionName,
     int mediaCount = 1, // Always 1 per post (one post = one count)
+    bool skipUserPostCountIncrement = false,
   }) async {
     try {
       // Convert DateTime to Timestamp if present
@@ -549,7 +578,10 @@ class FirestoreService {
         print('   userId is not empty: ${userId != null && userId.isNotEmpty}');
         print('   mediaCount > 0: ${mediaCount > 0}');
       }
-      if (userId != null && userId.isNotEmpty && mediaCount > 0) {
+      if (!skipUserPostCountIncrement &&
+          userId != null &&
+          userId.isNotEmpty &&
+          mediaCount > 0) {
         try {
           if (kDebugMode) {
             print(
@@ -573,7 +605,7 @@ class FirestoreService {
       } else {
         if (kDebugMode) {
           print(
-            '⚠️ Skipping post count increment: userId=${userId != null && userId.isNotEmpty}, mediaCount=$mediaCount',
+            '⚠️ Skipping post count increment: skipUserPostCountIncrement=$skipUserPostCountIncrement, userId=${userId != null && userId.isNotEmpty}, mediaCount=$mediaCount',
           );
         }
       }
@@ -4795,6 +4827,156 @@ class FirestoreService {
         exception,
         stackTrace,
         'FirestoreService.createPrivateChatRoom',
+      );
+      rethrow;
+    }
+  }
+
+  /// Add members to an existing private chat room (creator only).
+  /// [chatRoomId] - The chat room document ID
+  /// [requesterId] - User ID of the person adding (must be the room creator)
+  /// [newMemberIds] - List of user IDs to add to the room
+  Future<bool> addMembersToPrivateChatRoom({
+    required String chatRoomId,
+    required String requesterId,
+    required List<String> newMemberIds,
+  }) async {
+    if (newMemberIds.isEmpty) return true;
+    try {
+      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+      final chatRoomDoc = await chatRoomRef.get();
+
+      if (!chatRoomDoc.exists) {
+        if (kDebugMode) print('⚠️ Chat room not found: $chatRoomId');
+        return false;
+      }
+
+      final data = chatRoomDoc.data() as Map<String, dynamic>;
+      final createdBy = data['createdBy'] as String?;
+      if (createdBy != requesterId) {
+        if (kDebugMode) print('⚠️ Only the creator can add members');
+        return false;
+      }
+
+      await chatRoomRef.update({
+        'members': FieldValue.arrayUnion(newMemberIds),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (kDebugMode) {
+        print('✅ Added ${newMemberIds.length} member(s) to chat room: $chatRoomId');
+      }
+      return true;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.addMembersToPrivateChatRoom',
+      );
+      rethrow;
+    }
+  }
+
+  /// Get chat room document data by ID. Returns null if not found.
+  Future<Map<String, dynamic>?> getChatRoomDocument(String chatRoomId) async {
+    try {
+      final doc = await _firestore.collection('chatRooms').doc(chatRoomId).get();
+      if (!doc.exists) return null;
+      return doc.data() as Map<String, dynamic>?;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.getChatRoomDocument',
+      );
+      rethrow;
+    }
+  }
+
+  /// Remove a member from a private chat room (creator only). Creator cannot remove themselves.
+  Future<bool> removeMemberFromPrivateChatRoom({
+    required String chatRoomId,
+    required String requesterId,
+    required String memberIdToRemove,
+  }) async {
+    try {
+      if (requesterId == memberIdToRemove) {
+        if (kDebugMode) print('⚠️ Creator cannot remove themselves');
+        return false;
+      }
+      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+      final chatRoomDoc = await chatRoomRef.get();
+
+      if (!chatRoomDoc.exists) {
+        if (kDebugMode) print('⚠️ Chat room not found: $chatRoomId');
+        return false;
+      }
+
+      final data = chatRoomDoc.data() as Map<String, dynamic>;
+      final createdBy = data['createdBy'] as String?;
+      if (createdBy != requesterId) {
+        if (kDebugMode) print('⚠️ Only the creator can remove members');
+        return false;
+      }
+
+      await chatRoomRef.update({
+        'members': FieldValue.arrayRemove([memberIdToRemove]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (kDebugMode) {
+        print('✅ Removed member $memberIdToRemove from chat room: $chatRoomId');
+      }
+      return true;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.removeMemberFromPrivateChatRoom',
+      );
+      rethrow;
+    }
+  }
+
+  /// Leave a private chat room (remove current user from members). Any member can leave.
+  Future<bool> leavePrivateChatRoom({
+    required String chatRoomId,
+    required String userId,
+  }) async {
+    try {
+      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+      final chatRoomDoc = await chatRoomRef.get();
+
+      if (!chatRoomDoc.exists) {
+        if (kDebugMode) print('⚠️ Chat room not found: $chatRoomId');
+        return false;
+      }
+
+      final data = chatRoomDoc.data() as Map<String, dynamic>;
+      final members = data['members'] as List<dynamic>? ?? [];
+      if (!members.contains(userId)) {
+        if (kDebugMode) print('⚠️ User $userId is not a member of chat room $chatRoomId');
+        return false;
+      }
+
+      await chatRoomRef.update({
+        'members': FieldValue.arrayRemove([userId]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (kDebugMode) {
+        print('✅ User $userId left chat room: $chatRoomId');
+      }
+      return true;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.leavePrivateChatRoom',
       );
       rethrow;
     }

@@ -29,7 +29,7 @@ class NewsView extends BaseView<NewsViewModel> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -253,7 +253,7 @@ class NewsView extends BaseView<NewsViewModel> {
 
   Widget _buildBulletinPreview(BuildContext context, NewsViewModel viewModel) {
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -506,7 +506,7 @@ class NewsView extends BaseView<NewsViewModel> {
   Widget _buildPerformancePreview(BuildContext context,
       NewsViewModel viewModel) {
     return Scaffold(
-      backgroundColor: AppColors.white,
+      backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
           children: [

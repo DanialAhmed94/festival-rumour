@@ -31,7 +31,7 @@ class DetailView extends BaseView<DetailViewModel> {
         return true;
       },
       child: Scaffold(
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.screenBackground,
         body: SafeArea(
           child: Column(
             children: [

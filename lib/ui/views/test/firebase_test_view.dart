@@ -53,7 +53,7 @@ class _FirebaseTestViewState extends State<FirebaseTestView> {
           fontWeight: FontWeight.bold,
           color: AppColors.onPrimary,
         ),
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.screenBackground,
         foregroundColor: AppColors.onPrimary,
         actions: [
           IconButton(
@@ -211,7 +211,7 @@ class _FirebaseTestViewState extends State<FirebaseTestView> {
                       fontWeight: FontWeight.bold,
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: AppColors.screenBackground,
                       foregroundColor: AppColors.onPrimary,
                     ),
                   ),

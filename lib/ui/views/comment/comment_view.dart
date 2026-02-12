@@ -32,23 +32,8 @@ class CommentView extends BaseView<CommentViewModel> {
   @override
   Widget buildView(BuildContext context, CommentViewModel viewModel) {
     return Scaffold(
-      body: Stack(
-        children: [
-          /// 🔹 Fullscreen background image (const to prevent rebuilds)
-          Positioned.fill(
-            child: Image.asset(
-              AppAssets.bottomsheet,
-              fit: BoxFit.cover,
-            ),
-          ),
-
-          /// 🔹 Dark overlay for readability
-          Positioned.fill(
-            child: Container(color: AppColors.black.withOpacity(0.35)),
-          ),
-
-          /// 🔹 Main content
-          SafeArea(
+      backgroundColor: AppColors.screenBackground,
+      body: SafeArea(
             child: Column(
               children: [
                 _buildAppBar(context, viewModel),
@@ -77,13 +62,14 @@ class CommentView extends BaseView<CommentViewModel> {
                   margin: EdgeInsets.only(top: AppDimensions.spaceM),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: AppColors.onPrimary.withOpacity(0.3),
+                            color: AppColors.grey100,
                             borderRadius: const BorderRadius.only(
                               topLeft: Radius.circular(20),
                               topRight: Radius.circular(20),
                             ),
-                    ),
-                    child: Padding(
+                            border: Border.all(color: AppColors.grey300),
+                          ),
+                          child: Padding(
                       padding: EdgeInsets.all(AppDimensions.paddingL),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -117,9 +103,7 @@ class CommentView extends BaseView<CommentViewModel> {
                                         decoration: InputDecoration(
                               hintText: AppStrings.commentHint,
                                           hintStyle: TextStyle(
-                                            color: isNotReplying 
-                                                ? AppColors.white.withOpacity(0.7)
-                                                : AppColors.white.withOpacity(0.35),
+                                            color: AppColors.grey600,
                                           ),
                               border: InputBorder.none,
                                           isDense: true,
@@ -129,9 +113,7 @@ class CommentView extends BaseView<CommentViewModel> {
                                           ),
                                         ),
                                         style: TextStyle(
-                                          color: isNotReplying 
-                                              ? AppColors.white 
-                                              : AppColors.white.withOpacity(0.5),
+                                          color: AppColors.black,
                               fontSize: AppDimensions.textL,
                                           height: 1.4, // Line height multiplier
                                         ),
@@ -173,24 +155,24 @@ class CommentView extends BaseView<CommentViewModel> {
                                 ),
                               );
                             },
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
                     ),
                   ),
-                    );
+                );
                   },
                 ),
               ],
             ),
-          ),
-        ],
       ),
     );
   }
 
   Widget _buildAppBar(BuildContext context, CommentViewModel viewModel) {
     return Container(
+      width: double.infinity,
+      color: const Color(0xFFFC2E95),
       padding: EdgeInsets.symmetric(horizontal: AppDimensions.paddingM, vertical: AppDimensions.spaceS),
       child: Row(
         children: [
@@ -249,7 +231,7 @@ class CommentView extends BaseView<CommentViewModel> {
         child: ResponsiveTextWidget(
           text,
           textType: TextType.body,
-          color: AppColors.white,
+          color: AppColors.black,
         ),
       ),
     );
@@ -265,7 +247,7 @@ class CommentView extends BaseView<CommentViewModel> {
         child: ResponsiveTextWidget(
           'No comments yet. Be the first to comment!',
           textType: TextType.body,
-          color: AppColors.white,
+          color: AppColors.black,
           textAlign: TextAlign.center,
         ),
       );
@@ -304,7 +286,7 @@ class CommentView extends BaseView<CommentViewModel> {
           child: ResponsiveTextWidget(
             'No more comments available',
             textType: TextType.body,
-            color: AppColors.white,
+            color: AppColors.black,
             textAlign: TextAlign.center,
           ),
         ),
@@ -399,7 +381,7 @@ class CommentView extends BaseView<CommentViewModel> {
                     ResponsiveTextWidget(
                       comment.username,
                       textType: TextType.body,
-                      color: AppColors.accent,
+                      color: AppColors.black,
                       fontWeight: FontWeight.bold,
                     ),
                     const SizedBox(width: AppDimensions.spaceS),
@@ -414,7 +396,7 @@ class CommentView extends BaseView<CommentViewModel> {
                 ResponsiveTextWidget(
                   comment.content,
                   textType: TextType.body,
-                  color: AppColors.white,
+                  color: AppColors.black,
                 ),
               ],
             ),
@@ -451,13 +433,13 @@ class CommentView extends BaseView<CommentViewModel> {
                                 Icon(
                                   Icons.reply,
                                   size: 16,
-                                  color: isReplying ? AppColors.accent : AppColors.white,
+                                  color: AppColors.black,
                                 ),
                                 const SizedBox(width: AppDimensions.spaceXS),
                                 ResponsiveTextWidget(
                                   isReplying ? 'Cancel' : 'Reply',
                                   textType: TextType.caption,
-                                  color: isReplying ? AppColors.accent : AppColors.white,
+                                  color: AppColors.black,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ],
@@ -484,14 +466,14 @@ class CommentView extends BaseView<CommentViewModel> {
                                   ResponsiveTextWidget(
                                     '$replyCount ${replyCount == 1 ? 'reply' : 'replies'}',
                                     textType: TextType.caption,
-                                    color: AppColors.white,
+                                    color: AppColors.black,
                                     fontWeight: FontWeight.w500,
                                   ),
                                   const SizedBox(width: AppDimensions.spaceXS),
                                   Icon(
                                     isExpanded ? Icons.expand_less : Icons.expand_more,
                                     size: 16,
-                                    color: AppColors.white,
+                                    color: AppColors.black,
                                   ),
                                 ],
                               ),
@@ -545,7 +527,7 @@ class CommentView extends BaseView<CommentViewModel> {
             textAlignVertical: TextAlignVertical.top,
             decoration: InputDecoration(
               hintText: 'Write a reply...',
-              hintStyle: TextStyle(color: AppColors.white.withOpacity(0.7)),
+              hintStyle: TextStyle(color: AppColors.grey600),
               border: InputBorder.none,
               contentPadding: EdgeInsets.symmetric(
                 horizontal: AppDimensions.paddingS,
@@ -553,7 +535,7 @@ class CommentView extends BaseView<CommentViewModel> {
               ),
             ),
             style: const TextStyle(
-              color: AppColors.white,
+              color: AppColors.black,
               fontSize: AppDimensions.textM,
             ),
             onChanged: (_) => viewModel.notifyListeners(),
@@ -649,7 +631,7 @@ class CommentView extends BaseView<CommentViewModel> {
                 // Smaller avatar for replies
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor: AppColors.primary,
+                  backgroundColor: AppColors.screenBackground,
                   child: ClipOval(
                     child: reply.userPhotoUrl != null && reply.userPhotoUrl!.isNotEmpty
                         ? CachedNetworkImage(
@@ -689,7 +671,7 @@ class CommentView extends BaseView<CommentViewModel> {
                           ResponsiveTextWidget(
                             reply.username,
                             textType: TextType.caption,
-                            color: AppColors.accent,
+                            color: AppColors.black,
                             fontWeight: FontWeight.bold,
                           ),
                           const SizedBox(width: AppDimensions.spaceXS),
@@ -704,7 +686,7 @@ class CommentView extends BaseView<CommentViewModel> {
                       ResponsiveTextWidget(
                         reply.content,
                         textType: TextType.body,
-                        color: AppColors.white,
+                        color: AppColors.black,
                       ),
                     ],
                   ),
@@ -722,7 +704,7 @@ class CommentView extends BaseView<CommentViewModel> {
   Widget _buildCommentProfileAvatar(CommentModel comment) {
     return CircleAvatar(
       radius: 20,
-      backgroundColor: AppColors.primary,
+      backgroundColor: AppColors.screenBackground,
       child: ClipOval(
         child: comment.userPhotoUrl != null && comment.userPhotoUrl!.isNotEmpty
             ? CachedNetworkImage(

@@ -1,3 +1,4 @@
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -35,50 +36,53 @@ class GridOption extends StatelessWidget {
       },
 
       child: Container(
-        height: context.isSmallScreen 
+        height: context.isSmallScreen
             ? context.screenHeight * 0.18
-            : context.isMediumScreen 
+            : context.isMediumScreen
                 ? context.screenHeight * 0.20
                 : context.screenHeight * 0.22,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-          color: AppColors.onSurface,
+          color: AppColors.white,
+          border: Border.all(color: AppColors.secondary, width: 1),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-          child: Stack(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Background image
-              Image.asset(
-                icon,
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.cover,
-              ),
-              Positioned.fill(
-                top: 120,
-                child: Container(color: Colors.black.withOpacity(0.35)),
-              ),
-
-              // Text overlay
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppDimensions.paddingS),
-                  child: ResponsiveText(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.white,
-                      fontSize: AppDimensions.textL,
-                      fontWeight: FontWeight.bold,
-                   //   letterSpacing: 0.5,
+              Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.paddingL,
+                      vertical: AppDimensions.paddingM,
+                    ),
+                    child: SvgPicture.asset(
+                      icon,
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppDimensions.paddingS,
+                  AppDimensions.paddingXS,
+                  AppDimensions.paddingS,
+                  AppDimensions.paddingS,
+                ),
+                child: ResponsiveText(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.secondary,
+                    fontSize: AppDimensions.textL,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-          ],
+            ],
           ),
         ),
       ),

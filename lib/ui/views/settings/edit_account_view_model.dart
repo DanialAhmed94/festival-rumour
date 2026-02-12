@@ -683,7 +683,21 @@ class EditAccountViewModel extends BaseViewModel {
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to delete account: ${response.body}');
+      if (kDebugMode) {
+        print('❌ [deleteAccountFromServer] statusCode: ${response.statusCode}');
+        print('   body: ${response.body}');
+      }
+      final body = response.body.trim().toLowerCase();
+      final isHtml = body.startsWith('<html') || body.contains('<h1>');
+      if (response.statusCode >= 500) {
+        throw Exception(
+          'Server is temporarily unavailable. Please try again in a few minutes.',
+        );
+      }
+      if (isHtml || response.body.length > 200) {
+        throw Exception('Unable to delete account. Please try again later.');
+      }
+      throw Exception(response.body);
     }
   }
 

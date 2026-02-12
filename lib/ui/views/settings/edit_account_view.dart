@@ -20,12 +20,15 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
 
   @override
   void onError(BuildContext context, String error) {
-    // Show error snackbar with black text color
-    if (context.mounted) {
+    // Same error snackbar as settings / BaseView: red background, white text
+    if (context.mounted && error.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error, style: const TextStyle(color: Colors.black)),
-          backgroundColor: Theme.of(context).colorScheme.error,
+          content: Text(
+            error,
+            style: const TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -582,7 +585,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.screenBackground,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   vertical: AppDimensions.paddingM,
@@ -820,7 +823,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(dialogContext).pop();
                 showDialog(
                   context: context,
@@ -833,7 +836,13 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                         ),
                       ),
                 );
-                viewModel.deleteAccount();
+                try {
+                  await viewModel.deleteAccount();
+                } finally {
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                }
               },
               child: const ResponsiveTextWidget(
                 AppStrings.confirm,
@@ -990,7 +999,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
           ),
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.screenBackground,
           child: Container(
             padding: const EdgeInsets.all(AppDimensions.paddingXL),
             child: Column(

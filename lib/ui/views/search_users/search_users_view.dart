@@ -48,7 +48,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
         viewModel.unfocusSearch();
       },
       child: Scaffold(
-        backgroundColor: AppColors.white,
+        backgroundColor: AppColors.screenBackground,
         body: SafeArea(
           child: Column(
             children: [

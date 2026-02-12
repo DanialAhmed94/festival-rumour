@@ -20,7 +20,6 @@ class CustomNavBar extends StatelessWidget {
     final items = [
       {"icon": Icons.home_outlined, "label": AppStrings.home},
       {"icon": Icons.explore_outlined, "label": AppStrings.discover},
-      {"icon": Icons.person_outline, "label": AppStrings.profile},
     ];
 
     final double screenWidth = MediaQuery.of(context).size.width;

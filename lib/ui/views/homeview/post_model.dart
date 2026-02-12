@@ -17,6 +17,7 @@ class PostModel {
   final Map<String, int>? reactionCounts; // Count of reactions per emotion (e.g., {'👍': 5, '❤️': 3})
   final String? userPhotoUrl; // User's profile photo URL from Firestore
   final String? userId; // User ID to fetch profile photo if userPhotoUrl is missing
+  final String? postUrl; // Optional URL attached to the post
 
   PostModel({
     this.postId,
@@ -35,6 +36,7 @@ class PostModel {
     this.reactionCounts,
     this.userPhotoUrl,
     this.userId,
+    this.postUrl,
   });
 
   /// Get total reaction count (sum of all emotion counts)
@@ -137,6 +139,7 @@ class PostModel {
           : null,
       userPhotoUrl: data['userPhotoUrl'] as String?,
       userId: data['userId'] as String?,
+      postUrl: data['postUrl'] as String?,
     );
   }
 
@@ -155,6 +158,7 @@ class PostModel {
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
       'userPhotoUrl': userPhotoUrl,
       'userId': userId,
+      'postUrl': postUrl,
     };
   }
 
@@ -175,6 +179,7 @@ class PostModel {
     Map<String, int>? reactionCounts,
     String? userPhotoUrl,
     String? userId,
+    String? postUrl,
   }) {
     return PostModel(
       postId: postId ?? this.postId,
@@ -193,6 +198,7 @@ class PostModel {
       reactionCounts: reactionCounts ?? this.reactionCounts,
       userPhotoUrl: userPhotoUrl ?? this.userPhotoUrl,
       userId: userId ?? this.userId,
+      postUrl: postUrl ?? this.postUrl,
     );
   }
 
@@ -209,7 +215,8 @@ class PostModel {
         other.status == status &&
         other.isVideo == isVideo &&
         other.mediaPaths == mediaPaths &&
-        other.isVideoList == isVideoList;
+        other.isVideoList == isVideoList &&
+        other.postUrl == postUrl;
   }
 
   @override
@@ -223,7 +230,8 @@ class PostModel {
     status.hashCode ^
     isVideo.hashCode ^
     (mediaPaths?.hashCode ?? 0) ^
-    (isVideoList?.hashCode ?? 0);
+    (isVideoList?.hashCode ?? 0) ^
+    (postUrl?.hashCode ?? 0);
   }
 
   @override
