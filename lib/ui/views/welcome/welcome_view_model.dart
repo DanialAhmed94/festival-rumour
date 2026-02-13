@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/di/locator.dart';
@@ -123,6 +125,7 @@ class WelcomeViewModel extends BaseViewModel {
       // ⭐ 6️⃣ Existing user → login normally
       // ---------------------------------------------------------
       await _storageService.setLoggedIn(true, userId: uid);
+      await updateFcmTokenForUser();
 
       print("✅ Returning Google user → navigating to festivals");
       _navigationService.navigateTo(AppRoutes.festivals);
@@ -133,6 +136,21 @@ class WelcomeViewModel extends BaseViewModel {
     } finally {
       setLoading(false);
     }
+  }
+
+  static Future<void> updateFcmTokenForUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'fcmTokens': FieldValue.arrayUnion([token]),
+      'lastTokenUpdate': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    print("✅ FCM token updated in Firestore");
   }
 
   Future<void> loginWithEmail() async {
@@ -189,6 +207,7 @@ class WelcomeViewModel extends BaseViewModel {
       if (exists) {
         // Returning user → direct login
         await _storageService.setLoggedIn(true, userId: uid);
+        await updateFcmTokenForUser();
 
         print("✅ Existing Apple user → navigating to festivals");
         _navigationService.navigateTo(AppRoutes.festivals);

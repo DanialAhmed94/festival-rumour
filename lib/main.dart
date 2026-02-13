@@ -1,6 +1,10 @@
 import 'package:festival_rumour/firebase_options.dart';
+import 'package:festival_rumour/services/notification_service.dart';
+import 'package:festival_rumour/util/firebase_notification_service.dart';
+import 'package:festival_rumour/util/notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -15,6 +19,12 @@ import 'core/services/error_handler_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/providers/festival_provider.dart';
 
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  print('📩 Background message: ${message.messageId}');
+}
+
 const String _kLogTag = '[APP]';
 
 void _log(String where, [String? detail]) {
@@ -27,61 +37,23 @@ void _log(String where, [String? detail]) {
 
 /// Main entry point of the Festival Rumour application
 void main() async {
-  _log('main()', 'start');
-  try {
-    WidgetsFlutterBinding.ensureInitialized();
-    _log('main()', 'WidgetsFlutterBinding.ensureInitialized done');
+  WidgetsFlutterBinding.ensureInitialized();
 
-    await Firebase.initializeApp();
-    _log('main()', 'Firebase.initializeApp done');
-    await setupLocator();
-    _log('main()', 'setupLocator done');
+  await Firebase.initializeApp();
 
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
+  // Register background handler BEFORE runApp
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
-    );
-    _log('main()', 'runApp(_AppRoot)');
-    runApp(const _AppRoot());
-  } catch (e, stackTrace) {
-    _log('main()', 'ERROR: $e');
-    final errorHandler = ErrorHandlerService();
-    final exception = errorHandler.handleError(e, stackTrace, 'main');
-    runApp(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                const Text(
-                  'Firebase initialization failed',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text('Error: ${exception.message}'),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => main(),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  await NotificationService.init();
+  await FirebaseNotificationService.init();
+  await setupLocator();
+
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  runApp(const _AppRoot());
 }
 
 /// Root widget: shows a simple splash (no theme, no router) for 3s, then the main app.
@@ -100,16 +72,25 @@ class _AppRootState extends State<_AppRoot> {
     _log('_AppRoot._onSplashDone()', 'start');
     final isLoggedIn = await locator<StorageService>().isLoggedIn();
     final user = FirebaseAuth.instance.currentUser;
-    _log('_AppRoot._onSplashDone()', 'isLoggedIn=$isLoggedIn user=${user != null}');
+    _log(
+      '_AppRoot._onSplashDone()',
+      'isLoggedIn=$isLoggedIn user=${user != null}',
+    );
     if (!mounted) {
       _log('_AppRoot._onSplashDone()', '!mounted, abort');
       return;
     }
     setState(() {
       _showSplash = false;
-      _initialRoute = (isLoggedIn && user != null) ? AppRoutes.festivals : AppRoutes.welcome;
+      _initialRoute =
+          (isLoggedIn && user != null)
+              ? AppRoutes.festivals
+              : AppRoutes.welcome;
     });
-    _log('_AppRoot._onSplashDone()', 'setState done, initialRoute=$_initialRoute');
+    _log(
+      '_AppRoot._onSplashDone()',
+      'setState done, initialRoute=$_initialRoute',
+    );
   }
 
   @override
@@ -126,13 +107,16 @@ class _AppRootState extends State<_AppRoot> {
         home: _SimpleSplashScreen(onDone: _onSplashDone),
       );
     }
-    _log('_AppRoot.build()', 'showing FestivalRumourApp(initialRoute=$_initialRoute)');
+    _log(
+      '_AppRoot.build()',
+      'showing FestivalRumourApp(initialRoute=$_initialRoute)',
+    );
     return FestivalRumourApp(initialRoute: _initialRoute);
   }
 }
 
 /// Splash screen: full-screen video from assets, skip button top-right. Waits until video completes.
- const String _kSplashVideoAsset = 'assets/videos/Festival_Rumour.mp4';
+const String _kSplashVideoAsset = 'assets/videos/Festival_Rumour.mp4';
 
 class _SimpleSplashScreen extends StatefulWidget {
   final VoidCallback onDone;
@@ -171,19 +155,22 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
     _controller = VideoPlayerController.asset(_kSplashVideoAsset);
     _controller!.setLooping(false);
     _controller!.setVolume(1.0);
-    _controller!.initialize().then((_) {
-      if (!mounted) return;
-      setState(() {});
-      _controller!.addListener(_onVideoUpdate);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _controller == null) return;
-        _controller!.play();
-        _log('_SimpleSplashScreen', 'video playing');
-      });
-    }).catchError((Object e, StackTrace st) {
-      _log('_SimpleSplashScreen', 'video init error: $e');
-      if (mounted) widget.onDone();
-    });
+    _controller!
+        .initialize()
+        .then((_) {
+          if (!mounted) return;
+          setState(() {});
+          _controller!.addListener(_onVideoUpdate);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _controller == null) return;
+            _controller!.play();
+            _log('_SimpleSplashScreen', 'video playing');
+          });
+        })
+        .catchError((Object e, StackTrace st) {
+          _log('_SimpleSplashScreen', 'video init error: $e');
+          if (mounted) widget.onDone();
+        });
   }
 
   void _skip() {
@@ -208,12 +195,14 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
             FittedBox(
               fit: BoxFit.cover,
               child: SizedBox(
-                width: _controller!.value.size.width > 0
-                    ? _controller!.value.size.width
-                    : 16,
-                height: _controller!.value.size.height > 0
-                    ? _controller!.value.size.height
-                    : 9,
+                width:
+                    _controller!.value.size.width > 0
+                        ? _controller!.value.size.width
+                        : 16,
+                height:
+                    _controller!.value.size.height > 0
+                        ? _controller!.value.size.height
+                        : 9,
                 child: VideoPlayer(_controller!),
               ),
             )
@@ -230,8 +219,14 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
                     onTap: _skip,
                     borderRadius: BorderRadius.circular(8),
                     child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Text('Skip', style: TextStyle(color: Colors.black, fontSize: 16)),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: Text(
+                        'Skip',
+                        style: TextStyle(color: Colors.black, fontSize: 16),
+                      ),
                     ),
                   ),
                 ),
@@ -246,7 +241,8 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
 
 /// Main application widget with MVVM architecture
 class FestivalRumourApp extends StatelessWidget {
-  const FestivalRumourApp({Key? key, required this.initialRoute}) : super(key: key);
+  const FestivalRumourApp({Key? key, required this.initialRoute})
+    : super(key: key);
 
   final String initialRoute;
 
@@ -270,11 +266,16 @@ class FestivalRumourApp extends StatelessWidget {
             onGenerateRoute: onGenerateRoute,
             navigatorKey: locator<NavigationService>().navigatorKey,
             builder: (context, widget) {
-              _log('FestivalRumourApp.MaterialApp.builder()', 'widget=${widget?.runtimeType ?? "null"}');
+              _log(
+                'FestivalRumourApp.MaterialApp.builder()',
+                'widget=${widget?.runtimeType ?? "null"}',
+              );
               ErrorWidget.builder = (FlutterErrorDetails details) {
                 if (details.exception.toString().contains('404') ||
                     details.exception.toString().contains('HttpException') ||
-                    details.exception.toString().contains('Invalid statusCode: 404')) {
+                    details.exception.toString().contains(
+                      'Invalid statusCode: 404',
+                    )) {
                   return const SizedBox.shrink();
                 }
                 return ErrorWidget(details.exception);
@@ -282,7 +283,9 @@ class FestivalRumourApp extends StatelessWidget {
               final child = widget ?? const SizedBox.shrink();
               return MediaQuery(
                 data: MediaQuery.of(context).copyWith(
-                  textScaleFactor: MediaQuery.of(context).textScaleFactor.clamp(0.8, 1.2),
+                  textScaleFactor: MediaQuery.of(
+                    context,
+                  ).textScaleFactor.clamp(0.8, 1.2),
                 ),
                 child: child,
               );

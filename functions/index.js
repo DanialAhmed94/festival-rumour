@@ -49,3 +49,107 @@ exports.deleteAuthAccount = functions.https.onRequest((req, res) => {
         }
     });
 });
+
+exports.sendNotification = functions.https.onRequest((req, res) => {
+    cors(req, res, async () => {
+        try {
+            if (req.method !== "POST") {
+                return res.status(405).json({
+                    success: false,
+                    error: "Method Not Allowed. Use POST with JSON body.",
+                });
+            }
+
+            const { userIds, title, message } = req.body;
+
+            if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: "userIds array is required",
+                });
+            }
+
+            if (!message) {
+                return res.status(400).json({
+                    success: false,
+                    error: "message is required",
+                });
+            }
+
+            const tokens = [];
+
+            // 🔥 Fetch users from Firestore
+            for (const uid of userIds) {
+                const userDoc = await admin.firestore().collection("users").doc(uid).get();
+
+                if (!userDoc.exists) continue;
+
+                const userData = userDoc.data();
+
+                // ✅ Check correct app
+                if (userData.appIdentifier !== "festivalrumor") continue;
+
+                // ✅ Check token exists
+                if (userData.fcmToken) {
+                    tokens.push(userData.fcmToken);
+                }
+            }
+
+            if (tokens.length === 0) {
+                return res.status(200).json({
+                    success: true,
+                    message: "No valid FCM tokens found",
+                    sentCount: 0,
+                });
+            }
+
+            const payload = {
+                notification: {
+                    title: title || "New Message",
+                    body: message,
+                },
+                android: {
+                    priority: "high",
+                    notification: {
+                        channelId: "chat_messages",
+                        priority: "high",
+                        sound: "default",
+                    },
+                },
+                apns: {
+                    payload: {
+                        aps: {
+                            sound: "default",
+                            badge: 1,
+                        },
+                    },
+                },
+                data: {
+                    type: "custom_message",
+                    timestamp: Date.now().toString(),
+                },
+            };
+
+            // 🔥 Send to multiple tokens
+            const response = await admin.messaging().sendEachForMulticast({
+                tokens: tokens,
+                ...payload,
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Notifications processed",
+                sentCount: response.successCount,
+                failedCount: response.failureCount,
+            });
+
+        } catch (error) {
+            console.error("❌ Error sending notification:", error);
+
+            return res.status(500).json({
+                success: false,
+                error: error.message,
+            });
+        }
+    });
+});

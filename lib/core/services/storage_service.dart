@@ -14,6 +14,18 @@ class StorageService {
   static const String _keyUserSearchCache = 'user_search_cache';
   static const int _maxCacheSize = 20; // Maximum number of cached searches
 
+  static const String _keyFcmToken = 'fcm_token';
+
+  Future<void> setFcmToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyFcmToken, token);
+  }
+
+  Future<String?> getFcmToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyFcmToken);
+  }
+
   /// Check if user is logged in
   Future<bool> isLoggedIn() async {
     try {
@@ -62,22 +74,23 @@ class StorageService {
   Future<void> saveRecentUserSearch(String query) async {
     try {
       if (query.trim().isEmpty) return;
-      
+
       final prefs = await SharedPreferences.getInstance();
-      final List<String> recentSearches = prefs.getStringList(_keyRecentUserSearches) ?? [];
-      
+      final List<String> recentSearches =
+          prefs.getStringList(_keyRecentUserSearches) ?? [];
+
       // Remove if already exists (to move to top)
       recentSearches.remove(query.trim());
       // Add to beginning
       recentSearches.insert(0, query.trim());
-      
+
       // Keep only last 10 searches
       if (recentSearches.length > 10) {
         recentSearches.removeRange(10, recentSearches.length);
       }
-      
+
       await prefs.setStringList(_keyRecentUserSearches, recentSearches);
-      
+
       if (kDebugMode) {
         print('💾 Saved recent search: $query');
       }
@@ -92,7 +105,8 @@ class StorageService {
   Future<List<String>> getRecentUserSearches() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final List<String> recentSearches = prefs.getStringList(_keyRecentUserSearches) ?? [];
+      final List<String> recentSearches =
+          prefs.getStringList(_keyRecentUserSearches) ?? [];
       return recentSearches;
     } catch (e) {
       if (kDebugMode) {
@@ -118,29 +132,32 @@ class StorageService {
   }
 
   /// Get cached search results for a query
-  Future<List<Map<String, dynamic>>?> getCachedSearchResults(String query) async {
+  Future<List<Map<String, dynamic>>?> getCachedSearchResults(
+    String query,
+  ) async {
     try {
       if (query.trim().isEmpty) return null;
-      
+
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = '${_keyUserSearchCache}_${query.trim().toLowerCase()}';
       final cachedJson = prefs.getString(cacheKey);
-      
+
       if (cachedJson != null) {
         final List<dynamic> decoded = jsonDecode(cachedJson);
-        final results = decoded.map((item) => Map<String, dynamic>.from(item)).toList();
-        
+        final results =
+            decoded.map((item) => Map<String, dynamic>.from(item)).toList();
+
         if (kDebugMode) {
           print('💾 Cache hit for query: "$query" (${results.length} results)');
         }
-        
+
         return results;
       }
-      
+
       if (kDebugMode) {
         print('❌ Cache miss for query: "$query"');
       }
-      
+
       return null;
     } catch (e) {
       if (kDebugMode) {
@@ -151,23 +168,28 @@ class StorageService {
   }
 
   /// Save search results to cache
-  Future<void> saveCachedSearchResults(String query, List<Map<String, dynamic>> results) async {
+  Future<void> saveCachedSearchResults(
+    String query,
+    List<Map<String, dynamic>> results,
+  ) async {
     try {
       if (query.trim().isEmpty) return;
-      
+
       final prefs = await SharedPreferences.getInstance();
       final normalizedQuery = query.trim().toLowerCase();
       final cacheKey = '${_keyUserSearchCache}_$normalizedQuery';
-      
+
       // Encode results to JSON
       final jsonString = jsonEncode(results);
       await prefs.setString(cacheKey, jsonString);
-      
+
       // Manage cache size - remove oldest entries if cache is too large
       await _manageCacheSize(prefs);
-      
+
       if (kDebugMode) {
-        print('💾 Cached search results for query: "$query" (${results.length} results)');
+        print(
+          '💾 Cached search results for query: "$query" (${results.length} results)',
+        );
       }
     } catch (e) {
       if (kDebugMode) {
@@ -181,17 +203,19 @@ class StorageService {
     try {
       // Get all cache keys
       final allKeys = prefs.getKeys();
-      final cacheKeys = allKeys.where((key) => key.startsWith(_keyUserSearchCache)).toList();
-      
+      final cacheKeys =
+          allKeys.where((key) => key.startsWith(_keyUserSearchCache)).toList();
+
       if (cacheKeys.length > _maxCacheSize) {
         // Sort by key (which includes timestamp or we can use access time)
         // For simplicity, remove the oldest entries (first ones alphabetically)
-        final keysToRemove = cacheKeys.take(cacheKeys.length - _maxCacheSize).toList();
-        
+        final keysToRemove =
+            cacheKeys.take(cacheKeys.length - _maxCacheSize).toList();
+
         for (final key in keysToRemove) {
           await prefs.remove(key);
         }
-        
+
         if (kDebugMode) {
           print('🗑️ Removed ${keysToRemove.length} old cache entries');
         }
@@ -208,12 +232,13 @@ class StorageService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final allKeys = prefs.getKeys();
-      final cacheKeys = allKeys.where((key) => key.startsWith(_keyUserSearchCache)).toList();
-      
+      final cacheKeys =
+          allKeys.where((key) => key.startsWith(_keyUserSearchCache)).toList();
+
       for (final key in cacheKeys) {
         await prefs.remove(key);
       }
-      
+
       if (kDebugMode) {
         print('🗑️ Cleared all search cache (${cacheKeys.length} entries)');
       }
@@ -242,4 +267,3 @@ class StorageService {
     }
   }
 }
-

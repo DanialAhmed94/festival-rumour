@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:festival_rumour/core/services/storage_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
@@ -104,14 +105,20 @@ class FirestoreService {
           password.isNotEmpty ? _hashPassword(password) : null;
 
       // Prepare user data document
+      final fcmToken = await StorageService().getFcmToken();
+
       final userData = <String, dynamic>{
         'userId': userId,
         'email': email,
-        'appIdentifier': 'festivalrumor', // Identify this app's users
-        'postCount': 0, // Initialize post count to 0
+        'appIdentifier': 'festivalrumor',
+        'postCount': 0,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
+
+      if (fcmToken != null) {
+        userData['fcmToken'] = fcmToken;
+      }
 
       // Only add password if it exists (OAuth users don't have passwords)
       if (hashedPassword != null) {
@@ -4864,7 +4871,9 @@ class FirestoreService {
       });
 
       if (kDebugMode) {
-        print('✅ Added ${newMemberIds.length} member(s) to chat room: $chatRoomId');
+        print(
+          '✅ Added ${newMemberIds.length} member(s) to chat room: $chatRoomId',
+        );
       }
       return true;
     } catch (e, stackTrace) {
@@ -4881,7 +4890,8 @@ class FirestoreService {
   /// Get chat room document data by ID. Returns null if not found.
   Future<Map<String, dynamic>?> getChatRoomDocument(String chatRoomId) async {
     try {
-      final doc = await _firestore.collection('chatRooms').doc(chatRoomId).get();
+      final doc =
+          await _firestore.collection('chatRooms').doc(chatRoomId).get();
       if (!doc.exists) return null;
       return doc.data() as Map<String, dynamic>?;
     } catch (e, stackTrace) {
@@ -4958,7 +4968,8 @@ class FirestoreService {
       final data = chatRoomDoc.data() as Map<String, dynamic>;
       final members = data['members'] as List<dynamic>? ?? [];
       if (!members.contains(userId)) {
-        if (kDebugMode) print('⚠️ User $userId is not a member of chat room $chatRoomId');
+        if (kDebugMode)
+          print('⚠️ User $userId is not a member of chat room $chatRoomId');
         return false;
       }
 

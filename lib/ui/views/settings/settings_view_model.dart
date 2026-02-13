@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -138,34 +139,44 @@ class SettingsViewModel extends BaseViewModel {
       }
 
       try {
-        // Sign out from Firebase (handles both Firebase Auth and Google Sign In)
+        final user = FirebaseAuth.instance.currentUser;
+
+        if (user != null) {
+          // 🔥 Remove FCM token from Firestore
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({'fcmToken': FieldValue.delete()});
+
+          if (kDebugMode) {
+            print('✅ [Settings] FCM token removed from Firestore');
+          }
+        }
+
+        // ✅ Now sign out
         await _authService.signOut();
 
         if (kDebugMode) {
           print('✅ [Settings] Firebase sign out successful');
         }
 
-        // Clear local storage (logged in state, user ID, etc.)
+        // ✅ Clear local storage
         await _storageService.clearAll();
 
         if (kDebugMode) {
           print('✅ [Settings] Storage cleared successfully');
         }
 
-        // Navigate to welcome screen and clear navigation stack
-        // This removes all previous routes from the stack
+        // ✅ Navigate to login
         await _navigationService.navigateToLogin();
 
         if (kDebugMode) {
           print('✅ [Settings] Logout completed successfully');
         }
       } catch (e, stackTrace) {
-        // Error is already handled by AuthService.signOut() using global error handler
-        // But we still need to handle navigation failure separately
         if (kDebugMode) {
           print('❌ [Settings] Error during logout: $e');
         }
-        // Re-throw to let handleAsync show error message to user
         rethrow;
       }
     }, errorMessage: 'Failed to logout. Please try again.');

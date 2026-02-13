@@ -1,3 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/constants/app_sizes.dart';
@@ -139,22 +142,24 @@ class UsernameViewModel extends BaseViewModel {
   }
 
   bool _isValidEmail(String email) {
-    return RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$').hasMatch(email);
+    return RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    ).hasMatch(email);
   }
 
   void _calculatePasswordStrength(String password) {
     int score = 0;
-    
+
     // Length check
     if (password.length >= 8) score++;
     if (password.length >= 12) score++;
-    
+
     // Character variety checks
     if (RegExp(r'[a-z]').hasMatch(password)) score++;
     if (RegExp(r'[A-Z]').hasMatch(password)) score++;
     if (RegExp(r'[0-9]').hasMatch(password)) score++;
     if (RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) score++;
-    
+
     if (score <= 2) {
       passwordStrength = AppStrings.passwordWeak;
       passwordStrengthColor = AppColors.error;
@@ -182,7 +187,7 @@ class UsernameViewModel extends BaseViewModel {
     _validateEmail(email);
     _validatePassword(password);
     _updateFormValidity();
-    
+
     // Notify listeners to update UI with error messages
     notifyListeners();
 
@@ -201,65 +206,69 @@ class UsernameViewModel extends BaseViewModel {
       } else {
         errorMessage = AppStrings.fixErrors;
       }
-      
+
       _showErrorSnackBar(context, errorMessage);
       return;
     }
 
-    await handleAsync(() async {
-      // Simulate API delay
-      await Future.delayed(AppDurations.loginLoadingDuration);
+    await handleAsync(
+      () async {
+        // Simulate API delay
+        await Future.delayed(AppDurations.loginLoadingDuration);
 
-      // Firebase login validation
-      if (kDebugMode) {
-        print('🔐 [LOGIN] Attempting email/password login...');
-        print('   Email: $email');
-        print('   Route: ${AppRoutes.username}');
-      }
-      
-      final result = await _authService.signInWithEmail(
-        email: email,
-        password: password,
-      );
-
-      if (result.isSuccess) {
-        final user = _authService.currentUser;
+        // Firebase login validation
         if (kDebugMode) {
-          print('✅ [LOGIN] Email/Password login successful!');
-          print('   User ID: ${user?.uid}');
-          print('   Email: ${user?.email}');
-          print('   Display Name: ${user?.displayName ?? 'N/A'}');
-          print('   Navigating to: ${AppRoutes.festivals}');
+          print('🔐 [LOGIN] Attempting email/password login...');
+          print('   Email: $email');
+          print('   Route: ${AppRoutes.username}');
         }
-        
-        // Save login state to storage
-        if (user != null) {
-          await _storageService.setLoggedIn(true, userId: user.uid);
+
+        final result = await _authService.signInWithEmail(
+          email: email,
+          password: password,
+        );
+
+        if (result.isSuccess) {
+          final user = _authService.currentUser;
           if (kDebugMode) {
-            print('✅ [LOGIN] Login state saved to storage');
+            print('✅ [LOGIN] Email/Password login successful!');
+            print('   User ID: ${user?.uid}');
+            print('   Email: ${user?.email}');
+            print('   Display Name: ${user?.displayName ?? 'N/A'}');
+            print('   Navigating to: ${AppRoutes.festivals}');
+          }
+
+          // Save login state to storage
+          if (user != null) {
+            await _storageService.setLoggedIn(true, userId: user.uid);
+            await updateFcmTokenForUser();
+
+            if (kDebugMode) {
+              print('✅ [LOGIN] Login state saved to storage');
+            }
+          }
+
+          _showSuccessSnackBar(context, AppStrings.loginSuccess);
+          // Navigate to Festival Screen using navigation service
+          _navigationService.navigateTo(AppRoutes.festivals);
+        } else {
+          if (kDebugMode) {
+            print('❌ [LOGIN] Email/Password login failed!');
+            print('   Error: ${result.errorMessage}');
+          }
+          // Error message is already set by handleAsync from the exception
+          // The error will be displayed via BaseView's onError handler
+          if (result.errorMessage != null) {
+            _showErrorSnackBar(context, result.errorMessage!);
           }
         }
-        
-        _showSuccessSnackBar(context, AppStrings.loginSuccess);
-        // Navigate to Festival Screen using navigation service
-        _navigationService.navigateTo(AppRoutes.festivals);
-      } else {
-        if (kDebugMode) {
-          print('❌ [LOGIN] Email/Password login failed!');
-          print('   Error: ${result.errorMessage}');
-        }
-        // Error message is already set by handleAsync from the exception
-        // The error will be displayed via BaseView's onError handler
-        if (result.errorMessage != null) {
-          _showErrorSnackBar(context, result.errorMessage!);
-        }
-      }
-    }, 
-    minimumLoadingDuration: AppDurations.loginLoadingDuration,
-    onError: (error) {
-      // Additional error handling if needed
-      _showErrorSnackBar(context, error);
-    });
+      },
+      minimumLoadingDuration: AppDurations.loginLoadingDuration,
+      onError: (error) {
+        // Additional error handling if needed
+        _showErrorSnackBar(context, error);
+      },
+    );
   }
 
   void _showSuccessSnackBar(BuildContext context, String message) {
@@ -284,10 +293,25 @@ class UsernameViewModel extends BaseViewModel {
     );
   }
 
+  static Future<void> updateFcmTokenForUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'fcmToken': token, // ✅ single token
+      'lastTokenUpdate': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true)); // merge keeps other fields safe
+
+    print("✅ FCM token replaced in Firestore");
+  }
+
   void _showErrorSnackBar(BuildContext context, String message) {
     // Make error message more user-friendly
     String userFriendlyMessage = _getUserFriendlyErrorMessage(message);
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -312,40 +336,40 @@ class UsernameViewModel extends BaseViewModel {
   /// Convert technical error messages to user-friendly messages
   String _getUserFriendlyErrorMessage(String errorMessage) {
     final lowerMessage = errorMessage.toLowerCase();
-    
+
     // Handle invalid credentials
-    if (lowerMessage.contains('invalid-credential') || 
+    if (lowerMessage.contains('invalid-credential') ||
         lowerMessage.contains('incorrect, malformed or has expired') ||
         lowerMessage.contains('wrong-password') ||
         lowerMessage.contains('invalid password')) {
       return 'Invalid email or password. Please check your credentials and try again.';
     }
-    
+
     // Handle user not found
-    if (lowerMessage.contains('user-not-found') || 
+    if (lowerMessage.contains('user-not-found') ||
         lowerMessage.contains('there is no user record')) {
       return 'No account found with this email. Please sign up first.';
     }
-    
+
     // Handle network errors
-    if (lowerMessage.contains('network') || 
+    if (lowerMessage.contains('network') ||
         lowerMessage.contains('connection') ||
         lowerMessage.contains('timeout')) {
       return 'Network error. Please check your internet connection and try again.';
     }
-    
+
     // Handle too many requests
-    if (lowerMessage.contains('too-many-requests') || 
+    if (lowerMessage.contains('too-many-requests') ||
         lowerMessage.contains('too many attempts')) {
       return 'Too many login attempts. Please try again later.';
     }
-    
+
     // Handle email not verified
-    if (lowerMessage.contains('email-not-verified') || 
+    if (lowerMessage.contains('email-not-verified') ||
         lowerMessage.contains('email is not verified')) {
       return 'Please verify your email address before logging in.';
     }
-    
+
     // Default: return original message if no specific match
     return errorMessage;
   }
