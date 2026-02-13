@@ -5,9 +5,7 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static Future<void> init() async {
-    const androidInit = AndroidInitializationSettings(
-      '@drawable/ic_notification',
-    );
+    const androidInit = AndroidInitializationSettings('@drawable/background');
 
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: true,
