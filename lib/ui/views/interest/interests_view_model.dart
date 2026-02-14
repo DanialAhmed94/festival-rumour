@@ -428,8 +428,13 @@ class InterestsViewModel extends BaseViewModel {
     // User will be automatically added to all public chat rooms
     await _firestoreService.addUserToAllPublicChatRooms(user.uid);
 
-    // Save login status after successful user creation and Firestore save
-    await _storageService.setLoggedIn(true, userId: user.uid);
+    // Save login status and profile (name, picture) after successful user creation and Firestore save
+    await _storageService.setLoggedIn(
+      true,
+      userId: user.uid,
+      displayName: finalName,
+      photoUrl: photoUrl,
+    );
 
     // Clear stored signup data after successful creation and Firestore save
     // Only clear if everything succeeded

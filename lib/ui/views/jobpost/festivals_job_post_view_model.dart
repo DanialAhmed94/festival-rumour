@@ -246,9 +246,22 @@ class FestivalsJobPostViewModel extends BaseViewModel {
       return false;
     }
 
-    // Validate Festival Date
-    if (festivalDateController.text.trim().isEmpty) {
+    // Validate Festival Date (required + format DD/MM/YYYY + not in past)
+    final festivalDateStr = festivalDateController.text.trim();
+    if (festivalDateStr.isEmpty) {
       setError('Please select festival date');
+      festivalDateFocusNode.requestFocus();
+      return false;
+    }
+    final parsedDate = _parseFestivalDate(festivalDateStr);
+    if (parsedDate == null) {
+      setError('Festival date must be in DD/MM/YYYY format (e.g. 25/12/2025)');
+      festivalDateFocusNode.requestFocus();
+      return false;
+    }
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    if (parsedDate.isBefore(today)) {
+      setError('Festival date cannot be in the past');
       festivalDateFocusNode.requestFocus();
       return false;
     }
@@ -264,6 +277,25 @@ class FestivalsJobPostViewModel extends BaseViewModel {
 
     clearError();
     return true;
+  }
+
+  /// Parses festival date string DD/MM/YYYY; returns null if invalid.
+  DateTime? _parseFestivalDate(String value) {
+    final parts = value.split('/');
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+    try {
+      final date = DateTime(year, month, day);
+      if (date.day != day || date.month != month || date.year != year) return null;
+      return date;
+    } catch (_) {
+      return null;
+    }
   }
 
   // Method to select festival date
@@ -321,7 +353,7 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     }
   }
 
-  Future<void> postJob() async {
+  Future<void> postJob(BuildContext? context) async {
     if (!_validateForm()) {
       return;
     }
@@ -400,16 +432,20 @@ class FestivalsJobPostViewModel extends BaseViewModel {
         }
       }
 
-      // Set success message
-      _successMessage = 'Job posted successfully!';
+      _successMessage = isEditing ? 'Job updated successfully!' : 'Job posted successfully!';
       notifyListeners();
-      
-      // Clear form after successful posting
       _clearForm();
-      
-      // Navigate back using NavigationService (MVVM compliant)
+
+      if (context != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_successMessage!),
+            backgroundColor: AppColors.teal,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       _navigationService.pop();
-      
     }, errorMessage: 'Failed to post job. Please try again.');
   }
 

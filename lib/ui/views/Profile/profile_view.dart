@@ -9,6 +9,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/services/notification_storage_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../core/utils/base_view.dart';
@@ -477,6 +479,27 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
           Row(
             mainAxisSize: MainAxisSize.max,
             children: [
+              if (widget.userId == null)
+                IconButton(
+                  onPressed: () async {
+                    await Navigator.pushNamed(context, AppRoutes.createPost);
+                    if (context.mounted) {
+                      await viewModel.refreshPostsOnly(context);
+                    }
+                  },
+                  icon: Icon(
+                    Icons.post_add,
+                    color: AppColors.white,
+                    size: AppDimensions.iconL,
+                  ),
+                  padding: context.responsivePadding,
+                  constraints: BoxConstraints(
+                    minWidth: context.getConditionalIconSize(),
+                    minHeight: context.getConditionalIconSize(),
+                  ),
+                  tooltip: AppStrings.createPost,
+                ),
+              if (widget.userId == null) SizedBox(width: context.getConditionalSpacing()),
               IconButton(
                 onPressed: () async {
                   // Refresh posts only
@@ -509,54 +532,49 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                   minHeight: context.getConditionalIconSize(),
                 ),
               ),
-              IconButton(
-                onPressed: () => _showPostBottomSheet(context),
-                icon: Icon(Icons.add_box_outlined,
-                    color: AppColors.white, 
-                    size: AppDimensions.iconL),
-                padding: context.responsivePadding,
-                constraints: BoxConstraints(
-                  minWidth: context.getConditionalIconSize(),
-                  minHeight: context.getConditionalIconSize(),
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  Navigator.pushNamed(context, AppRoutes.notification);
+              ListenableBuilder(
+                listenable: locator<NotificationStorageService>(),
+                builder: (context, _) {
+                  final hasNotifications = locator<NotificationStorageService>().items.isNotEmpty;
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          Navigator.pushNamed(context, AppRoutes.notification);
+                        },
+                        icon: Icon(Icons.notifications_none,
+                            color: AppColors.white,
+                            size: AppDimensions.iconL),
+                        padding: context.responsivePadding,
+                        constraints: BoxConstraints(
+                          minWidth: context.getConditionalIconSize(),
+                          minHeight: context.getConditionalIconSize(),
+                        ),
+                      ),
+                      if (hasNotifications)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration:  BoxDecoration(
+                              color: AppColors.accent,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.black.withOpacity(0.26),
+                                  blurRadius: 2,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
                 },
-                icon: Icon(Icons.notifications_none,
-                    color: AppColors.white, 
-                    size: AppDimensions.iconL),
-                padding: context.responsivePadding,
-                constraints: BoxConstraints(
-                  minWidth: context.getConditionalIconSize(),
-                  minHeight: context.getConditionalIconSize(),
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  // Navigate to settings immediately
-                  Navigator.pushNamed(context, AppRoutes.settings).then((_) {
-                    // When returning from settings, refresh profile info
-                    // Use then() instead of await for non-blocking navigation
-                    Future.delayed(const Duration(milliseconds: 100), () {
-                      if (context.mounted && widget.viewModel.isInitialized && widget.userId == null) {
-                        // Reset refresh flags to allow refresh
-                        widget.viewModel.resetRefreshFlags();
-                        // Refresh profile info to show updated changes
-                        widget.viewModel.refreshUserProfileInfo();
-                      }
-                    });
-                  });
-                },
-                icon: Icon(Icons.settings,
-                    color: AppColors.white, 
-                    size: AppDimensions.iconL),
-                padding: context.responsivePadding,
-                constraints: BoxConstraints(
-                  minWidth: context.getConditionalIconSize(),
-                  minHeight: context.getConditionalIconSize(),
-                ),
               ),
             ],
           ),
@@ -737,9 +755,9 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                             ),
                           ),
                         ),
-                        errorWidget: Image.asset(
-                          AppAssets.proback,
-                          fit: BoxFit.cover,
+                        errorWidget: Container(
+                          color: AppColors.screenBackground.withOpacity(0.5),
+                          child: const Icon(Icons.broken_image_outlined, color: AppColors.grey600, size: 32),
                         ),
                       ),
                       // Show icon overlay if post has multiple media

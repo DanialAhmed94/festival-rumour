@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:festival_rumour/firebase_options.dart';
 import 'package:festival_rumour/services/notification_service.dart';
 import 'package:festival_rumour/util/firebase_notification_service.dart';
@@ -6,6 +7,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'core/constants/app_assets.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -19,10 +22,61 @@ import 'core/services/error_handler_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/providers/festival_provider.dart';
 
+const String _kChatBadgeStorageKey = 'chat_room_badge_counts';
+const String _kNotificationListKey = 'notification_list';
+const String _kNotificationsEnabledKey = 'notifications_enabled';
+const int _kMaxNotifications = 30;
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  print('📩 Background message: ${message.messageId}');
+  print('[NOTIF] Device: background FCM received, messageId=${message.messageId}, data=${message.data}');
+
+  final prefs = await SharedPreferences.getInstance();
+  var notificationsEnabled = prefs.getBool(_kNotificationsEnabledKey);
+  if (notificationsEnabled == null) {
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    notificationsEnabled = settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+  }
+  if (!notificationsEnabled) {
+    print('[NOTIF] Device: skip background update - notifications disabled or not granted');
+    return;
+  }
+
+  final chatRoomId = message.data['chatRoomId'] as String?;
+  if (chatRoomId != null && chatRoomId.isNotEmpty) {
+    try {
+      final json = prefs.getString(_kChatBadgeStorageKey) ?? '{}';
+      final map = Map<String, dynamic>.from(jsonDecode(json) as Map);
+      map[chatRoomId] = ((map[chatRoomId] as int?) ?? 0) + 1;
+      await prefs.setString(_kChatBadgeStorageKey, jsonEncode(map));
+    } catch (e) {
+      print('[NOTIF] Device: background badge update error: $e');
+    }
+  }
+
+  try {
+    final listJson = prefs.getString(_kNotificationListKey) ?? '[]';
+    final list = (jsonDecode(listJson) as List<dynamic>).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    final id = message.messageId ?? '${DateTime.now().millisecondsSinceEpoch}';
+    if (list.any((e) => e['id'] == id)) return;
+    final notif = message.notification;
+    list.insert(0, {
+      'id': id,
+      'title': notif?.title ?? 'Notification',
+      'message': notif?.body ?? '',
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'chatRoomId': chatRoomId,
+      'type': chatRoomId != null ? 'chat' : 'general',
+    });
+    if (list.length > _kMaxNotifications) {
+      list.removeRange(_kMaxNotifications, list.length);
+    }
+    await prefs.setString(_kNotificationListKey, jsonEncode(list));
+  } catch (e) {
+    print('[NOTIF] Device: background notification list error: $e');
+  }
 }
 
 const String _kLogTag = '[APP]';
@@ -115,9 +169,7 @@ class _AppRootState extends State<_AppRoot> {
   }
 }
 
-/// Splash screen: full-screen video from assets, skip button top-right. Waits until video completes.
-const String _kSplashVideoAsset = 'assets/videos/Festival_Rumour.mp4';
-
+/// Splash screen: logo on white placeholder until video is ready, then full-screen video. Waits until video completes.
 class _SimpleSplashScreen extends StatefulWidget {
   final VoidCallback onDone;
 
@@ -152,7 +204,7 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset(_kSplashVideoAsset);
+    _controller = VideoPlayerController.asset(AppAssets.splashVideo);
     _controller!.setLooping(false);
     _controller!.setVolume(1.0);
     _controller!
@@ -177,6 +229,19 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
     _complete();
   }
 
+  Widget _buildPlaceholder() {
+    return Container(
+      color: Colors.white,
+      alignment: Alignment.center,
+      child: Image.asset(
+        AppAssets.splashLogo,
+        width: 160,
+        height: 160,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _controller?.removeListener(_onVideoUpdate);
@@ -186,12 +251,13 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final videoReady = _controller != null && _controller!.value.isInitialized;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: videoReady ? Colors.black : Colors.white,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (_controller != null && _controller!.value.isInitialized)
+          if (videoReady)
             FittedBox(
               fit: BoxFit.cover,
               child: SizedBox(
@@ -207,33 +273,50 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
               ),
             )
           else
-            const ColoredBox(color: Colors.black),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8, right: 16),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: _skip,
-                    borderRadius: BorderRadius.circular(8),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      child: Text(
-                        'Skip',
-                        style: TextStyle(color: Colors.black, fontSize: 16),
-                      ),
+            _buildPlaceholder(),
+          if (videoReady) _buildSkipButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkipButton() {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topRight,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 12, right: 16),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _skip,
+              borderRadius: BorderRadius.circular(24),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.black87, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
+                  ],
+                ),
+                child: const Text(
+                  'Skip',
+                  style: TextStyle(
+                    color: Colors.black87,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }

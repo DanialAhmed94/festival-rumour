@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
@@ -20,21 +21,97 @@ class SettingsViewModel extends BaseViewModel {
   bool notifications = true;
   bool privacy = false;
 
+  /// 🔹 User profile from local storage (saved at login)
+  String? _userName;
+  String? _userPhotoUrl;
+
   /// 🔹 Services
   final NavigationService _navigationService = locator<NavigationService>();
   final AuthService _authService = locator<AuthService>();
   final StorageService _storageService = locator<StorageService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
 
-  /// 🔹 Toggle methods
-  void toggleNotifications(bool value) {
-    notifications = value;
+  @override
+  void init() {
+    super.init();
+    _loadNotificationsPreference();
+    _loadUserProfileFromStorage();
+  }
+
+  Future<void> _loadUserProfileFromStorage() async {
+    _userName = await _storageService.getStoredDisplayName();
+    _userPhotoUrl = await _storageService.getStoredPhotoUrl();
+    if ((_userName == null || _userName!.isEmpty) || (_userPhotoUrl == null || _userPhotoUrl!.isEmpty)) {
+      final fromAuth = _authService.userDisplayName;
+      final photoFromAuth = _authService.userPhotoUrl;
+      if (_userName == null || _userName!.isEmpty) _userName = fromAuth;
+      if (_userPhotoUrl == null || _userPhotoUrl!.isEmpty) _userPhotoUrl = photoFromAuth;
+      await _storageService.setUserProfile(displayName: _userName, photoUrl: _userPhotoUrl);
+    }
+    notifyListeners();
+  }
+
+  Future<void> _loadNotificationsPreference() async {
+    final stored = await _storageService.getNotificationsEnabled();
+    if (stored != null) {
+      notifications = stored;
+    } else {
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+      notifications = granted;
+      await _storageService.setNotificationsEnabled(granted);
+    }
+    notifyListeners();
+  }
+
+  /// When turning ON: check/request permission; if user denies, keep toggle OFF.
+  Future<void> toggleNotifications(bool value) async {
+    if (value == false) {
+      notifications = false;
+      await _storageService.setNotificationsEnabled(false);
+      notifyListeners();
+      return;
+    }
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+    if (granted) {
+      notifications = true;
+      await _storageService.setNotificationsEnabled(true);
+      notifyListeners();
+      return;
+    }
+    final requested = await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    final nowGranted = requested.authorizationStatus == AuthorizationStatus.authorized ||
+        requested.authorizationStatus == AuthorizationStatus.provisional;
+    if (nowGranted) {
+      notifications = true;
+      await _storageService.setNotificationsEnabled(true);
+    } else {
+      notifications = false;
+      await _storageService.setNotificationsEnabled(false);
+    }
     notifyListeners();
   }
 
   void togglePrivacy(bool value) {
     privacy = value;
     notifyListeners();
+  }
+
+  String? get userPhotoUrl => _userPhotoUrl;
+  String? get userName => _userName;
+
+  void navigateToProfile() {
+    _navigationService.navigateTo(
+      AppRoutes.profile,
+      arguments: {'fromRoute': AppRoutes.settings},
+    );
   }
 
   /// 🔹 Navigation / Actions (stub methods for now)
@@ -53,6 +130,10 @@ class SettingsViewModel extends BaseViewModel {
 
   void openMyJobs() {
     _navigationService.navigateTo(AppRoutes.myJobs);
+  }
+
+  void openCreateJob() {
+    _navigationService.navigateTo(AppRoutes.jobpost);
   }
 
   /// Rate the app - opens Play Store (Android) or App Store (iOS)

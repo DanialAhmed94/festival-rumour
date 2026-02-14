@@ -2083,14 +2083,16 @@ class FirestoreService {
           }
         }
 
-        // Only add if we found an image (skip posts with only videos)
-        if (firstImage != null) {
+        // Only add if we found an image with a non-empty URL (skip posts with only videos or no media)
+        if (firstImage != null && (firstImage as String).trim().isNotEmpty) {
           images.add(firstImage);
         }
       } else if (post['imagePath'] != null &&
           !(post['isVideo'] as bool? ?? false)) {
-        // Fallback for old posts with single imagePath
-        images.add(post['imagePath'] as String);
+        final path = (post['imagePath'] as String).trim();
+        if (path.isNotEmpty) {
+          images.add(post['imagePath'] as String);
+        }
       }
     }
     return images;
@@ -2132,8 +2134,8 @@ class FirestoreService {
           }
         }
 
-        // Only add postInfo if we found an image (skip video-only posts for images grid)
-        if (firstImageUrl != null) {
+        // Only add postInfo if we found an image with non-empty URL (skip video-only or no-media posts)
+        if (firstImageUrl != null && firstImageUrl.trim().isNotEmpty) {
           postInfos.add({
             'postId': postId,
             'mediaUrl':
@@ -2145,14 +2147,16 @@ class FirestoreService {
         }
       } else if (post['imagePath'] != null &&
           !(post['isVideo'] as bool? ?? false)) {
-        // Fallback for old posts with single imagePath (only if not a video)
-        postInfos.add({
-          'postId': postId,
-          'mediaUrl': post['imagePath'] as String,
-          'collectionName': collectionName,
-          'isVideo': false,
-          'hasMultipleMedia': false, // Old posts have single media
-        });
+        final path = (post['imagePath'] as String).trim();
+        if (path.isNotEmpty) {
+          postInfos.add({
+            'postId': postId,
+            'mediaUrl': post['imagePath'] as String,
+            'collectionName': collectionName,
+            'isVideo': false,
+            'hasMultipleMedia': false, // Old posts have single media
+          });
+        }
       }
     }
     return postInfos;
@@ -2176,14 +2180,19 @@ class FirestoreService {
                   : (post['isVideo'] as bool? ?? false);
 
           if (isVideo) {
-            videos.add(mediaPaths[i] as String);
+            final url = (mediaPaths[i] as String).trim();
+            if (url.isNotEmpty) {
+              videos.add(mediaPaths[i] as String);
+            }
             break; // Only take first video per post
           }
         }
       } else if (post['imagePath'] != null &&
           (post['isVideo'] as bool? ?? false)) {
-        // Fallback for old posts with single video
-        videos.add(post['imagePath'] as String);
+        final path = (post['imagePath'] as String).trim();
+        if (path.isNotEmpty) {
+          videos.add(post['imagePath'] as String);
+        }
       }
     }
     return videos;
@@ -2227,8 +2236,8 @@ class FirestoreService {
         // Set hasMultipleMedia if post has multiple videos
         hasMultipleMedia = videoCount > 1;
 
-        // Only add postInfo if we found a video (skip image-only posts for videos grid)
-        if (firstVideoUrl != null) {
+        // Only add postInfo if we found a video with non-empty URL (skip image-only or no-media posts)
+        if (firstVideoUrl != null && firstVideoUrl.trim().isNotEmpty) {
           postInfos.add({
             'postId': postId,
             'mediaUrl':
@@ -2241,14 +2250,16 @@ class FirestoreService {
         }
       } else if (post['imagePath'] != null &&
           (post['isVideo'] as bool? ?? false)) {
-        // Fallback for old posts with single video
-        postInfos.add({
-          'postId': postId,
-          'mediaUrl': post['imagePath'] as String,
-          'collectionName': collectionName,
-          'isVideo': true,
-          'hasMultipleMedia': false, // Old posts have single media
-        });
+        final path = (post['imagePath'] as String).trim();
+        if (path.isNotEmpty) {
+          postInfos.add({
+            'postId': postId,
+            'mediaUrl': post['imagePath'] as String,
+            'collectionName': collectionName,
+            'isVideo': true,
+            'hasMultipleMedia': false, // Old posts have single media
+          });
+        }
       }
     }
     return postInfos;

@@ -293,18 +293,23 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
     final post = widget.post;
+    final bool hasMedia = post.hasMedia;
     return Container(
-      height: context.isLargeScreen 
-        ? MediaQuery.of(context).size.height * 0.6
-        : context.isMediumScreen 
-          ? MediaQuery.of(context).size.height * 0.5
-          : MediaQuery.of(context).size.height * 0.6,
+      height: hasMedia
+          ? (context.isLargeScreen
+              ? MediaQuery.of(context).size.height * 0.6
+              : context.isMediumScreen
+                  ? MediaQuery.of(context).size.height * 0.5
+                  : MediaQuery.of(context).size.height * 0.6)
+          : null,
+      constraints: hasMedia ? null : const BoxConstraints(minHeight: 200),
       decoration: BoxDecoration(
         color: widget.backgroundColor,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(AppDimensions.postBorderRadius),
           topRight: Radius.circular(AppDimensions.postBorderRadius),
-        ),        boxShadow: [
+        ),
+        boxShadow: [
           BoxShadow(
             color: AppColors.postShadow.withOpacity(AppDimensions.postBoxShadowOpacity),
             blurRadius: AppDimensions.postBoxShadowBlur,
@@ -313,6 +318,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
         ],
       ),
       child: Column(
+        mainAxisSize: hasMedia ? MainAxisSize.max : MainAxisSize.min,
         children: [
 //          Header
           Container(
@@ -393,6 +399,8 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                 post.content,
                 style: const TextStyle(color: AppColors.black),
                 textAlign: TextAlign.left,
+                maxLines: hasMedia ? null : 5,
+                overflow: hasMedia ? null : TextOverflow.ellipsis,
               ),
             ),
           ),
@@ -444,193 +452,257 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
           ],
           const SizedBox(height: AppDimensions.reactionIconSpacing),
 
-
-
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppDimensions.postBorderRadius),
-              child: Stack(
-                children: [
-                  // Background Image or Video (single or multiple with slider)
-                  Positioned.fill(
-                    child: post.hasMultipleMedia
-                        ? _buildMediaCarousel()
-                        : _buildSingleMedia(),
-                  ),
-
-                  // Floating Likes/Comments
-                  Positioned(
-                    bottom: 100, // Moved up from 60 to 100
-                    right: 12,
-                    child: Column(
-                      children: [
-                        GestureDetector(
-                          onTap: _toggleReactions,
-                          child: Container(
+          if (hasMedia) ...[
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppDimensions.postBorderRadius),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: post.hasMultipleMedia
+                          ? _buildMediaCarousel()
+                          : _buildSingleMedia(),
+                    ),
+                    Positioned(
+                      bottom: 100,
+                      right: 12,
+                      child: Column(
+                        children: [
+                          GestureDetector(
+                            onTap: _toggleReactions,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: AppColors.black.withOpacity(0.6),
+                                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                              ),
+                              child: Row(
+                                children: [
+                                  _selectedReaction == null
+                                      ? Icon(Icons.thumb_up,
+                                          color: AppColors.white,
+                                          size: context.isLargeScreen ? 24 : context.isMediumScreen ? 22 : 20)
+                                      : Text(
+                                          _selectedReaction!,
+                                          style: TextStyle(
+                                            fontSize: AppDimensions.textL,
+                                            color: _reactionColor,
+                                          ),
+                                        ),
+                                  const SizedBox(width: AppDimensions.spaceXS),
+                                  Text(
+                                    "${post.totalReactions > 0 ? post.totalReactions : post.likes}",
+                                    style: const TextStyle(color: AppColors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: AppDimensions.spaceS),
+                          Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
                               color: AppColors.black.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Row(
-                              children: [
-                                _selectedReaction == null
-                                    ? Icon(Icons.thumb_up,
-                                    color: AppColors.white, 
-                                    size: context.isLargeScreen ? 24 : context.isMediumScreen ? 22 : 20)
-                                    : Text(
-                                  _selectedReaction!,
-                                  style: TextStyle(
-                                    fontSize: AppDimensions.textL,
-                                    color: _reactionColor,
+                            child: InkWell(
+                              onTap: () => _openComments(context, post),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.comment_outlined,
+                                    color: AppColors.white,
+                                    size: context.isLargeScreen ? 22 : context.isMediumScreen ? 20 : 18,
                                   ),
-                                ),
-                                const SizedBox(width: AppDimensions.spaceXS),
-                                Text("${post.totalReactions > 0 ? post.totalReactions : post.likes}",
-                                    style: const TextStyle(color: AppColors.white)),
-                              ],
+                                  const SizedBox(width: AppDimensions.spaceXS),
+                                  Text(
+                                    "${post.comments}",
+                                    style: const TextStyle(color: AppColors.white),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: AppDimensions.spaceS),
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: AppColors.black.withOpacity(0.6),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child:
-                          InkWell(
-                            onTap: () async {
-                              // Navigate to comment screen using your app router
-                              // Pass both post and collection name if available
-                              final arguments = widget.collectionName != null
-                                  ? {'post': post, 'collectionName': widget.collectionName}
-                                  : post;
-                              final result = await Navigator.pushNamed(
-                                context,
-                                AppRoutes.comments,
-                                arguments: arguments,
-                              );
-                              // If comments were updated, refresh posts
-                              if (result == true && widget.onCommentsUpdated != null) {
-                                widget.onCommentsUpdated!();
-                              }
-                            },
-                          child: Row(
-                            children: [
-                              Icon(Icons.comment_outlined,
-                                  color: AppColors.white, 
-                                  size: context.isLargeScreen ? 22 : context.isMediumScreen ? 20 : 18),
-                              const SizedBox(width: AppDimensions.spaceXS),
-                              Text("${post.comments}",
-                                  style: const TextStyle(color: AppColors.white)),
-                            ],
-                          ),
-                        ),
-                        ),
+                        ],
+                      ),
+                    ),
+                    if (_showReactions)
+                      Positioned(
+                        bottom: 176,
+                        right: 0,
+                        child: _buildReactionsPopup(),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: AppDimensions.paddingL),
+            _buildNoMediaLikeCommentRow(context, post),
+          ],
+
+          const SizedBox(height: AppDimensions.paddingL),
+
+          if (hasMedia) ...[
+            Container(
+              width: double.infinity,
+              color: Colors.transparent,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.favorite,
+                      color: AppColors.reactionLike,
+                      size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
+                  const SizedBox(width: AppDimensions.reactionIconSpacing),
+                  Icon(Icons.thumb_up,
+                      color: AppColors.reactionLove,
+                      size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
+                  const SizedBox(width: AppDimensions.reactionIconSpacing),
+                  Text("${post.totalReactions > 0 ? post.totalReactions : post.likes}", style: const TextStyle(color: AppColors.white)),
+                  SizedBox(width: context.isLargeScreen
+                      ? context.screenWidth * 0.4
+                      : context.isMediumScreen
+                          ? context.screenWidth * 0.35
+                          : context.screenWidth * 0.3),
+                  InkWell(
+                    onTap: () => _openComments(context, widget.post),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text("${post.comments} ", style: const TextStyle(color: AppColors.white)),
+                        const SizedBox(width: AppDimensions.reactionIconSpacing),
+                        Text("${AppStrings.comments} ", style: const TextStyle(color: AppColors.white)),
                       ],
                     ),
                   ),
-
-                  // Reactions Popup
-                  if (_showReactions)
-                    Positioned(
-                      bottom: 176, // Moved up from 136 to 176 to align with new button position
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 1, horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.black.withOpacity(0.2),
-                              blurRadius: 8,
-                            )
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildEmojiReaction(AppStrings.emojiLike, AppStrings.like, AppColors.reactionLike), // blue like
-                            _buildEmojiReaction(AppStrings.emojiLove, AppStrings.love),
-                            _buildEmojiReaction(AppStrings.emojiHaha, AppStrings.haha),
-                            _buildEmojiReaction(AppStrings.emojiWow, AppStrings.wow),
-                            _buildEmojiReaction(AppStrings.emojiSad, AppStrings.sad),
-                            _buildEmojiReaction(AppStrings.emojiAngry, AppStrings.angry),
-                          ],
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
+            const SizedBox(height: AppDimensions.reactionIconSpacing),
+          ],
+        ],
+      ));
+  }
+
+  Widget _buildReactionsPopup() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 1, horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.black.withOpacity(0.2),
+            blurRadius: 8,
           ),
-          const SizedBox(height: AppDimensions.paddingL),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildEmojiReaction(AppStrings.emojiLike, AppStrings.like, AppColors.reactionLike),
+          _buildEmojiReaction(AppStrings.emojiLove, AppStrings.love),
+          _buildEmojiReaction(AppStrings.emojiHaha, AppStrings.haha),
+          _buildEmojiReaction(AppStrings.emojiWow, AppStrings.wow),
+          _buildEmojiReaction(AppStrings.emojiSad, AppStrings.sad),
+          _buildEmojiReaction(AppStrings.emojiAngry, AppStrings.angry),
+        ],
+      ),
+    );
+  }
 
-          // Reaction Row
-          Container(
-            width: double.infinity,
-            color: Colors.transparent,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.favorite,
-                    color: AppColors.reactionLike,
-                    size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
-                const SizedBox(width: AppDimensions.reactionIconSpacing),
-                Icon(Icons.thumb_up,
-                    color: AppColors.reactionLove,
-                    size: context.isLargeScreen ? AppDimensions.reactionIconSize + 4 : context.isMediumScreen ? AppDimensions.reactionIconSize + 2 : AppDimensions.reactionIconSize),
-                const SizedBox(width: AppDimensions.reactionIconSpacing),
-                Text("${post.totalReactions > 0 ? post.totalReactions : post.likes}",style: TextStyle(color: AppColors.white),),
+  Future<void> _openComments(BuildContext context, PostModel post) async {
+    final arguments = widget.collectionName != null
+        ? {'post': post, 'collectionName': widget.collectionName}
+        : post;
+    final result = await Navigator.pushNamed(
+      context,
+      AppRoutes.comments,
+      arguments: arguments,
+    );
+    if (result == true && widget.onCommentsUpdated != null) {
+      widget.onCommentsUpdated!();
+    }
+  }
 
-                 SizedBox(width: context.isLargeScreen 
-                   ? context.screenWidth * 0.4
-                   : context.isMediumScreen 
-                     ? context.screenWidth * 0.35
-                     : context.screenWidth * 0.3),
-
-                InkWell(
-                  onTap: () async {
-                    // Navigate to comment screen using your app router
-                    // Pass both post and collection name if available
-                    final arguments = widget.collectionName != null
-                        ? {'post': widget.post, 'collectionName': widget.collectionName}
-                        : widget.post;
-                    final result = await Navigator.pushNamed(
-                      context,
-                      AppRoutes.comments,
-                      arguments: arguments,
-                    );
-                    // If comments were updated, refresh posts
-                    if (result == true && widget.onCommentsUpdated != null) {
-                      widget.onCommentsUpdated!();
-                    }
-                  },
+  Widget _buildNoMediaLikeCommentRow(BuildContext context, PostModel post) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.postContentPaddingHorizontal),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Row(
+            children: [
+              GestureDetector(
+                onTap: _toggleReactions,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.black.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text("${post.comments} ",style: TextStyle(color: AppColors.white),),
-                      const SizedBox(width: AppDimensions.reactionIconSpacing),
-                      Text("${AppStrings.comments} ",style: TextStyle(color: AppColors.white),),
+                      _selectedReaction == null
+                          ? Icon(
+                              Icons.thumb_up,
+                              color: AppColors.white,
+                              size: context.isLargeScreen ? 22 : 20,
+                            )
+                          : Text(
+                              _selectedReaction!,
+                              style: TextStyle(
+                                fontSize: AppDimensions.textL,
+                                color: _reactionColor,
+                              ),
+                            ),
+                      const SizedBox(width: AppDimensions.spaceXS),
+                      Text(
+                        "${post.totalReactions > 0 ? post.totalReactions : post.likes}",
+                        style: const TextStyle(color: AppColors.white),
+                      ),
                     ],
                   ),
                 ),
-
-              ],
-            ),
+              ),
+              const SizedBox(width: AppDimensions.spaceS),
+              InkWell(
+                onTap: () => _openComments(context, post),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.black.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.comment_outlined,
+                        color: AppColors.white,
+                        size: context.isLargeScreen ? 20 : 18,
+                      ),
+                      const SizedBox(width: AppDimensions.spaceXS),
+                      Text(
+                        "${post.comments}",
+                        style: const TextStyle(color: AppColors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-
-
-
-
-
-          const SizedBox(height: AppDimensions.reactionIconSpacing),
+          if (_showReactions)
+            Positioned(
+              left: 0,
+              bottom: 44,
+              child: _buildReactionsPopup(),
+            ),
         ],
-      ));
+      ),
+    );
   }
 
   Widget _buildEmojiReaction(String emoji, String label, [Color color = AppColors.black]) {
@@ -697,10 +769,8 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
           ),
         ),
         errorWidget: (context, url, error) {
-          // Fallback to default image if network image fails
-          return Image.asset(
-            AppAssets.post,
-            fit: BoxFit.cover,
+          return Container(
+            color: AppColors.screenBackground.withOpacity(0.5),
             width: double.infinity,
           );
         },
@@ -712,11 +782,8 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
         fit: BoxFit.cover,
         width: double.infinity,
         errorBuilder: (context, error, stackTrace) {
-          // Fallback to default image if local file doesn't exist
-          // This handles the case where posts have local paths from other users
-          return Image.asset(
-            AppAssets.post,
-            fit: BoxFit.cover,
+          return Container(
+            color: AppColors.screenBackground.withOpacity(0.5),
             width: double.infinity,
           );
         },

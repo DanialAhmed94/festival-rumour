@@ -667,9 +667,9 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                         ),
                       ),
                     ),
-                    errorWidget: Image.asset(
-                      AppAssets.proback,
-                      fit: BoxFit.cover,
+                    errorWidget: Container(
+                      color: AppColors.screenBackground.withOpacity(0.5),
+                      child: const Icon(Icons.broken_image_outlined, color: AppColors.grey600, size: 32),
                     ),
                   ),
                   // Show icon overlay if post has multiple media

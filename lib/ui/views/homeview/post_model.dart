@@ -61,6 +61,12 @@ class PostModel {
     return [imagePath]; // Fallback to single imagePath for old posts
   }
 
+  /// True when the post has at least one non-empty media path (image or video).
+  bool get hasMedia {
+    final paths = allMediaPaths;
+    return paths.any((p) => p.trim().isNotEmpty);
+  }
+
   // Helper getter to check if item at index is video
   bool isVideoAtIndex(int index) {
     if (isVideoList != null && index < isVideoList!.length) {

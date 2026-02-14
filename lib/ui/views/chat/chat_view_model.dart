@@ -11,7 +11,10 @@ import '../../../core/router/app_router.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/chat_badge_service.dart';
+import '../../../core/services/current_chat_room_service.dart';
 import '../../../core/providers/festival_provider.dart';
+import '../../../services/notification_service.dart';
 import 'chat_message_model.dart';
 
 class ChatViewModel extends BaseViewModel {
@@ -322,7 +325,9 @@ class ChatViewModel extends BaseViewModel {
     _messagesSubscription = null;
 
     _chatRoomId = chatRoomId;
-    
+    locator<CurrentChatRoomService>().setCurrentChatRoom(chatRoomId);
+    locator<ChatBadgeService>().clearBadge(chatRoomId);
+
     // Load current user info
     await _loadCurrentUserInfo();
     
@@ -476,6 +481,7 @@ class ChatViewModel extends BaseViewModel {
     _isInChatRoom = false;
     _currentChatRoom = null;
     _chatRoomId = null;
+    locator<CurrentChatRoomService>().clearCurrentChatRoom();
     messageController.clear();
     _messages.clear();
     _deletedMessageIds.clear(); // Clear deleted messages when exiting
@@ -577,6 +583,30 @@ class ChatViewModel extends BaseViewModel {
       if (kDebugMode) {
         print('✅ Message sent successfully');
       }
+
+      // Notify other room members (fire-and-forget; don't block UI)
+      final members = _currentChatRoom?['members'] as List<dynamic>?;
+      if (members == null || members.isEmpty || _currentUserId == null) {
+        if (kDebugMode) {
+          print('[NOTIF] Trigger: skipped — no members or currentUser (members=${members?.length ?? 0}, currentUserId=$_currentUserId)');
+        }
+      } else {
+        final otherMemberIds = members
+            .map((e) => e.toString())
+            .where((id) => id != _currentUserId)
+            .toList();
+        if (otherMemberIds.isEmpty) {
+          if (kDebugMode) print('[NOTIF] Trigger: skipped — no other members in room');
+        } else {
+          if (kDebugMode) {
+            print('[NOTIF] Trigger: sending push to ${otherMemberIds.length} other member(s), chatRoomId=$_chatRoomId');
+          }
+          _sendPushNotificationToMembers(
+            otherMemberIds: otherMemberIds,
+            content: content,
+          );
+        }
+      }
     } catch (e) {
       if (kDebugMode) {
         print('❌ Error sending message: $e');
@@ -585,6 +615,45 @@ class ChatViewModel extends BaseViewModel {
       messageController.text = content;
       notifyListeners();
     }
+  }
+
+  /// Fire-and-forget: resolve chat room name (from cache or Firestore) then send push to other members.
+  void _sendPushNotificationToMembers({
+    required List<String> otherMemberIds,
+    required String content,
+  }) async {
+    String? roomName = _currentChatRoom?['name'] as String?;
+    if ((roomName == null || roomName.isEmpty) && _chatRoomId != null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('chatRooms')
+            .doc(_chatRoomId!)
+            .get();
+        if (doc.exists && doc.data() != null) {
+          roomName = doc.data()!['name'] as String?;
+        }
+      } catch (e) {
+        if (kDebugMode) print('[NOTIF] Trigger: could not fetch room name: $e');
+      }
+    }
+    if (kDebugMode) {
+      print('[NOTIF] Trigger: chatRoomName=$roomName');
+    }
+    NotificationServiceApi.sendPushNotification(
+      userIds: otherMemberIds,
+      title: _currentUsername ?? 'New message',
+      message: content,
+      chatRoomId: _chatRoomId,
+      chatRoomName: roomName,
+    ).then((ok) {
+      if (kDebugMode) {
+        print('[NOTIF] Trigger: API call finished success=$ok');
+      }
+    }).catchError((e) {
+      if (kDebugMode) {
+        print('[NOTIF] Trigger: API call error $e');
+      }
+    });
   }
 
   void inviteFriends() {
@@ -606,6 +675,7 @@ class ChatViewModel extends BaseViewModel {
   void navigateBackFromChatRoom() {
     _isInChatRoom = false;
     _currentChatRoom = null;
+    locator<CurrentChatRoomService>().clearCurrentChatRoom();
     messageController.clear();
     notifyListeners();
   }

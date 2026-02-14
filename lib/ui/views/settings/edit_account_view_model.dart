@@ -462,6 +462,12 @@ class EditAccountViewModel extends BaseViewModel {
         _originalBio = bioController.text;
         _originalPhone = phoneController.text;
 
+        // Update local storage so Settings screen shows updated name/photo
+        await _storageService.setUserProfile(
+          displayName: nameToSave.isNotEmpty ? nameToSave : null,
+          photoUrl: profileImageUrl,
+        );
+
         // Set success message
         _successMessage = 'Profile updated successfully';
         notifyListeners();

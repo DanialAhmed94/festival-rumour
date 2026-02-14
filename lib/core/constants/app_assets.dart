@@ -90,6 +90,11 @@ class AppAssets {
   static const String Rectangle2593 = 'assets/images/Rectangle_2593.png';
   // App Icon
   static const String appIcon = 'assets/appIcon/blackColor_logo.png';
+  static const String appLogo = 'assets/appIcon/festivalAppLogo.png';
+
+  // Splash
+  static const String splashVideo = 'assets/videos/Festival_Rumour.mp4';
+  static const String splashLogo = 'assets/appIcon/festivalAppLogo.png';
 
   static const List<String> profilePosts = [
     'assets/images/post.png',

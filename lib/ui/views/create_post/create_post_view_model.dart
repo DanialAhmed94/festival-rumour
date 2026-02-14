@@ -11,7 +11,6 @@ import '../../../core/services/navigation_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/router/app_router.dart';
-import '../../../core/constants/app_assets.dart';
 import '../homeview/post_model.dart';
 
 class CreatePostViewModel extends BaseViewModel {
@@ -297,8 +296,8 @@ class CreatePostViewModel extends BaseViewModel {
         userPhotoUrl = _authService.userPhotoUrl;
       }
       
-      // Upload media to Firebase Storage and get URLs
-      String imagePath = AppAssets.post; // Default image (for backward compatibility)
+      // Upload media to Firebase Storage and get URLs (no default image for text/URL-only posts)
+      String imagePath = '';
       bool isVideoPost = false;
       List<String>? mediaPaths;
       List<bool>? isVideoList;
@@ -379,11 +378,11 @@ class CreatePostViewModel extends BaseViewModel {
           imagePath = mediaPaths![0];
           isVideoPost = isVideo.isNotEmpty && isVideo[0];
         } else {
-          // If all uploads failed, use default image
-          imagePath = AppAssets.post;
+          // All uploads failed; do not use default image
+          imagePath = '';
           isVideoPost = false;
           if (kDebugMode) {
-            print('⚠️ All media uploads failed, using default image');
+            print('⚠️ All media uploads failed, post will have no media');
           }
         }
       } else {

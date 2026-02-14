@@ -12,6 +12,9 @@ import '../services/firestore_service.dart';
 import '../services/storage_service.dart';
 import '../services/geocoding_service.dart';
 import '../services/post_data_service.dart';
+import '../services/current_chat_room_service.dart';
+import '../services/chat_badge_service.dart';
+import '../services/notification_storage_service.dart';
 import '../api/api_config.dart';
 import '../api/festival_api_service.dart';
 
@@ -32,6 +35,9 @@ Future<void> setupLocator() async {
   locator.registerLazySingleton<StorageService>(() => StorageService());
   locator.registerLazySingleton<GeocodingService>(() => GeocodingService());
   locator.registerLazySingleton<PostDataService>(() => PostDataService());
+  locator.registerLazySingleton<CurrentChatRoomService>(() => CurrentChatRoomService());
+  locator.registerLazySingleton<ChatBadgeService>(() => ChatBadgeService());
+  locator.registerLazySingleton<NotificationStorageService>(() => NotificationStorageService());
 
   locator.registerLazySingleton<SignupDataService>(() => SignupDataService());
 

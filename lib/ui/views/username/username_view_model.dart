@@ -238,9 +238,14 @@ class UsernameViewModel extends BaseViewModel {
             print('   Navigating to: ${AppRoutes.festivals}');
           }
 
-          // Save login state to storage
+          // Save login state to storage (name and picture from auth)
           if (user != null) {
-            await _storageService.setLoggedIn(true, userId: user.uid);
+            await _storageService.setLoggedIn(
+              true,
+              userId: user.uid,
+              displayName: user.displayName,
+              photoUrl: user.photoURL,
+            );
             await updateFcmTokenForUser();
 
             if (kDebugMode) {

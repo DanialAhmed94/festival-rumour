@@ -6,21 +6,28 @@ class NotificationServiceApi {
   static const String _baseUrl =
       "https://us-central1-crapapps-65472.cloudfunctions.net";
 
-  /// Send push notification to multiple users by userIds
+  /// Send push notification to multiple users by userIds.
+  /// [chatRoomId] optional; when set, included in FCM data so recipient can suppress
+  /// notification if they are currently viewing that room.
+  /// [chatRoomName] optional; when set, shown in the notification (e.g. in title).
   static Future<bool> sendPushNotification({
     required List<String> userIds,
     required String title,
     required String message,
+    String? chatRoomId,
+    String? chatRoomName,
   }) async {
+    print('[NOTIF] API: sendPushNotification called — userIds=${userIds.length}, chatRoomId=$chatRoomId, chatRoomName=$chatRoomName, title="$title"');
     try {
       final user = FirebaseAuth.instance.currentUser;
 
       if (user == null) {
-        print("❌ User not logged in");
+        print('[NOTIF] API: abort — user not logged in');
         return false;
       }
 
       final idToken = await user.getIdToken();
+      print('[NOTIF] API: POST to sendNotification (${userIds.length} recipients)');
 
       final response = await http.post(
         Uri.parse("$_baseUrl/sendNotification"),
@@ -32,23 +39,23 @@ class NotificationServiceApi {
           "userIds": userIds,
           "title": title,
           "message": message,
+          if (chatRoomId != null && chatRoomId.isNotEmpty) "chatRoomId": chatRoomId,
+          if (chatRoomName != null && chatRoomName.isNotEmpty) "chatRoomName": chatRoomName,
         }),
       );
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
-
-        print("✅ Notification processed");
-        print("Sent: ${decoded['sentCount']}");
-        print("Failed: ${decoded['failedCount']}");
-
+        final sent = decoded['sentCount'] ?? 0;
+        final failed = decoded['failedCount'] ?? 0;
+        print('[NOTIF] API: ✅ Response 200, sentCount=$sent, failedCount=$failed');
         return true;
       } else {
-        print("❌ Failed: ${response.body}");
+        print('[NOTIF] API: ❌ HTTP ${response.statusCode}, body=${response.body}');
         return false;
       }
     } catch (e) {
-      print("❌ Error sending notification: $e");
+      print('[NOTIF] API: ❌ Error: $e');
       return false;
     }
   }

@@ -1,8 +1,11 @@
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/router/app_router.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import 'settings_view_model.dart';
@@ -71,6 +74,8 @@ class SettingsView extends BaseView<SettingsViewModel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _buildProfileHeader(context, viewModel),
+                    const SizedBox(height: AppDimensions.paddingL),
                     /// 🔹 General Section
                     const ResponsiveTextWidget(
                       AppStrings.general,
@@ -138,6 +143,17 @@ class SettingsView extends BaseView<SettingsViewModel> {
                       onTap: viewModel.openMyJobs,
                     ),
                     _buildTile(
+                      icon: Icons.add_business_outlined,
+                      iconColor: AppColors.teal,
+                      title: 'Create Job',
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        size: AppDimensions.iconS,
+                        color: AppColors.grey600,
+                      ),
+                      onTap: () => _showCreateJobBottomSheet(context),
+                    ),
+                    _buildTile(
                       icon: Icons.logout,
                       iconColor: AppColors.red,
                       title: AppStrings.logout,
@@ -194,6 +210,71 @@ class SettingsView extends BaseView<SettingsViewModel> {
         ],
       ),
     ),
+    );
+  }
+
+  Widget _buildProfileHeader(BuildContext context, SettingsViewModel viewModel) {
+    final photoUrl = viewModel.userPhotoUrl;
+    final name = viewModel.userName ?? 'User';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: viewModel.navigateToProfile,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: AppDimensions.paddingM,
+            horizontal: AppDimensions.paddingXS,
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.primary.withOpacity(0.2),
+                child: photoUrl != null && photoUrl.isNotEmpty
+                    ? ClipOval(
+                        child: CachedNetworkImage(
+                          imageUrl: photoUrl,
+                          fit: BoxFit.cover,
+                          width: 56,
+                          height: 56,
+                          placeholder: (_, __) => Icon(
+                            Icons.person,
+                            size: 32,
+                            color: AppColors.grey600,
+                          ),
+                          errorWidget: (_, __, ___) => Icon(
+                            Icons.person,
+                            size: 32,
+                            color: AppColors.grey600,
+                          ),
+                        ),
+                      )
+                    : Icon(
+                        Icons.person,
+                        size: 32,
+                        color: AppColors.grey600,
+                      ),
+              ),
+              const SizedBox(width: AppDimensions.paddingM),
+              Expanded(
+                child: ResponsiveTextWidget(
+                  name,
+                  textType: TextType.body,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.grey900,
+                  fontSize: AppDimensions.textL,
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: AppDimensions.iconS,
+                color: AppColors.grey600,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -260,6 +341,117 @@ class SettingsView extends BaseView<SettingsViewModel> {
         value: value,
         activeColor: Colors.black,
         onChanged: onChanged,
+      ),
+    );
+  }
+
+  void _showCreateJobBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.onPrimary.withOpacity(0.4),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    AppStrings.postJob,
+                    style: TextStyle(
+                      color: AppColors.yellow,
+                      fontSize: AppDimensions.textL,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              _buildJobTile(
+                image: AppAssets.job1,
+                title: AppStrings.festivalGizzaJob,
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.jobpost,
+                    arguments: {'category': 'Festival Gizza'},
+                  );
+                },
+              ),
+              const Divider(color: AppColors.yellow, thickness: 1),
+              const SizedBox(height: AppDimensions.spaceS),
+              _buildJobTile(
+                image: AppAssets.job2,
+                title: AppStrings.festieHerosJob,
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.jobpost,
+                    arguments: {'category': 'Festie Heroes'},
+                  );
+                },
+              ),
+              const SizedBox(height: AppDimensions.paddingS),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildJobTile({
+    required String image,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: const BoxDecoration(),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      image,
+                      width: AppDimensions.imageM,
+                      height: AppDimensions.imageM,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: AppDimensions.paddingS),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: AppDimensions.textL,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.yellow),
+          ],
+        ),
       ),
     );
   }

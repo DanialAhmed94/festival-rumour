@@ -300,7 +300,7 @@ class FestivalsJobPostView extends BaseView<FestivalsJobPostViewModel> {
 
   Widget _buildPostButton(BuildContext context, FestivalsJobPostViewModel viewModel) {
     return ElevatedButton(
-      onPressed: viewModel.isLoading ? null : () => viewModel.postJob(),
+      onPressed: viewModel.isLoading ? null : () => viewModel.postJob(context),
       style: ElevatedButton.styleFrom(
         backgroundColor: const Color(0xFFFC2E95),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimensions.radiusL)),

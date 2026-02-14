@@ -1,107 +1,111 @@
 import 'package:flutter/material.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/services/notification_storage_service.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 
 class NotificationViewModel extends BaseViewModel {
+  static const int _pageSize = 10;
+
+  final NotificationStorageService _storage = locator<NotificationStorageService>();
   List<NotificationItem> notifications = [];
+  int _displayLimit = _pageSize;
+
+  List<NotificationItem> get displayedNotifications {
+    if (notifications.length <= _displayLimit) return notifications;
+    return notifications.sublist(0, _displayLimit);
+  }
+
+  bool get hasMoreNotifications => _displayLimit < notifications.length;
 
   @override
   void init() {
     super.init();
+    _storage.addListener(_onStorageChanged);
     _loadNotifications();
   }
 
-  void _loadNotifications() {
-    notifications = [
-      NotificationItem(
-        id: '1',
-        title: 'Welcome to Festival Rumour! 🎉',
-        message: 'Your account has been successfully created. Start exploring festivals near you.',
-        time: '2 hours ago',
-        isRead: false,
-        type: NotificationType.welcome,
-        icon: Icons.celebration,
-        iconColor: 0xFF4CAF50,
-      ),
-      NotificationItem(
-        id: '2',
-        title: 'New Festival Alert! 🎵',
-        message: 'Luna Fest 2024 is happening this weekend. Don\'t miss out on the amazing lineup!',
-        time: '4 hours ago',
-        isRead: false,
-        type: NotificationType.festival,
-        icon: Icons.music_note,
-        iconColor: 0xFF2196F3,
-      ),
-      NotificationItem(
-        id: '3',
-        title: 'Friend Request 📱',
-        message: 'Sarah Johnson wants to connect with you on Festival Rumour.',
-        time: '6 hours ago',
-        isRead: true,
-        type: NotificationType.social,
-        icon: Icons.person_add,
-        iconColor: 0xFF9C27B0,
-      ),
-      NotificationItem(
-        id: '4',
-        title: 'Event Reminder ⏰',
-        message: 'Luna Fest 2024 starts in 2 hours. Get ready for an amazing experience!',
-        time: '1 day ago',
-        isRead: true,
-        type: NotificationType.reminder,
-        icon: Icons.schedule,
-        iconColor: 0xFFFF9800,
-      ),
-      NotificationItem(
-        id: '5',
-        title: 'New Chat Message 💬',
-        message: 'You have 3 new messages in the Luna Fest group chat.',
-        time: '2 days ago',
-        isRead: true,
-        type: NotificationType.chat,
-        icon: Icons.chat_bubble,
-        iconColor: 0xFF00BCD4,
-      ),
-      NotificationItem(
-        id: '6',
-        title: 'Festival Update 📢',
-        message: 'The lineup for Electric Dreams Festival has been updated. Check out the new artists!',
-        time: '3 days ago',
-        isRead: true,
-        type: NotificationType.update,
-        icon: Icons.update,
-        iconColor: 0xFF607D8B,
-      ),
-      NotificationItem(
-        id: '7',
-        title: 'Photo Uploaded 📸',
-        message: 'Your photo from Luna Fest has been approved and is now visible to others.',
-        time: '1 week ago',
-        isRead: true,
-        type: NotificationType.photo,
-        icon: Icons.photo_camera,
-        iconColor: 0xFFE91E63,
-      ),
-    ];
+  @override
+  void onDispose() {
+    _storage.removeListener(_onStorageChanged);
+    super.onDispose();
+  }
+
+  void _onStorageChanged() {
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    final list = await _storage.getNotifications();
+    notifications = list.map(_itemFromMap).toList();
+    _displayLimit = _pageSize;
     notifyListeners();
   }
 
-  void markAsRead(String notificationId) {
-    final index = notifications.indexWhere((n) => n.id == notificationId);
-    if (index != -1) {
-      notifications[index] = notifications[index].copyWith(isRead: true);
-      notifyListeners();
-    }
-  }
-
-  void markAllAsRead() {
-    for (int i = 0; i < notifications.length; i++) {
-      notifications[i] = notifications[i].copyWith(isRead: true);
-    }
+  void loadMore() {
+    if (!hasMoreNotifications) return;
+    _displayLimit = (_displayLimit + _pageSize).clamp(0, notifications.length);
     notifyListeners();
   }
 
-  int get unreadCount => notifications.where((n) => !n.isRead).length;
+  static NotificationItem _itemFromMap(Map<String, dynamic> map) {
+    final type = map['type'] as String? ?? 'chat';
+    final iconData = _iconForType(type);
+    final color = _colorForType(type);
+    final ts = map['timestamp'];
+    final time = ts != null ? _timeAgo(ts is int ? ts : int.tryParse(ts.toString()) ?? 0) : 'Just now';
+    return NotificationItem(
+      id: map['id'] as String? ?? '',
+      title: map['title'] as String? ?? '',
+      message: map['message'] as String? ?? '',
+      time: time,
+      isRead: false,
+      type: type == 'chat' ? NotificationType.chat : NotificationType.update,
+      icon: iconData,
+      iconColor: color,
+    );
+  }
+
+  static IconData _iconForType(String type) {
+    switch (type) {
+      case 'chat':
+        return Icons.chat_bubble;
+      default:
+        return Icons.notifications;
+    }
+  }
+
+  static int _colorForType(String type) {
+    switch (type) {
+      case 'chat':
+        return 0xFF00BCD4;
+      default:
+        return 0xFF607D8B;
+    }
+  }
+
+  static String _timeAgo(int timestampMs) {
+    final diff = DateTime.now().millisecondsSinceEpoch - timestampMs;
+    if (diff < 60 * 1000) return 'Just now';
+    if (diff < 60 * 60 * 1000) return '${diff ~/ (60 * 1000)}m ago';
+    if (diff < 24 * 60 * 60 * 1000) return '${diff ~/ (60 * 60 * 1000)}h ago';
+    if (diff < 7 * 24 * 60 * 60 * 1000) return '${diff ~/ (24 * 60 * 60 * 1000)}d ago';
+    return '${diff ~/ (7 * 24 * 60 * 60 * 1000)}w ago';
+  }
+
+  Future<void> markAsRead(String notificationId) async {
+    await _storage.removeNotification(notificationId);
+    notifications.removeWhere((n) => n.id == notificationId);
+    _displayLimit = _displayLimit.clamp(0, notifications.length);
+    notifyListeners();
+  }
+
+  Future<void> markAllAsRead() async {
+    await _storage.clearAll();
+    notifications = [];
+    notifyListeners();
+  }
+
+  int get unreadCount => notifications.length;
 }
 
 class NotificationItem {
@@ -157,5 +161,3 @@ enum NotificationType {
   update,
   photo,
 }
-
-

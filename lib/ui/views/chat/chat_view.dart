@@ -7,6 +7,8 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/services/chat_badge_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
@@ -23,9 +25,9 @@ class ChatView extends BaseView<ChatViewModel> {
   @override
   void onViewModelReady(ChatViewModel viewModel) {
     super.onViewModelReady(viewModel);
-    // Load private chat rooms when view is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
       viewModel.loadPrivateChatRooms();
+      locator<ChatBadgeService>().loadFromStorage();
     });
   }
 
@@ -233,13 +235,14 @@ class ChatView extends BaseView<ChatViewModel> {
   }
 
   Widget _buildChatRooms(BuildContext context, ChatViewModel viewModel) {
-    if (viewModel.selectedTab == 1) {
-      // Private chat rooms
-      return _buildPrivateChatList(context, viewModel);
-    } else {
-      // Public chat rooms - show grid view
-      final publicChatRooms = viewModel.getPublicChatRooms(context);
-      return GridView.builder(
+    return ListenableBuilder(
+      listenable: locator<ChatBadgeService>(),
+      builder: (context, _) {
+        if (viewModel.selectedTab == 1) {
+          return _buildPrivateChatList(context, viewModel);
+        }
+        final publicChatRooms = viewModel.getPublicChatRooms(context);
+        return GridView.builder(
         padding: const EdgeInsets.symmetric(
           horizontal: AppDimensions.paddingL,
           vertical: AppDimensions.paddingS,
@@ -253,80 +256,80 @@ class ChatView extends BaseView<ChatViewModel> {
         itemCount: publicChatRooms.length,
         itemBuilder: (context, index) {
           final room = publicChatRooms[index];
+          final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+          final selectedFestival = festivalProvider.selectedFestival;
+          final publicChatRoomId = selectedFestival != null
+              ? FirestoreService.getFestivalChatRoomId(selectedFestival.id, selectedFestival.title)
+              : null;
+          final badgeCount = locator<ChatBadgeService>().getBadgeCount(publicChatRoomId);
           return GestureDetector(
             onTap: () {
-              // Get chat room ID from festival provider
-              final festivalProvider = Provider.of<FestivalProvider>(
-                context,
-                listen: false,
-              );
-              final selectedFestival = festivalProvider.selectedFestival;
-
               if (selectedFestival != null) {
-                // Generate chat room ID
-                final chatRoomId = FirestoreService.getFestivalChatRoomId(
-                  selectedFestival.id,
-                  selectedFestival.title,
-                );
-                // Initialize chat room with ID
-                viewModel.initializeChatRoom(chatRoomId);
+                viewModel.initializeChatRoom(publicChatRoomId);
               } else {
-                // Fallback to old method if no festival selected
                 viewModel.enterChatRoom(room);
               }
             },
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-                color: AppColors.onPrimary.withOpacity(0.3),
-                border: Border.all(
-                  color: AppColors.white.withOpacity(0.2),
-                  width: AppDimensions.dividerThickness,
+            child: Stack(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+                    color: AppColors.onPrimary.withOpacity(0.3),
+                    border: Border.all(
+                      color: AppColors.white.withOpacity(0.2),
+                      width: AppDimensions.dividerThickness,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.black.withOpacity(0.2),
+                        blurRadius: 6,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(16),
+                          ),
+                          child: Image.asset(
+                            room['image'] ?? AppAssets.post,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(AppDimensions.spaceS),
+                        child: ResponsiveTextWidget(
+                          room['name'] ?? AppStrings.lunaCommunityRoom,
+                          textAlign: TextAlign.center,
+                          textType: TextType.caption,
+                          fontSize: AppDimensions.textM,
+                          color: AppColors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.black.withOpacity(0.2),
-                    blurRadius: 6,
-                    offset: const Offset(0, 3),
+                if (badgeCount > 0)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: _buildChatRoomBadge(context, badgeCount),
                   ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Image section
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(16),
-                      ),
-                      child: Image.asset(
-                        room['image'] ?? AppAssets.post,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                      ),
-                    ),
-                  ),
-
-                  // Text section
-                  Padding(
-                    padding: EdgeInsets.all(AppDimensions.spaceS),
-                    child: ResponsiveTextWidget(
-                      room['name'] ?? AppStrings.lunaCommunityRoom,
-                      textAlign: TextAlign.center,
-                      textType: TextType.caption,
-                      fontSize: AppDimensions.textM,
-                      color: AppColors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
           );
         },
       );
-    }
+      },
+    );
   }
 
   Widget _buildPrivateChatList(BuildContext context, ChatViewModel viewModel) {
@@ -459,13 +462,20 @@ class ChatView extends BaseView<ChatViewModel> {
               ],
             ),
 
-            // Badge indicator in top-right corner
+            // Badge indicator in top-right corner (unread + delete + status)
             Positioned(
               top: 8,
               right: 8,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (locator<ChatBadgeService>().getBadgeCount(chat['chatRoomId'] as String?) > 0) ...[
+                    _buildChatRoomBadge(
+                      context,
+                      locator<ChatBadgeService>().getBadgeCount(chat['chatRoomId'] as String?),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   // Delete button for created groups
                   if (isCreatedByUser)
                     GestureDetector(
@@ -522,6 +532,29 @@ class ChatView extends BaseView<ChatViewModel> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatRoomBadge(BuildContext context, int count) {
+    if (count <= 0) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+      decoration: BoxDecoration(
+        color: Colors.red,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.white, width: 1),
+      ),
+      child: Center(
+        child: Text(
+          count > 99 ? '99+' : count.toString(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );

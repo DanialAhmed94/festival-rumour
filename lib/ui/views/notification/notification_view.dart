@@ -48,12 +48,8 @@ class NotificationView extends BaseView<NotificationViewModel> {
 
   Widget _buildHeader(BuildContext context, NotificationViewModel viewModel) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-
-        /// Back Button (White)
         CustomBackButton(
-          // make sure your button supports this
           onTap: () {
             if (onBack != null) {
               onBack!();
@@ -62,17 +58,15 @@ class NotificationView extends BaseView<NotificationViewModel> {
             }
           },
         ),
-
-        /// Title (White)
+        const SizedBox(width: 8),
         const ResponsiveTextWidget(
           AppStrings.notifications,
           textType: TextType.body,
           color: Colors.white,
-          fontSize: AppDimensions.textL,
+          fontSize: AppDimensions.textM,
           fontWeight: FontWeight.bold,
         ),
-
-        /// Mark All Read Button
+        const Spacer(),
         if (viewModel.unreadCount > 0)
           GestureDetector(
             onTap: () {
@@ -113,20 +107,45 @@ class NotificationView extends BaseView<NotificationViewModel> {
         child: ResponsiveTextWidget(
           AppStrings.noNotifications,
           textType: TextType.body,
-          color: Colors.black, // Black empty state text
-          fontSize: AppDimensions.textL,
+          color: Colors.black,
+          fontSize: AppDimensions.textM,
           fontWeight: FontWeight.w500,
         ),
       );
     }
 
+    final displayed = viewModel.displayedNotifications;
+    final hasMore = viewModel.hasMoreNotifications;
+    final itemCount = displayed.length + (hasMore ? 1 : 0);
+
     return ListView.builder(
       padding: const EdgeInsets.all(AppDimensions.paddingM),
-      itemCount: viewModel.notifications.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
-        final notification = viewModel.notifications[index];
+        if (hasMore && index == displayed.length) {
+          return _buildLoadMoreButton(context, viewModel);
+        }
+        final notification = displayed[index];
         return _buildNotificationCard(context, notification, viewModel);
       },
+    );
+  }
+
+  Widget _buildLoadMoreButton(BuildContext context, NotificationViewModel viewModel) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingM),
+      child: Center(
+        child: TextButton(
+          onPressed: viewModel.hasMoreNotifications ? viewModel.loadMore : null,
+          child: ResponsiveTextWidget(
+            'Load more',
+            textType: TextType.body,
+            color: AppColors.accent,
+            fontSize: AppDimensions.textM,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 
@@ -153,13 +172,11 @@ class NotificationView extends BaseView<NotificationViewModel> {
         child: InkWell(
           borderRadius: BorderRadius.circular(AppDimensions.radiusL),
           onTap: () {
-            if (!notification.isRead) {
-              viewModel.markAsRead(notification.id);
-              SnackbarUtil.showInfoSnackBar(
-                context,
-                'Notification marked as read',
-              );
-            }
+            viewModel.markAsRead(notification.id);
+            SnackbarUtil.showInfoSnackBar(
+              context,
+              'Notification marked as read',
+            );
           },
           child: Padding(
             padding: const EdgeInsets.all(AppDimensions.paddingM),
@@ -194,8 +211,8 @@ class NotificationView extends BaseView<NotificationViewModel> {
                       ResponsiveTextWidget(
                         notification.title,
                         textType: TextType.body,
-                        color: Colors.black, // Black title
-                        fontSize: AppDimensions.textL,
+                        color: Colors.black,
+                        fontSize: AppDimensions.textM,
                         fontWeight: notification.isRead
                             ? FontWeight.w500
                             : FontWeight.bold,
@@ -207,8 +224,8 @@ class NotificationView extends BaseView<NotificationViewModel> {
                       ResponsiveTextWidget(
                         notification.message,
                         textType: TextType.body,
-                        color: Colors.black87, // Dark readable message
-                        fontSize: AppDimensions.textM,
+                        color: Colors.black87,
+                        fontSize: AppDimensions.textS,
                       ),
 
                       const SizedBox(height: AppDimensions.spaceS),
@@ -220,7 +237,7 @@ class NotificationView extends BaseView<NotificationViewModel> {
                           ResponsiveTextWidget(
                             notification.time,
                             textType: TextType.body,
-                            color: Colors.grey, // Time light grey
+                            color: Colors.grey,
                             fontSize: AppDimensions.textS,
                           ),
 

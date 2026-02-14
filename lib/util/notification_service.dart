@@ -26,21 +26,28 @@ class NotificationService {
       },
     );
 
-    // ✅ ANDROID 8+ CHANNEL
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'default_channel',
-      'General Notifications',
-      description: 'General notifications',
-      importance: Importance.high,
-    );
-
     final androidPlugin =
         _notifications
             .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin
             >();
 
-    await androidPlugin?.createNotificationChannel(channel);
+    // ✅ ANDROID 8+ CHANNELS (default_channel + chat_messages for FCM from Cloud Function)
+    const defaultChannel = AndroidNotificationChannel(
+      'default_channel',
+      'General Notifications',
+      description: 'General notifications',
+      importance: Importance.high,
+    );
+    await androidPlugin?.createNotificationChannel(defaultChannel);
+
+    const chatChannel = AndroidNotificationChannel(
+      'chat_messages',
+      'Chat Messages',
+      description: 'Notifications for new chat messages',
+      importance: Importance.high,
+    );
+    await androidPlugin?.createNotificationChannel(chatChannel);
   }
 
   static Future<void> show({
@@ -54,7 +61,7 @@ class NotificationService {
       channelDescription: 'General notifications',
       importance: Importance.max,
       priority: Priority.high,
-      icon: '@drawable/ic_notification',
+      icon: '@mipmap/launcher_icon',
     );
 
     const iosDetails = DarwinNotificationDetails(

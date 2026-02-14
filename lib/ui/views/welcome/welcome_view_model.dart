@@ -124,7 +124,12 @@ class WelcomeViewModel extends BaseViewModel {
       // ---------------------------------------------------------
       // ⭐ 6️⃣ Existing user → login normally
       // ---------------------------------------------------------
-      await _storageService.setLoggedIn(true, userId: uid);
+      await _storageService.setLoggedIn(
+        true,
+        userId: uid,
+        displayName: user?.displayName,
+        photoUrl: user?.photoURL,
+      );
       await updateFcmTokenForUser();
 
       print("✅ Returning Google user → navigating to festivals");
@@ -146,6 +151,7 @@ class WelcomeViewModel extends BaseViewModel {
     if (token == null) return;
 
     await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'fcmToken': token,
       'fcmTokens': FieldValue.arrayUnion([token]),
       'lastTokenUpdate': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
@@ -206,7 +212,12 @@ class WelcomeViewModel extends BaseViewModel {
 
       if (exists) {
         // Returning user → direct login
-        await _storageService.setLoggedIn(true, userId: uid);
+        await _storageService.setLoggedIn(
+          true,
+          userId: uid,
+          displayName: user.displayName,
+          photoUrl: user.photoURL,
+        );
         await updateFcmTokenForUser();
 
         print("✅ Existing Apple user → navigating to festivals");

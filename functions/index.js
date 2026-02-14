@@ -60,7 +60,8 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 });
             }
 
-            const { userIds, title, message } = req.body;
+            const { userIds, title, message, chatRoomId, chatRoomName } = req.body;
+            console.log("[NOTIF] Function: request received", { userIdsCount: userIds?.length, title, messageLength: message?.length, chatRoomId, chatRoomName });
 
             if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
                 return res.status(400).json({
@@ -89,23 +90,33 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 // ✅ Check correct app
                 if (userData.appIdentifier !== "festivalrumor") continue;
 
-                // ✅ Check token exists
-                if (userData.fcmToken) {
-                    tokens.push(userData.fcmToken);
+                // ✅ Check token: fcmToken (string) or fcmTokens (array)
+                let token = userData.fcmToken;
+                if (!token && userData.fcmTokens && Array.isArray(userData.fcmTokens) && userData.fcmTokens.length > 0) {
+                    token = userData.fcmTokens[0];
+                }
+                if (token) {
+                    tokens.push(token);
                 }
             }
 
             if (tokens.length === 0) {
+                console.log("[NOTIF] Function: no valid FCM tokens found for userIds", userIds);
                 return res.status(200).json({
                     success: true,
                     message: "No valid FCM tokens found",
                     sentCount: 0,
                 });
             }
+            console.log("[NOTIF] Function: sending to", tokens.length, "token(s)");
+
+            const notificationTitle = chatRoomName && chatRoomName.trim()
+                ? `${chatRoomName.trim()} · ${title || "New Message"}`
+                : (title || "New Message");
 
             const payload = {
                 notification: {
-                    title: title || "New Message",
+                    title: notificationTitle,
                     body: message,
                 },
                 android: {
@@ -127,6 +138,7 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 data: {
                     type: "custom_message",
                     timestamp: Date.now().toString(),
+                    ...(chatRoomId ? { chatRoomId: String(chatRoomId) } : {}),
                 },
             };
 
@@ -135,6 +147,12 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 tokens: tokens,
                 ...payload,
             });
+            console.log("[NOTIF] Function: FCM result", { sentCount: response.successCount, failedCount: response.failureCount });
+            if (response.failureCount > 0) {
+                response.responses.forEach((r, i) => {
+                    if (!r.success) console.log("[NOTIF] Function: token failed", i, r.error?.message || r.error);
+                });
+            }
 
             return res.status(200).json({
                 success: true,

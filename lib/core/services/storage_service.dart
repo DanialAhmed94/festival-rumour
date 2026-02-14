@@ -10,11 +10,25 @@ class StorageService {
 
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyUserId = 'user_id';
+  static const String _keyUserDisplayName = 'user_display_name';
+  static const String _keyUserPhotoUrl = 'user_photo_url';
   static const String _keyRecentUserSearches = 'recent_user_searches';
   static const String _keyUserSearchCache = 'user_search_cache';
   static const int _maxCacheSize = 20; // Maximum number of cached searches
 
   static const String _keyFcmToken = 'fcm_token';
+  static const String _keyNotificationsEnabled = 'notifications_enabled';
+
+  Future<void> setNotificationsEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyNotificationsEnabled, value);
+  }
+
+  /// Returns null when never set (caller should sync from permission); otherwise stored choice.
+  Future<bool?> getNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyNotificationsEnabled);
+  }
 
   Future<void> setFcmToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
@@ -39,13 +53,24 @@ class StorageService {
     }
   }
 
-  /// Set login status
-  Future<void> setLoggedIn(bool isLoggedIn, {String? userId}) async {
+  /// Set login status. Optionally save display name and photo URL (e.g. at login).
+  Future<void> setLoggedIn(
+    bool isLoggedIn, {
+    String? userId,
+    String? displayName,
+    String? photoUrl,
+  }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_keyIsLoggedIn, isLoggedIn);
       if (userId != null) {
         await prefs.setString(_keyUserId, userId);
+      }
+      if (displayName != null) {
+        await prefs.setString(_keyUserDisplayName, displayName);
+      }
+      if (photoUrl != null) {
+        await prefs.setString(_keyUserPhotoUrl, photoUrl);
       }
       if (kDebugMode) {
         print('Login status saved: $isLoggedIn');
@@ -54,6 +79,47 @@ class StorageService {
       if (kDebugMode) {
         print('Error saving login status: $e');
       }
+    }
+  }
+
+  /// Save or update user display name and/or photo URL locally.
+  Future<void> setUserProfile({String? displayName, String? photoUrl}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (displayName != null) {
+        await prefs.setString(_keyUserDisplayName, displayName);
+      }
+      if (photoUrl != null) {
+        await prefs.setString(_keyUserPhotoUrl, photoUrl);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error saving user profile to storage: $e');
+      }
+    }
+  }
+
+  Future<String?> getStoredDisplayName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_keyUserDisplayName);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error getting stored display name: $e');
+      }
+      return null;
+    }
+  }
+
+  Future<String?> getStoredPhotoUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_keyUserPhotoUrl);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error getting stored photo URL: $e');
+      }
+      return null;
     }
   }
 
@@ -255,7 +321,10 @@ class StorageService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyIsLoggedIn);
       await prefs.remove(_keyUserId);
+      await prefs.remove(_keyUserDisplayName);
+      await prefs.remove(_keyUserPhotoUrl);
       await prefs.remove(_keyRecentUserSearches);
+      await prefs.remove(_keyNotificationsEnabled);
       await clearSearchCache();
       if (kDebugMode) {
         print('All storage data cleared');
