@@ -388,19 +388,21 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
             ),
           ),
 
-          // Post Content
+          // Post Content: black so it's readable on card background; username/time stay white in header
           Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AppDimensions.postContentPaddingHorizontal,
             ),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text(
-                post.content,
+              child: DefaultTextStyle(
                 style: const TextStyle(color: AppColors.black),
-                textAlign: TextAlign.left,
-                maxLines: hasMedia ? null : 5,
-                overflow: hasMedia ? null : TextOverflow.ellipsis,
+                child: Text(
+                  post.content,
+                  textAlign: TextAlign.left,
+                  maxLines: hasMedia ? null : 5,
+                  overflow: hasMedia ? null : TextOverflow.ellipsis,
+                ),
               ),
             ),
           ),
@@ -437,7 +439,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                       child: Text(
                         post.postUrl!,
                         style: const TextStyle(
-                          color: AppColors.white,
+                          color: AppColors.black,
                           fontSize: 14,
                           decoration: TextDecoration.none,
                         ),
@@ -626,71 +628,80 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
   }
 
   Widget _buildNoMediaLikeCommentRow(BuildContext context, PostModel post) {
+    // When popup is shown, reserve space above the row so the popup sits inside
+    // the Stack's hit-test bounds (otherwise taps on the popup hit the list behind).
+    const double popupAreaHeight = 52.0;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.postContentPaddingHorizontal),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Row(
+          Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              GestureDetector(
-                onTap: _toggleReactions,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.black.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _selectedReaction == null
-                          ? Icon(
-                              Icons.thumb_up,
-                              color: AppColors.white,
-                              size: context.isLargeScreen ? 22 : 20,
-                            )
-                          : Text(
-                              _selectedReaction!,
-                              style: TextStyle(
-                                fontSize: AppDimensions.textL,
-                                color: _reactionColor,
-                              ),
-                            ),
-                      const SizedBox(width: AppDimensions.spaceXS),
-                      Text(
-                        "${post.totalReactions > 0 ? post.totalReactions : post.likes}",
-                        style: const TextStyle(color: AppColors.white),
+              if (_showReactions) const SizedBox(height: popupAreaHeight),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: _toggleReactions,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.black.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppDimensions.spaceS),
-              InkWell(
-                onTap: () => _openComments(context, post),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.black.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.comment_outlined,
-                        color: AppColors.white,
-                        size: context.isLargeScreen ? 20 : 18,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _selectedReaction == null
+                              ? Icon(
+                                  Icons.thumb_up,
+                                  color: AppColors.white,
+                                  size: context.isLargeScreen ? 22 : 20,
+                                )
+                              : Text(
+                                  _selectedReaction!,
+                                  style: TextStyle(
+                                    fontSize: AppDimensions.textL,
+                                    color: _reactionColor,
+                                  ),
+                                ),
+                          const SizedBox(width: AppDimensions.spaceXS),
+                          Text(
+                            "${post.totalReactions > 0 ? post.totalReactions : post.likes}",
+                            style: const TextStyle(color: AppColors.white),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: AppDimensions.spaceXS),
-                      Text(
-                        "${post.comments}",
-                        style: const TextStyle(color: AppColors.white),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(width: AppDimensions.spaceS),
+                  InkWell(
+                    onTap: () => _openComments(context, post),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.black.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.comment_outlined,
+                            color: AppColors.white,
+                            size: context.isLargeScreen ? 20 : 18,
+                          ),
+                          const SizedBox(width: AppDimensions.spaceXS),
+                          Text(
+                            "${post.comments}",
+                            style: const TextStyle(color: AppColors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -698,7 +709,10 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
             Positioned(
               left: 0,
               bottom: 44,
-              child: _buildReactionsPopup(),
+              child: Material(
+                color: Colors.transparent,
+                child: _buildReactionsPopup(),
+              ),
             ),
         ],
       ),
