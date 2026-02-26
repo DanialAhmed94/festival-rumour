@@ -13,6 +13,13 @@ class LeaderboardView extends BaseView<LeaderboardViewModel> {
 
   @override
   LeaderboardViewModel createViewModel() => LeaderboardViewModel();
+
+  @override
+  void onViewModelReady(LeaderboardViewModel viewModel) {
+    super.onViewModelReady(viewModel);
+    viewModel.loadLeaderboard();
+  }
+
   @override
   Widget buildView(BuildContext context, LeaderboardViewModel viewModel) {
     return Scaffold(
@@ -50,51 +57,70 @@ class LeaderboardView extends BaseView<LeaderboardViewModel> {
 
           /// Body
           Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(
-                vertical: AppDimensions.paddingM,
-              ),
-              child: Column(
-                children: [
-                  const SizedBox(height: AppDimensions.paddingS),
-
-                  /// Title (Black Text)
-                  const ResponsiveTextWidget(
-                    AppStrings.lunaFest2025,
-                    textType: TextType.heading,
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                  ),
-
-                  const SizedBox(height: AppDimensions.paddingL),
-
-                  /// Podium
-                  if (viewModel.leaders.length >= 3)
-                    LeaderboardWidgets.buildPodiumSection(
-                      first: viewModel.leaders[0],
-                      second: viewModel.leaders[1],
-                      third: viewModel.leaders[2],
+            child: viewModel.busy
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  )
+                : SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppDimensions.paddingM,
                     ),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: AppDimensions.paddingS),
 
-                  const SizedBox(height: AppDimensions.paddingL),
+                        /// Podium (Top 3, or 1–2 when fewer)
+                        if (viewModel.leaders.isNotEmpty)
+                          LeaderboardWidgets.buildPodiumSection(
+                            first: viewModel.leaders[0],
+                            second: viewModel.leaders.length > 1 ? viewModel.leaders[1] : null,
+                            third: viewModel.leaders.length > 2 ? viewModel.leaders[2] : null,
+                          )
+                        else
+                          const Padding(
+                            padding: EdgeInsets.all(24.0),
+                            child: ResponsiveTextWidget(
+                              'No leaderboard data yet. Attend festivals and post to climb!',
+                              textType: TextType.body,
+                              color: AppColors.grey600,
+                            ),
+                          ),
 
-                  /// Leader Cards
-                  ...viewModel.leaders.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final leader = entry.value;
-                    return LeaderboardWidgets.buildLeaderCard(
-                      rank: leader['rank'],
-                      name: leader['name'],
-                      badge: leader['badge'],
-                      isTopThree: index < 3,
-                    );
-                  }),
+                        const SizedBox(height: AppDimensions.paddingL),
 
-                  const SizedBox(height: AppDimensions.paddingXL),
-                ],
-              ),
-            ),
+                        /// Heading above card list
+                        if (viewModel.leaders.isNotEmpty) ...[
+                          const ResponsiveTextWidget(
+                            AppStrings.leaderboardTopContributors,
+                            textType: TextType.heading,
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          const SizedBox(height: AppDimensions.paddingS),
+                        ],
+
+                        /// Leader Cards (rank 4–20 when podium shown; otherwise show all)
+                        ...viewModel.leaders.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final leader = entry.value;
+                          final showPodium = viewModel.leaders.length >= 3;
+                          return LeaderboardWidgets.buildLeaderCard(
+                            rank: leader['rank'] is int
+                                ? leader['rank'] as int
+                                : (leader['rank'] as num).toInt(),
+                            name: leader['name'] as String? ?? 'User',
+                            badge: leader['badge'] as String? ?? 'Top Contributor',
+                            isTopThree: showPodium && index < 3,
+                            photoUrl: leader['photoUrl'] as String?,
+                            score: (leader['score'] as num?)?.toDouble(),
+                          );
+                        }),
+
+                        const SizedBox(height: AppDimensions.paddingXL),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
@@ -250,11 +276,11 @@ class LeaderboardWidgets {
     );
   }
 
-  /// 🔹 Podium Section for Top 3
+  /// 🔹 Podium Section for Top 3 (or 1–2 when fewer)
   static Widget buildPodiumSection({
     required Map<String, dynamic> first,
-    required Map<String, dynamic> second,
-    required Map<String, dynamic> third,
+    Map<String, dynamic>? second,
+    Map<String, dynamic>? third,
   }) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
@@ -266,24 +292,45 @@ class LeaderboardWidgets {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _podiumItem(second['name'], "2nd"),
-          _podiumItem(first['name'], "1st"),
-          _podiumItem(third['name'], "3rd"),
+          _podiumItem(
+            second != null ? (second['name'] as String? ?? 'User') : '—',
+            '2nd',
+            second?['photoUrl'] as String?,
+          ),
+          _podiumItem(
+            first['name'] as String? ?? 'User',
+            '1st',
+            first['photoUrl'] as String?,
+          ),
+          _podiumItem(
+            third != null ? (third['name'] as String? ?? 'User') : '—',
+            '3rd',
+            third?['photoUrl'] as String?,
+          ),
         ],
       ),
     );
   }
 
-  static Widget _podiumItem(String name, String place) {
+  static Widget _podiumItem(String name, String place, [String? photoUrl]) {
     return Column(
       children: [
-        const Icon(Icons.emoji_events, color: Colors.black, size: 32),
+        if (photoUrl != null && photoUrl.isNotEmpty)
+          CircleAvatar(
+            radius: 28,
+            backgroundColor: AppColors.grey300,
+            backgroundImage: NetworkImage(photoUrl),
+          )
+        else
+          const Icon(Icons.emoji_events, color: Colors.black, size: 32),
         const SizedBox(height: 6),
         ResponsiveTextWidget(
           name,
           textType: TextType.body,
           color: Colors.black,
           fontWeight: FontWeight.bold,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         ResponsiveTextWidget(
           place,
@@ -301,6 +348,8 @@ class LeaderboardWidgets {
     required String name,
     required String badge,
     bool isTopThree = false,
+    String? photoUrl,
+    double? score,
   }) {
     if (isTopThree && rank <= 3) {
       return const SizedBox.shrink();
@@ -320,13 +369,18 @@ class LeaderboardWidgets {
         children: [
           CircleAvatar(
             backgroundColor: Colors.grey.shade400,
-            child: Text(
-              rank.toString(),
-              style: const TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                ? NetworkImage(photoUrl)
+                : null,
+            child: (photoUrl == null || photoUrl.isEmpty)
+                ? Text(
+                    rank.toString(),
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(width: AppDimensions.paddingM),
           Expanded(
@@ -344,6 +398,17 @@ class LeaderboardWidgets {
                   textType: TextType.caption,
                   color: Colors.black54,
                 ),
+                if (score != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      'Score: ${score.toStringAsFixed(1)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.grey600,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -351,5 +416,4 @@ class LeaderboardWidgets {
       ),
     );
   }
-
 }

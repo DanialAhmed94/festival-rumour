@@ -46,14 +46,16 @@ class RumorsViewModel extends BaseViewModel {
   static const int _initialLimit = 10; // Initial number of posts to load
   static const int _loadMoreLimit = 10; // Number of posts to load per "load more"
   
-  // Festival-specific collection name
+  // Festival-specific collection name and display title
   String? _festivalCollectionName;
+  String? _festivalTitle; // Human-readable festival name for app bar
   bool _isInitialized = false; // Track if already initialized
   DateTime? _newestPostTimestamp; // Track newest post timestamp for efficient stream updates
   
   bool get hasMorePosts => _hasMorePosts;
   bool get isLoadingMore => _isLoadingMore;
   String? get festivalCollectionName => _festivalCollectionName;
+  String? get festivalTitle => _festivalTitle;
   
   RumorsViewModel() {
     searchFocusNode = FocusNode();
@@ -78,6 +80,7 @@ class RumorsViewModel extends BaseViewModel {
     // Reset initialization flag
     _isInitialized = false;
     _festivalCollectionName = null;
+    _festivalTitle = null;
     _newestPostTimestamp = null;
     
     // Dispose controllers and focus nodes
@@ -110,6 +113,7 @@ class RumorsViewModel extends BaseViewModel {
       return;
     }
     
+    _festivalTitle = selectedFestival.title;
     // Generate festival collection name
     _festivalCollectionName = FirestoreService.getFestivalCollectionName(
       selectedFestival.id,
@@ -117,7 +121,7 @@ class RumorsViewModel extends BaseViewModel {
     );
     
     if (kDebugMode) {
-      print('🎪 Initializing rumors for festival: ${selectedFestival.title}');
+      print('🎪 Initializing rumors for festival: $_festivalTitle');
       print('🎪 Collection name: $_festivalCollectionName');
     }
     
@@ -139,7 +143,7 @@ class RumorsViewModel extends BaseViewModel {
     }
 
     await handleAsync(() async {
-      setBusy(true);
+      setLoading(true);
       
       try {
         // Load initial batch of posts
@@ -207,7 +211,7 @@ class RumorsViewModel extends BaseViewModel {
         _errorHandler.handleError(exception, stackTrace, 'RumorsViewModel.loadInitialPosts');
         rethrow;
       } finally {
-        setBusy(false);
+        setLoading(false);
       }
     }, 
     errorMessage: AppStrings.failedToLoadPosts,
@@ -301,9 +305,14 @@ class RumorsViewModel extends BaseViewModel {
                 }
               }
             } else {
-              // Fallback: check all posts if we don't have a timestamp
+              // Fallback: only add posts actually newer than our current top (stream limit can exceed our list)
+              final newestCreatedAt = allPosts.isNotEmpty && allPosts.first.createdAt != null
+                  ? allPosts.first.createdAt!
+                  : null;
               for (var post in streamPostsMap.values) {
-                if (post.postId != null && !loadedPostIds.contains(post.postId)) {
+                if (post.postId == null || loadedPostIds.contains(post.postId)) continue;
+                if (newestCreatedAt == null ||
+                    (post.createdAt != null && post.createdAt!.isAfter(newestCreatedAt))) {
                   newPosts.add(post);
                 }
               }

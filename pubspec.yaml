@@ -74,6 +74,9 @@ dependencies:
   # URL Launcher
   url_launcher: ^6.2.4
 
+  # Link preview metadata (Open Graph, etc.)
+  metadata_fetch: ^0.4.1
+
   # Device Info
   device_info_plus: ^12.2.0
 

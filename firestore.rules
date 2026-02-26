@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Configure your rules in Firebase Console or here.
+    // This file exists so "firebase deploy --only firestore:indexes" can run.
+    // To deploy rules: firebase deploy --only firestore:rules
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

@@ -5,8 +5,8 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/utils/custom_navbar.dart';
-import '../homeview/home_view.dart';
 import '../discover/discover_view.dart';
+import '../rumors/rumors_view.dart';
 import '../detail/detail_view.dart';
 import '../chat/chat_view.dart';
 import '../map/map_view.dart';
@@ -26,13 +26,14 @@ class NavBaar extends BaseView<NavBaarViewModel> {
   Widget buildView(BuildContext context, NavBaarViewModel viewModel) {
     return WillPopScope(
       onWillPop: () async {
-        // If user is on home screen (index 0), exit the app
-        if (viewModel.currentIndex == 0) {
-          SystemNavigator.pop();
-          return false; // Prevent default back behavior
+        // Rumours (index 1): device back → switch to Discover tab
+        if (viewModel.currentIndex == 1) {
+          viewModel.goToDiscover();
+          return false;
         }
-        // For other screens, allow normal back navigation
-        return true;
+        // Discover (index 0): device back → navigate to Festival screen
+        viewModel.navigateToFestival();
+        return false;
       },
       child: Scaffold(
         body: _NavBarBody(viewModel: viewModel),
@@ -80,10 +81,15 @@ class _NavBarBodyState extends State<_NavBarBody> {
     super.initState();
     // Pre-create and cache main tab views
     _cachedMainViews = [
-      const HomeView(),
       DiscoverView(
-        onBack: widget.viewModel.goToHome,
+        onBack: widget.viewModel.navigateToFestival,
         onNavigateToSub: widget.viewModel.setSubNavigation,
+      ),
+      RumorsView(
+        onBack: () {
+
+          widget.viewModel.goToDiscover();
+        },
       ),
     ];
     
@@ -149,9 +155,16 @@ class _NavBarBodyState extends State<_NavBarBody> {
             onBack: () => viewModel.setSubNavigation(null),
           );
           break;
+        case 'attended':
+          _cachedSubViews[subNav] = ProfileListView(
+            initialTab: 3,
+            Username: AppStrings.name,
+            onBack: () => viewModel.setSubNavigation(null),
+          );
+          break;
         default:
           _cachedSubViews[subNav] = DiscoverView(
-            onBack: viewModel.goToHome,
+            onBack: viewModel.navigateToFestival,
             onNavigateToSub: viewModel.setSubNavigation,
           );
       }

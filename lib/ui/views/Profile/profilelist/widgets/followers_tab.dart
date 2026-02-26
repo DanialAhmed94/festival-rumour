@@ -58,7 +58,7 @@ class FollowersTab extends StatelessWidget {
                           'No followers yet',
                           style: TextStyle(
                             color: AppColors.black,
-                            fontSize: AppDimensions.textL,
+                            fontSize: AppDimensions.textM,
                           ),
                         ),
                       ],
@@ -126,8 +126,8 @@ class FollowersTab extends StatelessWidget {
                             follower['name'] ?? 'Unknown User',
                             style: const TextStyle(
                               color: AppColors.black,
-                              fontSize: AppDimensions.textL,
-                            //  fontWeight: FontWeight.w600,
+                              fontSize: AppDimensions.textM,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                           const SizedBox(height: AppDimensions.spaceXS),
@@ -170,10 +170,25 @@ class FollowersTab extends StatelessWidget {
                         Icons.more_vert,
                         color: AppColors.black,
                       ),
-                      onSelected: (value) {
+                      onSelected: (value) async {
                         if (value == 'Message') {
-                          // Navigate to chat view
-                          Navigator.pushNamed(context, AppRoutes.chat);
+                          final otherUserId = follower['userId'] as String?;
+                          final otherName = follower['name'] as String?;
+                          if (otherUserId == null || otherUserId.isEmpty) return;
+                          final chatRoomId = await viewModel.getOrCreateDmRoomWith(
+                            otherUserId,
+                            otherName,
+                          );
+                          if (context.mounted && chatRoomId != null) {
+                            Navigator.pushNamed(
+                              context,
+                              AppRoutes.directChat,
+                              arguments: {
+                                'chatRoomId': chatRoomId,
+                                'otherUserName': otherName,
+                              },
+                            );
+                          }
                         }
                       },
                       itemBuilder: (BuildContext context) => [

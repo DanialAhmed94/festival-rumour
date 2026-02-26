@@ -269,97 +269,118 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                               fontSize: AppDimensions.textL,
                             ),
                             SizedBox(height: AppDimensions.spaceS),
-                            // Stats aligned with profile picture width
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                Consumer<ProfileViewModel>(
-                                  builder: (context, vm, child) {
-                                    return _buildClickableStat(
-                                      context,
-                                      vm.postCount.toString(),
-                                      AppStrings.posts,
-                                      null, // No navigation
-                                    );
-                                  },
-                                ),
-                                SizedBox(width: context.getConditionalSpacing()),
-                                Consumer<ProfileViewModel>(
-                                  builder: (context, vm, child) {
-                                    return _buildClickableStat(
-                                      context,
-                                      '${vm.followersCount}',
-                                      AppStrings.followers,
-                                      () {
-                                        if (widget.onNavigateToSub != null) {
-                                          widget.onNavigateToSub!('followers');
-                                        } else {
-                                          final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
-                                          Navigator.pushNamed(
+                            // Stats in horizontal ListView to avoid overflow
+                            Consumer<ProfileViewModel>(
+                              builder: (context, vm, child) {
+                                return SizedBox(
+                                  height: 52,
+                                  child: ListView.separated(
+                                    scrollDirection: Axis.horizontal,
+                                    shrinkWrap: true,
+                                    physics: const BouncingScrollPhysics(),
+                                    itemCount: 5,
+                                    separatorBuilder: (_, __) => SizedBox(width: context.getConditionalSpacing()),
+                                    itemBuilder: (context, index) {
+                                      switch (index) {
+                                        case 0:
+                                          return _buildClickableStat(
                                             context,
-                                            AppRoutes.profileList,
-                                            arguments: {
-                                              'initialTab': 0,
-                                              'username': vm.userDisplayName ?? 'User',
-                                              'userId': currentUserId,
+                                            vm.postCount.toString(),
+                                            AppStrings.posts,
+                                            null,
+                                          );
+                                        case 1:
+                                          return _buildClickableStat(
+                                            context,
+                                            '${vm.followersCount}',
+                                            AppStrings.followers,
+                                            () {
+                                              if (widget.onNavigateToSub != null) {
+                                                widget.onNavigateToSub!('followers');
+                                              } else {
+                                                final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
+                                                Navigator.pushNamed(
+                                                  context,
+                                                  AppRoutes.profileList,
+                                                  arguments: {
+                                                    'initialTab': 0,
+                                                    'username': vm.userDisplayName ?? 'User',
+                                                    'userId': currentUserId,
+                                                  },
+                                                );
+                                              }
                                             },
                                           );
-                                        }
-                                      },
-                                    );
-                                  },
-                                ),
-                                SizedBox(width: context.getConditionalSpacing()),
-                                Consumer<ProfileViewModel>(
-                                  builder: (context, vm, child) {
-                                    return _buildClickableStat(
-                                      context,
-                                      '${vm.followingCount}',
-                                      AppStrings.following,
-                                      () {
-                                        if (widget.onNavigateToSub != null) {
-                                          widget.onNavigateToSub!('following');
-                                        } else {
-                                          final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
-                                          Navigator.pushNamed(
+                                        case 2:
+                                          return _buildClickableStat(
                                             context,
-                                            AppRoutes.profileList,
-                                            arguments: {
-                                              'initialTab': 1,
-                                              'username': vm.userDisplayName ?? 'User',
-                                              'userId': currentUserId,
+                                            '${vm.followingCount}',
+                                            AppStrings.following,
+                                            () {
+                                              if (widget.onNavigateToSub != null) {
+                                                widget.onNavigateToSub!('following');
+                                              } else {
+                                                final currentUserId = vm.authService.userUid ?? vm.authService.currentUser?.uid;
+                                                Navigator.pushNamed(
+                                                  context,
+                                                  AppRoutes.profileList,
+                                                  arguments: {
+                                                    'initialTab': 1,
+                                                    'username': vm.userDisplayName ?? 'User',
+                                                    'userId': currentUserId,
+                                                  },
+                                                );
+                                              }
                                             },
                                           );
-                                        }
-                                      },
-                                    );
-                                  },
-                                ),
-                                SizedBox(width: context.getConditionalSpacing()),
-                                Consumer<ProfileViewModel>(
-                                  builder: (context, vm, child) {
-                                    return _buildClickableStat(
-                                      context,
-                                      '${vm.favoriteFestivalsCount}',
-                                      AppStrings.festivals,
-                                      () {
-                                        if (widget.onNavigateToSub != null) {
-                                          widget.onNavigateToSub!('festivals');
-                                        } else {
-                                          Navigator.pushNamed(
+                                        case 3:
+                                          return _buildClickableStat(
                                             context,
-                                            AppRoutes.profileList,
-                                            arguments: {
-                                              'initialTab': 2,
-                                              'username': vm.userDisplayName ?? 'User',
+                                            '${vm.favoriteFestivalsCount}',
+                                            'Favourite Festivals',
+                                            () {
+                                              if (widget.onNavigateToSub != null) {
+                                                widget.onNavigateToSub!('festivals');
+                                              } else {
+                                                Navigator.pushNamed(
+                                                  context,
+                                                  AppRoutes.profileList,
+                                                  arguments: {
+                                                    'initialTab': 2,
+                                                    'username': vm.userDisplayName ?? 'User',
+                                                  },
+                                                );
+                                              }
                                             },
                                           );
-                                        }
-                                      },
-                                    );
-                                  },
-                                ),
-                              ],
+                                        case 4:
+                                          return _buildClickableStat(
+                                            context,
+                                            '${vm.attendedFestivalsCount}',
+                                            'Attended festivals',
+                                            () {
+                                              if (widget.onNavigateToSub != null) {
+                                                widget.onNavigateToSub!('attended');
+                                              } else {
+                                                Navigator.pushNamed(
+                                                  context,
+                                                  AppRoutes.profileList,
+                                                  arguments: {
+                                                    'initialTab': 3,
+                                                    'username': vm.userDisplayName ?? 'User',
+                                                    'userId': vm.authService.userUid ?? vm.authService.currentUser?.uid,
+                                                  },
+                                                );
+                                              }
+                                            },
+                                          );
+                                        default:
+                                          return const SizedBox.shrink();
+                                      }
+                                    },
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -488,8 +509,8 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                     }
                   },
                   icon: Icon(
-                    Icons.post_add,
-                    color: AppColors.white,
+                    Icons.add_circle_outline,
+                    color: AppColors.primary,
                     size: AppDimensions.iconL,
                   ),
                   padding: context.responsivePadding,
@@ -498,6 +519,24 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                     minHeight: context.getConditionalIconSize(),
                   ),
                   tooltip: AppStrings.createPost,
+                ),
+              if (widget.userId == null) SizedBox(width: context.getConditionalSpacing()),
+              if (widget.userId == null)
+                IconButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, AppRoutes.chatList);
+                  },
+                  icon: Icon(
+                    Icons.chat,
+                    color: AppColors.white,
+                    size: AppDimensions.iconL,
+                  ),
+                  padding: context.responsivePadding,
+                  constraints: BoxConstraints(
+                    minWidth: context.getConditionalIconSize(),
+                    minHeight: context.getConditionalIconSize(),
+                  ),
+                  tooltip: 'Chats',
                 ),
               if (widget.userId == null) SizedBox(width: context.getConditionalSpacing()),
               IconButton(

@@ -120,6 +120,7 @@ class AppStrings {
   static const String selectFestival = "Select Festival";
   static const String loadingPosts = "Loading posts...";
   static const String noPostsAvailable = "No posts available";
+  static const String noRumorsToShow = "There is nothing to show yet. Be the first to share a rumour!";
 
   // Forgot Password
   static const String forgotPasswordTitle = 'Forgot Password?';
@@ -230,10 +231,41 @@ class AppStrings {
       "Let's enjoy the vibe together 🌙🔥\n\nDownload now: https://festival-romour.link";
   static const String shareSubject = "Join me at LunaFest!";
   static const String shareLocation = "Share Location";
+  static const String shareMyLocation = "Share My Location";
+  static const String shareWithEveryone = "Share with everyone";
+  static const String shareWithEveryoneHint = "Let anyone at the festival see your location";
+  static const String shareWithSelected = "Share with selected people";
+  static const String searchUsersOrGroups = "Search users or groups...";
   static const String locationSharingEnabled = "Location Sharing Enabled";
+  static const String locationSharedSuccess = "Location shared successfully in chat";
+  // Count me in choice
+  static const String countMeInChoiceTitle = "What would you like to do?";
+  static const String countMeInShareLocation = "Share location";
+  static const String countMeInShareLocationDesc = "Share your location with friends or in chat";
+  static const String countMeInMarkAttended = "Mark as attended festival";
+  static const String countMeInMarkAttendedDesc = "Add proof and mark this festival as attended";
+  // Mark attended sheet
+  static const String markAttendedTitle = "Mark as attended";
+  static const String markAttendedAddPhoto = "Add photo";
+  static const String markAttendedAddPhotoHint = "Camera or gallery";
+  static const String markAttendedGetLocation = "Get my location";
+  static const String markAttendedLocationHint = "We'll verify you're at the festival";
+  static const String markAttendedSubmit = "Submit";
+  static const String markAttendedPhotoRequired = "Please add a photo";
+  static const String markAttendedLocationRequired = "Please get your location";
+  static const String markAttendedLocationTooFar = "You're not within the festival area. Please be at the venue to mark as attended.";
+  static const String markAttendedFestivalNoLocation = "This festival has no location set. You can still submit.";
+  static const String markAttendedSuccess = "Festival marked as attended!";
+  static const String markAttendedUploading = "Uploading...";
+  static const String markAttendedVerifying = "Verifying location...";
   static const String locationSharingDescription =
       "Allow To Share Location So The Crowd Can Find You, Nothing Else";
   static const String hidingMyVibe = "Hiding My Vibe, Staying Incognito";
+  static const String locationPermissionRequired = "Location access is needed to share your position with others.";
+  static const String locationPermissionDenied = "Location permission was denied.";
+  static const String locationPermissionPermanentlyDenied = "Location access is disabled. Please enable it in Settings to share your location.";
+  static const String openSettings = "Open Settings";
+  static const String enableLocationSharing = "Enable location sharing";
   static const String allFilter = "";
   static const String usersFilter = "Users";
   static const String postsFilter = "Posts";
@@ -361,6 +393,7 @@ class AppStrings {
 
   // Leaderboard Related
   static const String leaderBoard = 'Leader board';
+  static const String leaderboardTopContributors = 'Top contributors';
   static const String pro = 'PRO';
 
   // Subscription Related
@@ -809,6 +842,13 @@ class AppStrings {
   static const String crowdFavourite = '3  Crowd Favourite';
   static const String crowdFavouriteDescription =
       '          For most liked/reacted content';
+
+  /// Badge system scoring (leaderboard)
+  static const String badgeScoringTitle = 'How ranking works';
+  static const String badgeScoringDescription =
+      'Score = 50% festivals attended + 50% global & festival activity (posts). '
+      'Top 20 contributors appear on the leaderboard. '
+      'Rank #1 = Top Rumour Spotter, #2 = Media Master, #3 = Crowd Favourite, #4–20 = Top Contributor.';
 
   // Danger Zone strings
   static const String dangerZone = 'Danger Zone';

@@ -40,6 +40,7 @@ class ProfileListViewModel extends BaseViewModel {
   final List<Map<String, dynamic>> _allFollowers = [];
   final List<Map<String, dynamic>> _allFollowing = [];
   final List<Map<String, String>> _allFestivals = [];
+  final List<Map<String, String>> _attendedFestivals = [];
 
   // --- Filtered Lists ---
   List<Map<String, dynamic>> _followers = [];
@@ -52,6 +53,12 @@ class ProfileListViewModel extends BaseViewModel {
   bool get isLoadingFestivals => _isLoadingFestivals;
   bool get hasLoadedFestivals => _hasLoadedFestivals;
 
+  // Loading state for attended festivals
+  bool _isLoadingAttended = false;
+  bool _hasLoadedAttended = false;
+  bool get isLoadingAttended => _isLoadingAttended;
+  bool get hasLoadedAttended => _hasLoadedAttended;
+
   // --- Getters ---
   int get currentTab => _currentTab;
   bool get showingList => _showingList;
@@ -59,6 +66,7 @@ class ProfileListViewModel extends BaseViewModel {
   List<Map<String, dynamic>> get followers => _followers;
   List<Map<String, dynamic>> get following => _following;
   List<Map<String, String>> get festivals => _festivals;
+  List<Map<String, String>> get attendedFestivals => _attendedFestivals;
   bool get hasMoreFollowers => _hasMoreFollowers;
   bool get hasMoreFollowing => _hasMoreFollowing;
   bool get isLoadingMoreFollowers => _isLoadingMoreFollowers;
@@ -136,7 +144,9 @@ class ProfileListViewModel extends BaseViewModel {
     _hasLoadedFestivals = false; // Reset festivals loading flag
     _allFestivals.clear();
     _festivals = [];
-    
+    _attendedFestivals.clear();
+    _hasLoadedAttended = false;
+
     // Load initial data
     if (_userId != null) {
       if (kDebugMode) {
@@ -454,6 +464,34 @@ class ProfileListViewModel extends BaseViewModel {
     }
   }
 
+  /// Load attended festivals from Firestore (for Attended tab).
+  Future<void> loadAttendedFestivals() async {
+    if (_userId == null) return;
+    if (_isLoadingAttended) return;
+    _isLoadingAttended = true;
+    notifyListeners();
+    try {
+      final list = await _firestoreService.getAttendedFestivals(_userId!);
+      _attendedFestivals.clear();
+      for (var e in list) {
+        _attendedFestivals.add({
+          'title': (e['title'] as String? ?? 'Festival').toString(),
+          'location': (e['location'] as String? ?? '').toString(),
+        });
+      }
+      _hasLoadedAttended = true;
+      if (kDebugMode) {
+        print('✅ [ProfileListViewModel] Loaded ${_attendedFestivals.length} attended festivals');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ [ProfileListViewModel] loadAttendedFestivals error: $e');
+      _hasLoadedAttended = true;
+    } finally {
+      _isLoadingAttended = false;
+      notifyListeners();
+    }
+  }
+
   /// Refresh all lists
   void refreshList(BuildContext context) {
     if (_userId != null) {
@@ -470,9 +508,12 @@ class ProfileListViewModel extends BaseViewModel {
     _hasLoadedFestivals = false;
     _allFestivals.clear();
     _festivals = [];
-    // Reload festivals if on festivals tab
+    _hasLoadedAttended = false;
+    _attendedFestivals.clear();
     if (_currentTab == 2) {
       loadFavoriteFestivals(context);
+    } else if (_currentTab == 3) {
+      loadAttendedFestivals();
     }
     notifyListeners();
   }
@@ -587,6 +628,25 @@ class ProfileListViewModel extends BaseViewModel {
     }
   }
 
+  /// Get or create a 1:1 DM room with another user. Returns chat room ID or null on failure.
+  Future<String?> getOrCreateDmRoomWith(String otherUserId, String? otherUserName) async {
+    final currentUserId = _authService.userUid ?? _authService.currentUser?.uid;
+    if (currentUserId == null || currentUserId.isEmpty) return null;
+    if (otherUserId.isEmpty) return null;
+    try {
+      return await _firestoreService.getOrCreateDmRoom(
+        currentUserId: currentUserId,
+        otherUserId: otherUserId,
+        otherUserName: otherUserName,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Error getOrCreateDmRoom: $e');
+      }
+      return null;
+    }
+  }
+
   /// Return current list based on active tab
   List<Map<String, dynamic>> getCurrentList() {
     switch (_currentTab) {
@@ -596,6 +656,8 @@ class ProfileListViewModel extends BaseViewModel {
         return _following;
       case 2:
         return _festivals.map((e) => e as Map<String, dynamic>).toList();
+      case 3:
+        return _attendedFestivals.map((e) => e as Map<String, dynamic>).toList();
       default:
         return _followers;
     }

@@ -38,7 +38,7 @@ class LoadingWidget extends StatelessWidget {
             Text(
               message!,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.primary,
+                color: color ?? AppColors.primary,
               ),
               textAlign: TextAlign.center,
             ),

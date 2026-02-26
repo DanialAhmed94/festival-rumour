@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:metadata_fetch/metadata_fetch.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
@@ -125,6 +126,35 @@ class EditPostViewModel extends BaseViewModel {
       final targetCollection =
           _collectionName ?? FirestoreService.defaultPostsCollection;
 
+      // Fetch link preview when URL is present
+      String? linkPreviewImageUrl;
+      String? linkPreviewTitle;
+      if (postUrlOrNull != null && postUrlOrNull.isNotEmpty) {
+        try {
+          String urlString = postUrlOrNull.trim();
+          if (!urlString.contains(RegExp(r'^https?://', caseSensitive: false))) {
+            urlString = 'https://$urlString';
+          }
+          final metadata = await MetadataFetch.extract(urlString)
+              .timeout(const Duration(seconds: 6));
+          if (metadata != null) {
+            if (metadata.image != null && metadata.image!.trim().isNotEmpty) {
+              final img = metadata.image!.trim();
+              if (img.startsWith('http://') || img.startsWith('https://')) {
+                linkPreviewImageUrl = img;
+              }
+            }
+            if (metadata.title != null && metadata.title!.trim().isNotEmpty) {
+              linkPreviewTitle = metadata.title!.trim();
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('EditPost link preview fetch failed: $e');
+          }
+        }
+      }
+
       // 1) Update post in global feed (or current collection)
       final updates = <String, dynamic>{
         'content': content.isNotEmpty
@@ -133,6 +163,8 @@ class EditPostViewModel extends BaseViewModel {
                 ? '📸 Shared media'
                 : (postUrlOrNull != null ? '🔗 Shared a link' : p.content)),
         'postUrl': postUrlOrNull,
+        if (linkPreviewImageUrl != null) 'linkPreviewImageUrl': linkPreviewImageUrl,
+        if (linkPreviewTitle != null) 'linkPreviewTitle': linkPreviewTitle,
       };
       await _firestoreService.updatePost(
         p.postId!,
@@ -161,6 +193,8 @@ class EditPostViewModel extends BaseViewModel {
           'userPhotoUrl': p.userPhotoUrl,
           'userId': p.userId,
           'postUrl': postUrlOrNull,
+          if (linkPreviewImageUrl != null) 'linkPreviewImageUrl': linkPreviewImageUrl,
+          if (linkPreviewTitle != null) 'linkPreviewTitle': linkPreviewTitle,
         };
         await _firestoreService.savePost(
           postData,

@@ -38,6 +38,8 @@ import '../../ui/views/settings/settings_view.dart';
 import '../../ui/views/settings/edit_account_view.dart';
 import '../../ui/views/leaderboard/leaderboard_view.dart';
 import '../../ui/views/posts/posts_view.dart';
+import '../../ui/views/chat/chat_list_view.dart';
+import '../../ui/views/chat/direct_chat_view.dart';
 import '../../ui/views/chat/create_chat_room_view.dart';
 import '../../ui/views/chat/add_chat_members_view.dart';
 import '../../ui/views/chat/chat_room_detail_view.dart';
@@ -64,6 +66,8 @@ class AppRoutes {
   static const String festivals = '/festivals';
   static const String subscription = '/subscription';
   static const String chat = '/chat';
+  static const String chatList = '/chat_list';
+  static const String directChat = '/direct_chat';
   static const String map = '/map';
   static const String notification = '/notification';
   static const String settings = '/settings';
@@ -160,6 +164,19 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
 
     case AppRoutes.chat:
       return SmoothPageRoute(page: const ChatView());
+
+    case AppRoutes.chatList:
+      return SmoothPageRoute(page: const ChatListView());
+
+    case AppRoutes.directChat:
+      final directChatArgs = settings.arguments;
+      return SmoothPageRoute(
+        page: const DirectChatView(),
+        settings: RouteSettings(
+          name: AppRoutes.directChat,
+          arguments: directChatArgs,
+        ),
+      );
 
     case AppRoutes.map:
       return SmoothPageRoute(page: const MapView());

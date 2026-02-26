@@ -236,7 +236,14 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
 
   Widget _buildFeedList(BuildContext context, HomeViewModel viewModel) {
     if (viewModel.isLoading && viewModel.posts.isEmpty) {
-      return const LoadingWidget(message: AppStrings.loadingPosts);
+      return SizedBox.expand(
+        child: Center(
+          child: LoadingWidget(
+            message: AppStrings.loadingPosts,
+            color: AppColors.black,
+          ),
+        ),
+      );
     }
 
     if (viewModel.posts.isEmpty && !viewModel.isLoading) {

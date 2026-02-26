@@ -232,13 +232,6 @@ class _SimpleSplashScreenState extends State<_SimpleSplashScreen> {
   Widget _buildPlaceholder() {
     return Container(
       color: Colors.white,
-      alignment: Alignment.center,
-      child: Image.asset(
-        AppAssets.splashLogo,
-        width: 160,
-        height: 160,
-        fit: BoxFit.contain,
-      ),
     );
   }
 

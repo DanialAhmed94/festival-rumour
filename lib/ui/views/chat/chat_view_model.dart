@@ -14,6 +14,8 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/chat_badge_service.dart';
 import '../../../core/services/current_chat_room_service.dart';
 import '../../../core/providers/festival_provider.dart';
+import '../../../core/exceptions/app_exception.dart';
+import '../../../core/exceptions/exception_mapper.dart';
 import '../../../services/notification_service.dart';
 import 'chat_message_model.dart';
 
@@ -21,7 +23,17 @@ class ChatViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
-  
+
+  /// Don't use post-image URLs as profile photos (they often 404). Return null for those.
+  static String? _sanitizeProfilePhotoUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return null;
+    final lower = url.trim().toLowerCase();
+    if (lower.contains('post_images') || lower.contains('posts%2fpost_images')) {
+      return null;
+    }
+    return url.trim();
+  }
+
   int _selectedTab = 0; // 0 = Public, 1 = Private
   bool _isInChatRoom = false;
   Map<String, dynamic>? _currentChatRoom;
@@ -41,11 +53,14 @@ class ChatViewModel extends BaseViewModel {
       .toList(); // Filter out deleted messages
   String? get chatRoomId => _chatRoomId;
 
-  void setSelectedTab(int tab) {
+  bool _isSendingMessage = false;
+  bool get isSendingMessage => _isSendingMessage;
+
+  /// [festivalId] - When switching to private tab (tab==1), pass selected festival ID for chat room screen; null for DMs only.
+  void setSelectedTab(int tab, {String? festivalId}) {
     _selectedTab = tab;
-    // Load private chat rooms when switching to private tab
     if (tab == 1) {
-      loadPrivateChatRooms();
+      loadPrivateChatRooms(festivalId: festivalId);
     }
     notifyListeners();
   }
@@ -98,7 +113,84 @@ class ChatViewModel extends BaseViewModel {
   List<Map<String, dynamic>> _privateChats = [];
   StreamSubscription<List<Map<String, dynamic>>>? _privateChatsSubscription;
 
+  /// Cache for other user's photo/name to avoid repeated Firestore reads (WhatsApp-style list).
+  final Map<String, Map<String, dynamic>> _otherUserCache = {};
+
   List<Map<String, dynamic>> get privateChats => _privateChats;
+
+  // Search within chat list
+  String _chatSearchQuery = '';
+  String get chatSearchQuery => _chatSearchQuery;
+  void setChatSearchQuery(String value) {
+    final trimmed = value.trim().toLowerCase();
+    if (_chatSearchQuery == trimmed) return;
+    _chatSearchQuery = trimmed;
+    notifyListeners();
+  }
+  void clearChatSearch() {
+    if (_chatSearchQuery.isEmpty) return;
+    _chatSearchQuery = '';
+    notifyListeners();
+  }
+
+  /// Chats filtered by search query (by name / otherUserName / lastMessage).
+  List<Map<String, dynamic>> get filteredPrivateChats {
+    if (_chatSearchQuery.isEmpty) return _privateChats;
+    final q = _chatSearchQuery;
+    return _privateChats.where((chat) {
+      final name = (chat['otherUserName'] as String? ?? chat['name'] as String? ?? '').toLowerCase();
+      final lastMessage = (chat['lastMessage'] as String? ?? '').toLowerCase();
+      return name.contains(q) || lastMessage.contains(q);
+    }).toList();
+  }
+
+  // Multiple selection for batch delete
+  bool _isSelectionMode = false;
+  final Set<String> _selectedChatRoomIds = {};
+
+  bool get isSelectionMode => _isSelectionMode;
+  Set<String> get selectedChatRoomIds => Set.unmodifiable(_selectedChatRoomIds);
+  int get selectedCount => _selectedChatRoomIds.length;
+
+  void enterSelectionMode() {
+    _isSelectionMode = true;
+    _selectedChatRoomIds.clear();
+    notifyListeners();
+  }
+
+  void exitSelectionMode() {
+    _isSelectionMode = false;
+    _selectedChatRoomIds.clear();
+    notifyListeners();
+  }
+
+  void toggleChatSelection(String? chatRoomId) {
+    if (chatRoomId == null || chatRoomId.isEmpty) return;
+    if (_selectedChatRoomIds.contains(chatRoomId)) {
+      _selectedChatRoomIds.remove(chatRoomId);
+    } else {
+      _selectedChatRoomIds.add(chatRoomId);
+    }
+    notifyListeners();
+  }
+
+  bool isChatSelected(String? chatRoomId) {
+    return chatRoomId != null && _selectedChatRoomIds.contains(chatRoomId);
+  }
+
+  /// Delete all selected chat rooms. Returns the number of rooms successfully deleted.
+  Future<int> deleteSelectedChatRooms() async {
+    if (_selectedChatRoomIds.isEmpty) return 0;
+    int deleted = 0;
+    for (final id in List<String>.from(_selectedChatRoomIds)) {
+      final success = await deletePrivateChatRoom(id);
+      if (success) deleted++;
+      _selectedChatRoomIds.remove(id);
+    }
+    _isSelectionMode = false;
+    notifyListeners();
+    return deleted;
+  }
 
   /// True when user is in a private room (creator or joined) — can open room detail
   bool get canOpenChatRoomDetail {
@@ -184,16 +276,18 @@ class ChatViewModel extends BaseViewModel {
       }
 
       return success;
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (kDebugMode) {
         print('❌ Error deleting chat room: $e');
       }
-      return false;
+      final appException = ExceptionMapper.mapToAppException(e, stackTrace);
+      throw appException;
     }
   }
 
-  /// Load private chat rooms from Firestore
-  void loadPrivateChatRooms() {
+  /// Load private chat rooms from Firestore.
+  /// [festivalId] - When null: 1:1 DMs only (for chat list). When set: festival-scoped private rooms (for chat room screen private tab).
+  void loadPrivateChatRooms({String? festivalId}) {
     final currentUser = _authService.currentUser;
     if (currentUser == null) {
       if (kDebugMode) {
@@ -202,18 +296,25 @@ class ChatViewModel extends BaseViewModel {
       return;
     }
 
-    // Cancel existing subscription
+    setBusy(true);
+
+    // Cancel existing subscription and clear list so UI doesn't show stale data
+    // (e.g. DMs from chat list when we're now loading festival-scoped private rooms)
     _privateChatsSubscription?.cancel();
     _privateChatsSubscription = null;
+    _privateChats = [];
+    notifyListeners();
 
     _privateChatsSubscription = _firestoreService
-        .getPrivateChatRoomsForUser(currentUser.uid)
+        .getPrivateChatRoomsForUser(currentUser.uid, festivalId: festivalId)
         .listen(
-          (chatRoomsData) {
+          (chatRoomsData) async {
             if (isDisposed) return;
 
+            final currentUserId = currentUser.uid;
+
             // Convert to UI format
-            _privateChats = chatRoomsData.map((roomData) {
+            final baseList = chatRoomsData.map((roomData) {
               final lastMessageTime = roomData['lastMessageTime'] as Timestamp?;
               String timestamp = '';
               if (lastMessageTime != null) {
@@ -225,18 +326,57 @@ class ChatViewModel extends BaseViewModel {
                 timestamp = '$displayHour:$minute $period';
               }
 
-              return {
+              return <String, dynamic>{
                 'name': roomData['name'] as String? ?? 'Chat Room',
                 'chatRoomId': roomData['chatRoomId'] as String?,
                 'lastMessage': roomData['lastMessage'] as String? ?? '',
                 'timestamp': timestamp,
-                'unreadCount': 0, // TODO: Implement unread count
+                'unreadCount': 0,
                 'isActive': true,
                 'members': roomData['members'] as List<dynamic>? ?? [],
                 'createdBy': roomData['createdBy'] as String?,
               };
             }).toList();
 
+            // Enrich with other user's photo and name for WhatsApp-style list (with cache)
+            final enriched = <Map<String, dynamic>>[];
+            for (final room in baseList) {
+              final members = room['members'] as List<dynamic>? ?? [];
+              String? otherUserId;
+              for (final m in members) {
+                final id = m?.toString();
+                if (id != null && id.isNotEmpty && id != currentUserId) {
+                  otherUserId = id;
+                  break;
+                }
+              }
+
+              final enrichedRoom = Map<String, dynamic>.from(room);
+              if (otherUserId != null) {
+                final cached = _otherUserCache[otherUserId];
+                if (cached != null) {
+                  enrichedRoom['otherUserPhotoUrl'] = _sanitizeProfilePhotoUrl(cached['photoUrl'] as String?);
+                  enrichedRoom['otherUserName'] = cached['displayName'];
+                } else {
+                  try {
+                    final userData = await _firestoreService.getUserData(otherUserId);
+                    if (userData != null && !isDisposed) {
+                      final rawPhotoUrl = userData['photoUrl'] as String? ?? userData['image'] as String?;
+                      final photoUrl = _sanitizeProfilePhotoUrl(rawPhotoUrl);
+                      final displayName = userData['displayName'] as String? ?? userData['username'] as String? ?? room['name'];
+                      _otherUserCache[otherUserId] = {'photoUrl': photoUrl, 'displayName': displayName};
+                      enrichedRoom['otherUserPhotoUrl'] = photoUrl;
+                      enrichedRoom['otherUserName'] = displayName;
+                    }
+                  } catch (_) {}
+                }
+              }
+              enriched.add(enrichedRoom);
+            }
+
+            if (isDisposed) return;
+            _privateChats = enriched;
+            setBusy(false);
             notifyListeners();
 
             if (kDebugMode) {
@@ -247,6 +387,7 @@ class ChatViewModel extends BaseViewModel {
             if (kDebugMode) {
               print('Error in private chat rooms stream: $error');
             }
+            if (!isDisposed) setBusy(false);
           },
         );
   }
@@ -318,6 +459,7 @@ class ChatViewModel extends BaseViewModel {
 
     // Clear any existing messages first to prevent showing old/dummy messages
     _messages.clear();
+    setBusy(true);
     notifyListeners();
 
     // Cancel any existing subscription before starting a new one
@@ -356,12 +498,13 @@ class ChatViewModel extends BaseViewModel {
                           userData['username'] as String? ?? 
                           currentUser.displayName ?? 
                           'User';
-        _currentUserPhotoUrl = userData['photoUrl'] as String? ?? 
-                              currentUser.photoURL;
+        _currentUserPhotoUrl = _sanitizeProfilePhotoUrl(
+          userData['photoUrl'] as String? ?? currentUser.photoURL,
+        );
       } else {
         // Fallback to Firebase Auth data
         _currentUsername = currentUser.displayName ?? 'User';
-        _currentUserPhotoUrl = currentUser.photoURL;
+        _currentUserPhotoUrl = _sanitizeProfilePhotoUrl(currentUser.photoURL);
       }
     } catch (e) {
       if (kDebugMode) {
@@ -370,7 +513,7 @@ class ChatViewModel extends BaseViewModel {
       // Fallback to Firebase Auth data
       final currentUser = _authService.currentUser;
       _currentUsername = currentUser?.displayName ?? 'User';
-      _currentUserPhotoUrl = currentUser?.photoURL;
+      _currentUserPhotoUrl = _sanitizeProfilePhotoUrl(currentUser?.photoURL);
     }
   }
 
@@ -424,15 +567,20 @@ class ChatViewModel extends BaseViewModel {
             final newMessages = <ChatMessageModel>[];
             for (var messageData in messagesData) {
               try {
-                // Create a mock DocumentSnapshot for fromFirestore
+                final lat = messageData['lat'];
+                final lng = messageData['lng'];
                 final message = ChatMessageModel(
                   messageId: messageData['messageId'] as String?,
                   userId: messageData['userId'] as String? ?? '',
                   username: messageData['username'] as String? ?? 'Unknown',
                   content: messageData['content'] as String? ?? '',
                   createdAt: (messageData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-                  userPhotoUrl: messageData['userPhotoUrl'] as String?,
+                  userPhotoUrl: _sanitizeProfilePhotoUrl(messageData['userPhotoUrl'] as String?),
                   chatRoomId: messageData['chatRoomId'] as String? ?? _chatRoomId ?? '',
+                  type: messageData['type'] as String?,
+                  lat: lat is num ? lat.toDouble() : null,
+                  lng: lng is num ? lng.toDouble() : null,
+                  festivalName: messageData['festivalName'] as String?,
                 );
                 newMessages.add(message);
               } catch (e) {
@@ -443,6 +591,7 @@ class ChatViewModel extends BaseViewModel {
             }
 
             _messages = newMessages;
+            if (!isDisposed) setBusy(false);
             notifyListeners();
 
             // Auto-scroll to bottom after a short delay to allow UI to update
@@ -460,6 +609,7 @@ class ChatViewModel extends BaseViewModel {
             if (kDebugMode) {
               print('Error in messages stream: $error');
             }
+            if (!isDisposed) setBusy(false);
           },
         );
   }
@@ -553,10 +703,10 @@ class ChatViewModel extends BaseViewModel {
     }
   }
 
-  /// Send a message to the chat room
-  Future<void> sendMessage() async {
+  /// Send a message to the chat room. Returns true on success, false on failure (message text is restored on failure).
+  Future<bool> sendMessage() async {
     if (messageController.text.trim().isEmpty || _chatRoomId == null) {
-      return;
+      return false;
     }
 
     final currentUser = _authService.currentUser;
@@ -564,11 +714,12 @@ class ChatViewModel extends BaseViewModel {
       if (kDebugMode) {
         print('⚠️ User not authenticated, cannot send message');
       }
-      return;
+      return false;
     }
 
     final content = messageController.text.trim();
     messageController.clear();
+    _isSendingMessage = true;
     notifyListeners();
 
     try {
@@ -577,7 +728,7 @@ class ChatViewModel extends BaseViewModel {
         userId: currentUser.uid,
         username: _currentUsername ?? 'User',
         content: content,
-        userPhotoUrl: _currentUserPhotoUrl,
+        userPhotoUrl: _sanitizeProfilePhotoUrl(_currentUserPhotoUrl),
       );
 
       if (kDebugMode) {
@@ -607,13 +758,17 @@ class ChatViewModel extends BaseViewModel {
           );
         }
       }
+      _isSendingMessage = false;
+      notifyListeners();
+      return true;
     } catch (e) {
       if (kDebugMode) {
         print('❌ Error sending message: $e');
       }
-      // Restore message text on error
       messageController.text = content;
+      _isSendingMessage = false;
       notifyListeners();
+      return false;
     }
   }
 
@@ -639,6 +794,7 @@ class ChatViewModel extends BaseViewModel {
     if (kDebugMode) {
       print('[NOTIF] Trigger: chatRoomName=$roomName');
     }
+    // Single request for any group size. Backend (sendNotification) must send exactly one FCM per userId in the list, not one message to the whole list per userId.
     NotificationServiceApi.sendPushNotification(
       userIds: otherMemberIds,
       title: _currentUsername ?? 'New message',

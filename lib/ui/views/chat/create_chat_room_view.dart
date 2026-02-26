@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/providers/festival_provider.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
@@ -319,7 +321,13 @@ class CreateChatRoomView extends BaseView<CreateChatRoomViewModel> {
       width: double.infinity,
       height: 50,
       child: ElevatedButton(
-        onPressed: () => viewModel.createChatRoom(),
+        onPressed: () {
+          final festival = context.read<FestivalProvider>().selectedFestival;
+          viewModel.createChatRoom(
+            festivalId: festival?.id.toString(),
+            festivalTitle: festival?.title,
+          );
+        },
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.accent,
           shape: RoundedRectangleBorder(

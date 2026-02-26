@@ -124,19 +124,9 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (widget.onBack != null) {
-          widget.onBack!();
-          return false;
-        }
-        return true;
-      },
-      child: GestureDetector(
-        onTap: () {
-          // Dismiss keyboard when tapping outside
-          FocusScope.of(context).unfocus();
-        },
+    // Device back is handled by parent (NavBaar) so it can switch to Discover tab instead of popping.
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         backgroundColor: AppColors.screenBackground,
         resizeToAvoidBottomInset: false,
@@ -154,7 +144,6 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
             ],
           ),
         ),
-      ),
       ),
     );
   }
@@ -182,15 +171,20 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
                 },
           ),
           SizedBox(width: context.getConditionalSpacing()),
-          // Title - Flexible to prevent overflow
+          // Title: "Festival Name Rumour" or fallback to "RUMORS" (minWidth: 0 allows ellipsis when long)
           Expanded(
-            child: ResponsiveTextWidget(
-              AppStrings.rumors,
-              fontSize: context.getConditionalMainFont(),
-              color: AppColors.white,
-              fontWeight: FontWeight.bold,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 0),
+              child: ResponsiveTextWidget(
+                viewModel.festivalTitle != null && viewModel.festivalTitle!.isNotEmpty
+                    ? '${viewModel.festivalTitle} Rumour'
+                    : AppStrings.rumors,
+                fontSize: context.getConditionalMainFont(),
+                color: AppColors.white,
+                fontWeight: FontWeight.bold,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
 
@@ -210,16 +204,29 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
 
   Widget _buildFeedList(BuildContext context, RumorsViewModel viewModel) {
     if (viewModel.isLoading && viewModel.posts.isEmpty) {
-      return const LoadingWidget(message: AppStrings.loadingPosts);
+      return SizedBox.expand(
+        child: Center(
+          child: LoadingWidget(
+            message: AppStrings.loadingPosts,
+            color: AppColors.black,
+          ),
+        ),
+      );
     }
 
     if (viewModel.posts.isEmpty && !viewModel.isLoading) {
-      return Center(
-        child: ResponsiveTextWidget(
-          AppStrings.noPostsAvailable,
-          textType: TextType.body,
-          color: AppColors.primary,
-          fontSize: AppDimensions.textM,
+      return SizedBox.expand(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
+            child: ResponsiveTextWidget(
+              AppStrings.noRumorsToShow,
+              textType: TextType.body,
+              color: AppColors.black,
+              fontSize: AppDimensions.textM,
+              textAlign: TextAlign.center,
+            ),
+          ),
         ),
       );
     }

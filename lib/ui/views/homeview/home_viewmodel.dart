@@ -115,11 +115,12 @@ class HomeViewModel extends BaseViewModel {
               }
             }
 
-            // Process new posts and add them to the beginning of allPosts
+            // Process new posts: only prepend posts that are actually newer than our current newest.
+            // (Stream limit can be larger than our list, so "not in loadedPostIds" may be older posts.)
             if (newPostsData.isNotEmpty) {
-              if (kDebugMode) {
-                print('🆕 Detected ${newPostsData.length} new post(s) from other users');
-              }
+              final newestCreatedAt = allPosts.isNotEmpty && allPosts.first.createdAt != null
+                  ? allPosts.first.createdAt!
+                  : null;
 
               final newPosts = <PostModel>[];
               for (var data in newPostsData) {
@@ -127,7 +128,10 @@ class HomeViewModel extends BaseViewModel {
                   final newPost = PostModel.fromFirestore(
                     _createDocumentSnapshot(data),
                   );
-                  if (newPost.userId != null && newPost.userId!.isNotEmpty) {
+                  if (newPost.userId == null || newPost.userId!.isEmpty) continue;
+                  // Only treat as new if it's actually newer than our current top (or we have no posts)
+                  if (newestCreatedAt == null ||
+                      (newPost.createdAt != null && newPost.createdAt!.isAfter(newestCreatedAt))) {
                     newPosts.add(newPost);
                   }
                 } catch (e) {
@@ -137,8 +141,13 @@ class HomeViewModel extends BaseViewModel {
                 }
               }
 
-              // Add new posts to the beginning of allPosts (newest first)
+              // Sort by createdAt descending so newest is first, then add to the beginning
               if (newPosts.isNotEmpty) {
+                newPosts.sort((a, b) {
+                  final aTime = a.createdAt ?? DateTime(0);
+                  final bTime = b.createdAt ?? DateTime(0);
+                  return bTime.compareTo(aTime);
+                });
                 allPosts.insertAll(0, newPosts);
                 
                 // Enrich new posts with user photos

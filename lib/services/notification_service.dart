@@ -7,6 +7,10 @@ class NotificationServiceApi {
       "https://us-central1-crapapps-65472.cloudfunctions.net";
 
   /// Send push notification to multiple users by userIds.
+  /// Single request regardless of group size. The Cloud Function (sendNotification) must
+  /// send exactly one FCM message per userId in [userIds] (e.g. for each user fetch their
+  /// tokens and send once). It must NOT send one message to the entire list per userId,
+  /// or recipients will get duplicate notifications (one per member in the group).
   /// [chatRoomId] optional; when set, included in FCM data so recipient can suppress
   /// notification if they are currently viewing that room.
   /// [chatRoomName] optional; when set, shown in the notification (e.g. in title).

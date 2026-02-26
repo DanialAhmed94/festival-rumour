@@ -282,7 +282,8 @@ class CreateChatRoomViewModel extends BaseViewModel {
     return _selectedContacts.contains(contactId);
   }
 
-  Future<void> createChatRoom() async {
+  /// [festivalId] and [festivalTitle] - pass from view (Provider.of<FestivalProvider>(context).selectedFestival) to scope room to selected festival.
+  Future<void> createChatRoom({String? festivalId, String? festivalTitle}) async {
     if (titleController.text.trim().isEmpty) {
       setError(AppStrings.pleaseEnterChatRoomTitle);
       return;
@@ -338,11 +339,13 @@ class CreateChatRoomViewModel extends BaseViewModel {
         return;
       }
 
-      // Create private chat room in Firestore
+      // Create private chat room in Firestore (scoped to selected festival when provided by view)
       final chatRoomId = await _firestoreService.createPrivateChatRoom(
         chatRoomName: chatRoomName,
         creatorId: currentUser.uid,
         memberIds: selectedMemberIds,
+        festivalId: festivalId,
+        festivalTitle: festivalTitle,
       );
 
       if (kDebugMode) {

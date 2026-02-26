@@ -9,6 +9,11 @@ class ChatMessageModel {
   final DateTime createdAt;
   final String? userPhotoUrl;
   final String chatRoomId;
+  /// Optional: 'location' for shared-location messages
+  final String? type;
+  final double? lat;
+  final double? lng;
+  final String? festivalName;
 
   ChatMessageModel({
     this.messageId,
@@ -18,13 +23,21 @@ class ChatMessageModel {
     required this.createdAt,
     this.userPhotoUrl,
     required this.chatRoomId,
+    this.type,
+    this.lat,
+    this.lng,
+    this.festivalName,
   });
+
+  bool get isLocationMessage =>
+      type == 'location' && lat != null && lng != null;
 
   /// Create ChatMessageModel from Firestore document
   factory ChatMessageModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final createdAt = data['createdAt'] as Timestamp?;
-    
+    final lat = data['lat'];
+    final lng = data['lng'];
     return ChatMessageModel(
       messageId: doc.id,
       userId: data['userId'] as String? ?? '',
@@ -33,12 +46,16 @@ class ChatMessageModel {
       createdAt: createdAt?.toDate() ?? DateTime.now(),
       userPhotoUrl: data['userPhotoUrl'] as String?,
       chatRoomId: data['chatRoomId'] as String? ?? '',
+      type: data['type'] as String?,
+      lat: lat is num ? lat.toDouble() : null,
+      lng: lng is num ? lng.toDouble() : null,
+      festivalName: data['festivalName'] as String?,
     );
   }
 
   /// Convert ChatMessageModel to Map for Firestore
   Map<String, dynamic> toFirestore() {
-    return {
+    final map = <String, dynamic>{
       'userId': userId,
       'username': username,
       'content': content,
@@ -46,6 +63,11 @@ class ChatMessageModel {
       'userPhotoUrl': userPhotoUrl,
       'chatRoomId': chatRoomId,
     };
+    if (type != null) map['type'] = type;
+    if (lat != null) map['lat'] = lat;
+    if (lng != null) map['lng'] = lng;
+    if (festivalName != null) map['festivalName'] = festivalName;
+    return map;
   }
 
   /// Get time ago string (e.g., "5 minutes ago", "2:30 PM")
@@ -85,6 +107,10 @@ class ChatMessageModel {
     DateTime? createdAt,
     String? userPhotoUrl,
     String? chatRoomId,
+    String? type,
+    double? lat,
+    double? lng,
+    String? festivalName,
   }) {
     return ChatMessageModel(
       messageId: messageId ?? this.messageId,
@@ -94,6 +120,10 @@ class ChatMessageModel {
       createdAt: createdAt ?? this.createdAt,
       userPhotoUrl: userPhotoUrl ?? this.userPhotoUrl,
       chatRoomId: chatRoomId ?? this.chatRoomId,
+      type: type ?? this.type,
+      lat: lat ?? this.lat,
+      lng: lng ?? this.lng,
+      festivalName: festivalName ?? this.festivalName,
     );
   }
 }

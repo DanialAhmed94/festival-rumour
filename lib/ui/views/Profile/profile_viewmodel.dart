@@ -57,6 +57,9 @@ class ProfileViewModel extends BaseViewModel {
   // Favorite festivals state
   int _favoriteFestivalsCount = 0;
   StreamSubscription<DocumentSnapshot>? _favoriteFestivalsSubscription;
+
+  // Attended festivals count (default 0)
+  int _attendedFestivalsCount = 0;
   
   // User search functionality
   String _userSearchQuery = '';
@@ -112,6 +115,7 @@ class ProfileViewModel extends BaseViewModel {
   int get followersCount => _followersCount;
   int get followingCount => _followingCount;
   int get favoriteFestivalsCount => _favoriteFestivalsCount;
+  int get attendedFestivalsCount => _attendedFestivalsCount;
   
   // Getters for selected post data (used when navigating via sub-navigation)
   List<Map<String, dynamic>>? get selectedPostData => _selectedPostData;
@@ -224,6 +228,7 @@ class ProfileViewModel extends BaseViewModel {
       _followersCount = 0;
       _followingCount = 0;
       _favoriteFestivalsCount = 0;
+      _attendedFestivalsCount = 0;
       // Cancel any existing follow status loading
       // Cancel any existing listeners
       _userDataSubscription?.cancel();
@@ -303,6 +308,9 @@ class ProfileViewModel extends BaseViewModel {
           // Load favorite festivals count (ensured to be non-negative)
           final favoriteIds = await _firestoreService.getFavoriteFestivalIds(targetUserId);
           _favoriteFestivalsCount = favoriteIds.length.clamp(0, double.infinity).toInt();
+
+          // Load attended festivals count (ensured to be non-negative)
+          _attendedFestivalsCount = (await _firestoreService.getAttendedFestivalsCount(targetUserId)).clamp(0, 0x7fffffff);
           
           // Load display name and photo URL
           if (_viewingUserId != null) {
@@ -934,6 +942,22 @@ class ProfileViewModel extends BaseViewModel {
                       updated = true;
                     }
                   }
+
+                  // Update attended festivals count from real-time updates
+                  final attendedCount = data['attendedFestivalsCount'];
+                  if (attendedCount != null) {
+                    final newCount = (attendedCount is int
+                        ? attendedCount
+                        : (attendedCount is num ? attendedCount.toInt() : 0))
+                        .clamp(0, 0x7fffffff);
+                    if (_attendedFestivalsCount != newCount) {
+                      if (kDebugMode) {
+                        print('🔄 Attended festivals count updated: $_attendedFestivalsCount -> $newCount');
+                      }
+                      _attendedFestivalsCount = newCount;
+                      updated = true;
+                    }
+                  }
                   
                   if (updated) {
                     notifyListeners();
@@ -1194,6 +1218,25 @@ class ProfileViewModel extends BaseViewModel {
         notifyListeners();
       }
     });
+  }
+
+  /// Get or create a DM room with another user. Returns chat room ID or null on failure.
+  Future<String?> getOrCreateDmRoomWith(String otherUserId, String? otherUserName) async {
+    final currentUserId = _authService.currentUser?.uid ?? _authService.userUid;
+    if (currentUserId == null || currentUserId.isEmpty) return null;
+    if (currentUserId == otherUserId) return null;
+    try {
+      return await _firestoreService.getOrCreateDmRoom(
+        currentUserId: currentUserId,
+        otherUserId: otherUserId,
+        otherUserName: otherUserName,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Error getOrCreateDmRoom: $e');
+      }
+      return null;
+    }
   }
 
   /// Navigate to a user's profile

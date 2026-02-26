@@ -77,10 +77,13 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 });
             }
 
+            // One notification per user: dedupe so same user is never processed twice (avoids duplicate pushes when client/room has duplicate member ids).
+            const uniqueUserIds = [...new Set(userIds)];
+
             const tokens = [];
 
-            // 🔥 Fetch users from Firestore
-            for (const uid of userIds) {
+            // 🔥 Fetch one token per user from Firestore (one FCM send per user)
+            for (const uid of uniqueUserIds) {
                 const userDoc = await admin.firestore().collection("users").doc(uid).get();
 
                 if (!userDoc.exists) continue;
@@ -90,7 +93,7 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 // ✅ Check correct app
                 if (userData.appIdentifier !== "festivalrumor") continue;
 
-                // ✅ Check token: fcmToken (string) or fcmTokens (array)
+                // ✅ Check token: fcmToken (string) or fcmTokens (array) — take at most one token per user
                 let token = userData.fcmToken;
                 if (!token && userData.fcmTokens && Array.isArray(userData.fcmTokens) && userData.fcmTokens.length > 0) {
                     token = userData.fcmTokens[0];
@@ -100,15 +103,18 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 }
             }
 
-            if (tokens.length === 0) {
-                console.log("[NOTIF] Function: no valid FCM tokens found for userIds", userIds);
+            // Dedupe tokens so the same device never gets the same notification twice (e.g. same token stored in fcmToken and fcmTokens[0], or duplicate userIds before uniqueUserIds).
+            const uniqueTokens = [...new Set(tokens)];
+
+            if (uniqueTokens.length === 0) {
+                console.log("[NOTIF] Function: no valid FCM tokens found for userIds", uniqueUserIds);
                 return res.status(200).json({
                     success: true,
                     message: "No valid FCM tokens found",
                     sentCount: 0,
                 });
             }
-            console.log("[NOTIF] Function: sending to", tokens.length, "token(s)");
+            console.log("[NOTIF] Function: sending to", uniqueTokens.length, "token(s) (one per user)");
 
             const notificationTitle = chatRoomName && chatRoomName.trim()
                 ? `${chatRoomName.trim()} · ${title || "New Message"}`
@@ -142,9 +148,9 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 },
             };
 
-            // 🔥 Send to multiple tokens
+            // 🔥 Send one message per token (each recipient gets exactly one notification)
             const response = await admin.messaging().sendEachForMulticast({
-                tokens: tokens,
+                tokens: uniqueTokens,
                 ...payload,
             });
             console.log("[NOTIF] Function: FCM result", { sentCount: response.successCount, failedCount: response.failureCount });

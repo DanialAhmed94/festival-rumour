@@ -1,4 +1,5 @@
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
+import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/attended_festivals_tab.dart';
 import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/festivals_tab.dart';
 import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/followers_tab.dart';
 import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/following_tab.dart';
@@ -16,7 +17,7 @@ import 'profile_list_view_model.dart';
 
 
 class ProfileListView extends BaseView<ProfileListViewModel> {
-  final int initialTab; // 0 = Followers, 1 = Following, 2 = Festivals
+  final int initialTab; // 0 = Followers, 1 = Following, 2 = Favourite Festivals, 3 = Attended festivals
   final String Username;
   final String? userId; // User ID whose followers/following we're viewing
   final VoidCallback? onBack;
@@ -61,12 +62,10 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
   @override
   Widget buildView(BuildContext context, ProfileListViewModel viewModel) {
     // Load festivals if festivals tab is selected and not loaded yet
-    // This handles both initial load (initialTab == 2) and when switching to festivals tab
     if (viewModel.currentTab == 2 && 
         !viewModel.hasLoadedFestivals && 
         !viewModel.isLoadingFestivals) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Double-check conditions before loading to prevent race conditions
         if (viewModel.currentTab == 2 && 
             !viewModel.hasLoadedFestivals && 
             !viewModel.isLoadingFestivals) {
@@ -74,6 +73,21 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
             print('🔄 [ProfileListView.buildView] Loading festivals for initialTab: $initialTab');
           }
           viewModel.loadFavoriteFestivals(context);
+        }
+      });
+    }
+    // Load attended festivals if Attended tab is selected and not loaded yet
+    if (viewModel.currentTab == 3 && 
+        !viewModel.hasLoadedAttended && 
+        !viewModel.isLoadingAttended) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (viewModel.currentTab == 3 && 
+            !viewModel.hasLoadedAttended && 
+            !viewModel.isLoadingAttended) {
+          if (kDebugMode) {
+            print('🔄 [ProfileListView.buildView] Loading attended festivals for tab 3');
+          }
+          viewModel.loadAttendedFestivals();
         }
       });
     }
@@ -138,14 +152,11 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
                     onTap: () => viewModel.setTab(1),
                   ),
                   _buildTabButton(
-                    label: AppStrings.festivals,
+                    label: 'Favourite Festivals',
                     isActive: viewModel.currentTab == 2,
                     onTap: () {
                       viewModel.setTab(2);
-                      // Load favorite festivals when festivals tab is selected
-                      // Only load if not already loaded (prevents infinite loop on empty search results)
                       WidgetsBinding.instance.addPostFrameCallback((_) {
-                        // Double-check conditions before loading to prevent race conditions and loops
                         if (viewModel.currentTab == 2 && 
                             !viewModel.hasLoadedFestivals && 
                             !viewModel.isLoadingFestivals) {
@@ -153,6 +164,11 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
                         }
                       });
                     },
+                  ),
+                  _buildTabButton(
+                    label: 'Attended festivals',
+                    isActive: viewModel.currentTab == 3,
+                    onTap: () => viewModel.setTab(3),
                   ),
                 ],
               ),
@@ -181,6 +197,8 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
         return FollowingTab(viewModel: viewModel);
       case 2:
         return FestivalsTab(viewModel: viewModel);
+      case 3:
+        return AttendedFestivalsTab(viewModel: viewModel);
       default:
         return FollowersTab(viewModel: viewModel);
     }

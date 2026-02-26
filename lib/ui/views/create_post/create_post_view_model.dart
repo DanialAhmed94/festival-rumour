@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:metadata_fetch/metadata_fetch.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_durations.dart';
 import '../../../core/viewmodels/base_view_model.dart';
@@ -408,6 +409,35 @@ class CreatePostViewModel extends BaseViewModel {
       final postUrl = postUrlController.text.trim();
       final postUrlOrNull = postUrl.isEmpty ? null : postUrl;
 
+      // Fetch link preview metadata (thumbnail + title) when user posts a URL
+      String? linkPreviewImageUrl;
+      String? linkPreviewTitle;
+      if (postUrlOrNull != null && postUrlOrNull.isNotEmpty) {
+        try {
+          String urlString = postUrlOrNull.trim();
+          if (!urlString.contains(RegExp(r'^https?://', caseSensitive: false))) {
+            urlString = 'https://$urlString';
+          }
+          final metadata = await MetadataFetch.extract(urlString)
+              .timeout(const Duration(seconds: 6));
+          if (metadata != null) {
+            if (metadata.image != null && metadata.image!.trim().isNotEmpty) {
+              final img = metadata.image!.trim();
+              if (img.startsWith('http://') || img.startsWith('https://')) {
+                linkPreviewImageUrl = img;
+              }
+            }
+            if (metadata.title != null && metadata.title!.trim().isNotEmpty) {
+              linkPreviewTitle = metadata.title!.trim();
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('Link preview fetch failed: $e');
+          }
+        }
+      }
+
       // Prepare post data for Firestore
       final postData = {
         'username': username,
@@ -425,6 +455,8 @@ class CreatePostViewModel extends BaseViewModel {
         'userPhotoUrl': userPhotoUrl, // User's profile photo URL
         'userId': currentUser?.uid, // User ID to fetch profile photo if needed
         'postUrl': postUrlOrNull, // Optional URL attached to the post
+        if (linkPreviewImageUrl != null) 'linkPreviewImageUrl': linkPreviewImageUrl,
+        if (linkPreviewTitle != null) 'linkPreviewTitle': linkPreviewTitle,
       };
 
       // Save post to Firestore (use festival collection if in rumors context)
@@ -461,6 +493,8 @@ class CreatePostViewModel extends BaseViewModel {
         userPhotoUrl: userPhotoUrl,
         userId: currentUser?.uid,
         postUrl: postUrlOrNull,
+        linkPreviewImageUrl: linkPreviewImageUrl,
+        linkPreviewTitle: linkPreviewTitle,
       );
 
       // Clear form after successful upload

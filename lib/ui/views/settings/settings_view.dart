@@ -496,6 +496,21 @@ class SettingsView extends BaseView<SettingsViewModel> {
                     fontSize: AppDimensions.textL,
                     color: AppColors.onPrimary,
                   ),
+                  const SizedBox(height: AppDimensions.paddingS),
+                  ResponsiveTextWidget(
+                    AppStrings.badgeScoringTitle,
+                    textType: TextType.body,
+                    fontWeight: FontWeight.w600,
+                    fontSize: AppDimensions.textM,
+                    color: AppColors.grey700,
+                  ),
+                  const SizedBox(height: AppDimensions.spaceXS),
+                  ResponsiveTextWidget(
+                    AppStrings.badgeScoringDescription,
+                    textType: TextType.caption,
+                    fontSize: AppDimensions.textS,
+                    color: AppColors.grey600,
+                  ),
                   const SizedBox(height: AppDimensions.paddingL),
 
                   // 🏅 Each badge item
@@ -761,7 +776,7 @@ class SettingsView extends BaseView<SettingsViewModel> {
             color: AppColors.onPrimary,
           ),
           content: const ResponsiveTextWidget(
-            'Privacy Settings Pro is a paid feature. Please upgrade your plan to access this feature.',
+            'Privacy Settings Pro is a paid feature that allows anonymous posting so you can share without revealing your identity. Please upgrade your plan to access this feature.',
             textType: TextType.body,
             fontSize: AppDimensions.textM,
             color: AppColors.grey600,

@@ -112,6 +112,7 @@ class FirestoreService {
         'email': email,
         'appIdentifier': 'festivalrumor',
         'postCount': 0,
+        'leaderboardScore': 0.0,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
@@ -482,6 +483,43 @@ class FirestoreService {
         exception,
         stackTrace,
         'FirestoreService.searchUsersByName',
+      );
+      rethrow;
+    }
+  }
+
+  /// Share current location with everyone and/or selected users.
+  /// [senderId] current user uid, [senderName] display name.
+  /// [isPublic] true = visible to everyone (e.g. festival map), [recipientIds] specific user IDs when sharing with selected people.
+  /// Stores in collection `locationShares` so recipients can query shares for them.
+  Future<void> shareCurrentLocation({
+    required String senderId,
+    required String senderName,
+    required double lat,
+    required double lng,
+    required bool isPublic,
+    required List<String> recipientIds,
+  }) async {
+    try {
+      final ref = _firestore.collection('locationShares').doc();
+      await ref.set({
+        'senderId': senderId,
+        'senderName': senderName,
+        'lat': lat,
+        'lng': lng,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isPublic': isPublic,
+        'recipientIds': recipientIds,
+      });
+      if (kDebugMode) {
+        print('✅ Location shared: $lat, $lng | public=$isPublic, recipients=${recipientIds.length}');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.shareCurrentLocation',
       );
       rethrow;
     }
@@ -1773,7 +1811,7 @@ class FirestoreService {
         'postCount': FieldValue.increment(count),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-
+      await updateLeaderboardScore(userId);
       if (kDebugMode) {
         print('✅ Incremented post count by $count for user: $userId');
       }
@@ -4173,17 +4211,31 @@ class FirestoreService {
     String? userPhotoUrl,
   }) async {
     try {
-      // Use batch write for atomic updates
+      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+      final roomDoc = await chatRoomRef.get();
+
+      // If room does not exist and this is a DM room (deterministic ID), create it on first message
+      if (!roomDoc.exists) {
+        final memberIds = FirestoreService.parseDmRoomMemberIds(chatRoomId);
+        if (memberIds != null &&
+            memberIds.length == 2 &&
+            memberIds.contains(userId)) {
+          await createPrivateChatRoom(
+            chatRoomName: 'Direct message',
+            creatorId: userId,
+            memberIds: memberIds,
+            fixedChatRoomId: chatRoomId,
+          );
+          if (kDebugMode) {
+            print('✅ Created DM room on first message: $chatRoomId');
+          }
+        } else {
+          throw Exception('Chat room does not exist');
+        }
+      }
+
       final batch = _firestore.batch();
-
-      // Create message document
-      final messageRef =
-          _firestore
-              .collection('chatRooms')
-              .doc(chatRoomId)
-              .collection('messages')
-              .doc();
-
+      final messageRef = chatRoomRef.collection('messages').doc();
       final messageData = {
         'chatRoomId': chatRoomId,
         'userId': userId,
@@ -4194,22 +4246,17 @@ class FirestoreService {
       };
 
       batch.set(messageRef, messageData);
-
-      // Update chat room's lastMessage and lastMessageTime
-      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
       batch.update(chatRoomRef, {
         'lastMessage': content,
         'lastMessageTime': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // Commit batch
       await batch.commit();
 
       if (kDebugMode) {
         print('✅ Sent message to chat room: $chatRoomId');
       }
-
       return messageRef.id;
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
@@ -4219,6 +4266,454 @@ class FirestoreService {
         'FirestoreService.sendChatMessage',
       );
       rethrow;
+    }
+  }
+
+  /// Share current location with one recipient via their 1:1 DM. Creates the DM room if it doesn't exist.
+  /// Sends a special message with type 'location' so the chat UI can show it with festival name and map.
+  Future<void> sendLocationShareToDmRoom({
+    required String senderId,
+    required String senderName,
+    String? senderPhotoUrl,
+    required String recipientId,
+    required double lat,
+    required double lng,
+    String? festivalName,
+  }) async {
+    try {
+      if (kDebugMode) {
+        print('[LocationShare] sendLocationShareToDmRoom: sender=$senderId recipient=$recipientId festivalName=$festivalName');
+      }
+      final chatRoomId = getDeterministicDmRoomId(senderId, recipientId);
+      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+      final roomDoc = await chatRoomRef.get();
+
+      if (!roomDoc.exists) {
+        if (kDebugMode) print('[LocationShare] DM room does not exist, creating: $chatRoomId');
+        await createPrivateChatRoom(
+          chatRoomName: 'Direct message',
+          creatorId: senderId,
+          memberIds: [senderId, recipientId],
+          fixedChatRoomId: chatRoomId,
+        );
+        if (kDebugMode) {
+          print('✅ [LocationShare] Created DM room for location share: $chatRoomId');
+        }
+      } else if (kDebugMode) {
+        print('[LocationShare] DM room already exists: $chatRoomId');
+      }
+
+      final content = festivalName != null && festivalName.isNotEmpty
+          ? 'Shared their location at $festivalName'
+          : 'Shared their location';
+      final messageRef = chatRoomRef.collection('messages').doc();
+      final messageData = {
+        'chatRoomId': chatRoomId,
+        'userId': senderId,
+        'username': senderName,
+        'content': content,
+        'userPhotoUrl': senderPhotoUrl,
+        'createdAt': FieldValue.serverTimestamp(),
+        'type': 'location',
+        'lat': lat,
+        'lng': lng,
+        'festivalName': festivalName ?? '',
+      };
+
+      final batch = _firestore.batch();
+      batch.set(messageRef, messageData);
+      batch.update(chatRoomRef, {
+        'lastMessage': content,
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+
+      if (kDebugMode) {
+        print('✅ [LocationShare] Location share sent to DM room=$chatRoomId content="$content"');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [LocationShare] sendLocationShareToDmRoom failed: $e');
+        print('   stackTrace: $stackTrace');
+      }
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.sendLocationShareToDmRoom',
+      );
+      rethrow;
+    }
+  }
+
+  /// Share current location to an existing group chat room (public or private).
+  /// The room must already exist. Message appears in that chat screen.
+  Future<void> sendLocationShareToChatRoom({
+    required String chatRoomId,
+    required String senderId,
+    required String senderName,
+    String? senderPhotoUrl,
+    required double lat,
+    required double lng,
+    String? festivalName,
+  }) async {
+    try {
+      if (kDebugMode) {
+        print('[LocationShare] sendLocationShareToChatRoom: chatRoomId=$chatRoomId sender=$senderId festivalName=$festivalName');
+      }
+      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+      final roomDoc = await chatRoomRef.get();
+      if (!roomDoc.exists) {
+        if (kDebugMode) print('❌ [LocationShare] Chat room not found: $chatRoomId');
+        throw Exception('Chat room not found: $chatRoomId');
+      }
+      final content = festivalName != null && festivalName.isNotEmpty
+          ? 'Shared their location at $festivalName'
+          : 'Shared their location';
+      final messageRef = chatRoomRef.collection('messages').doc();
+      final messageData = {
+        'chatRoomId': chatRoomId,
+        'userId': senderId,
+        'username': senderName,
+        'content': content,
+        'userPhotoUrl': senderPhotoUrl,
+        'createdAt': FieldValue.serverTimestamp(),
+        'type': 'location',
+        'lat': lat,
+        'lng': lng,
+        'festivalName': festivalName ?? '',
+      };
+      final batch = _firestore.batch();
+      batch.set(messageRef, messageData);
+      batch.update(chatRoomRef, {
+        'lastMessage': content,
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+      if (kDebugMode) {
+        print('✅ [LocationShare] Location share sent to group room=$chatRoomId content="$content"');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [LocationShare] sendLocationShareToChatRoom failed: $e');
+        print('   stackTrace: $stackTrace');
+      }
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.sendLocationShareToChatRoom',
+      );
+      rethrow;
+    }
+  }
+
+  /// Chat rooms (public + private for festival) the user can share location to. Optional name filter.
+  /// [userId] - Current user (must be member of private rooms; public room for festival is included).
+  /// [festivalId] - Festival ID (int) for scoping public/private rooms.
+  /// [festivalName] - Festival name for public room title and ID generation.
+  /// [searchQuery] - If not empty, filter rooms by name containing this (case-insensitive).
+  /// [limit] - Max results (default 20).
+  Future<List<Map<String, dynamic>>> getChatRoomsForLocationShare({
+    required String userId,
+    required int festivalId,
+    required String festivalName,
+    String? searchQuery,
+    int limit = 20,
+  }) async {
+    try {
+      if (kDebugMode) {
+        print('[LocationShare] getChatRoomsForLocationShare: userId=$userId festivalId=$festivalId festivalName=$festivalName searchQuery=$searchQuery limit=$limit');
+      }
+      final results = <Map<String, dynamic>>[];
+      final festivalIdStr = festivalId.toString();
+
+      // 1) Public community room for this festival
+      final publicRoomId = getFestivalChatRoomId(festivalId, festivalName);
+      final publicDoc = await _firestore.collection('chatRooms').doc(publicRoomId).get();
+      if (publicDoc.exists) {
+        final data = publicDoc.data() as Map<String, dynamic>;
+        final name = data['name'] as String? ?? '$festivalName Community';
+        final room = {
+          'type': 'group',
+          'chatRoomId': publicRoomId,
+          'name': name,
+          'isPublic': true,
+        };
+        if (searchQuery == null || searchQuery.trim().isEmpty ||
+            name.toLowerCase().contains(searchQuery.trim().toLowerCase())) {
+          results.add(room);
+          if (kDebugMode) print('[LocationShare] Added public room: $publicRoomId name="$name"');
+        }
+      } else if (kDebugMode) {
+        print('[LocationShare] Public room not found: $publicRoomId');
+      }
+
+      // 2) Private rooms for this festival where user is creator or member
+      final createdQuery = _firestore
+          .collection('chatRooms')
+          .where('isPublic', isEqualTo: false)
+          .where('createdBy', isEqualTo: userId)
+          .where('festivalId', isEqualTo: festivalIdStr);
+      final memberQuery = _firestore
+          .collection('chatRooms')
+          .where('isPublic', isEqualTo: false)
+          .where('members', arrayContains: userId)
+          .where('festivalId', isEqualTo: festivalIdStr);
+
+      final createdSnapshot = await createdQuery.get();
+      final memberSnapshot = await memberQuery.get();
+      final seenIds = <String>{publicRoomId};
+
+      for (var doc in createdSnapshot.docs) {
+        if (seenIds.contains(doc.id)) continue;
+        seenIds.add(doc.id);
+        final data = doc.data();
+        data['chatRoomId'] = doc.id;
+        data['type'] = 'group';
+        data['name'] = data['name'] as String? ?? 'Private group';
+        data['isPublic'] = false;
+        final name = data['name'] as String;
+        if (searchQuery == null || searchQuery.trim().isEmpty ||
+            name.toLowerCase().contains(searchQuery.trim().toLowerCase())) {
+          results.add(data);
+        }
+      }
+      for (var doc in memberSnapshot.docs) {
+        if (seenIds.contains(doc.id)) continue;
+        seenIds.add(doc.id);
+        final data = doc.data();
+        data['chatRoomId'] = doc.id;
+        data['type'] = 'group';
+        data['name'] = data['name'] as String? ?? 'Private group';
+        data['isPublic'] = false;
+        final name = data['name'] as String;
+        if (searchQuery == null || searchQuery.trim().isEmpty ||
+            name.toLowerCase().contains(searchQuery.trim().toLowerCase())) {
+          results.add(data);
+        }
+      }
+
+      results.sort((a, b) => (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase()));
+      final list = results.take(limit).toList();
+      if (kDebugMode) {
+        print('[LocationShare] getChatRoomsForLocationShare result: ${list.length} rooms (created=${createdSnapshot.docs.length} member=${memberSnapshot.docs.length})');
+      }
+      return list;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [LocationShare] getChatRoomsForLocationShare failed: $e');
+        print('   stackTrace: $stackTrace');
+      }
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.getChatRoomsForLocationShare',
+      );
+      rethrow;
+    }
+  }
+
+  /// Save an attended festival for the user (photo + location). Used for "Mark as attended" flow.
+  /// Stored in users/{userId}/attendedFestivals/{festivalId}. Increments user's attendedFestivalsCount when new.
+  Future<void> saveAttendedFestival({
+    required String userId,
+    required int festivalId,
+    required String festivalTitle,
+    required String imageUrl,
+    required double lat,
+    required double lng,
+  }) async {
+    try {
+      final subRef = _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('attendedFestivals')
+          .doc(festivalId.toString());
+      final doc = await subRef.get();
+      final isNew = !doc.exists;
+      await subRef.set({
+        'festivalId': festivalId,
+        'festivalTitle': festivalTitle,
+        'imageUrl': imageUrl,
+        'lat': lat,
+        'lng': lng,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (isNew) {
+        final userRef = _firestore.collection('users').doc(userId);
+        await userRef.set({
+          'attendedFestivalsCount': FieldValue.increment(1),
+        }, SetOptions(merge: true));
+        await updateLeaderboardScore(userId);
+      }
+      if (kDebugMode) {
+        print('✅ [Attended] saveAttendedFestival: userId=$userId festivalId=$festivalId isNew=$isNew');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) print('❌ [Attended] saveAttendedFestival failed: $e');
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.saveAttendedFestival',
+      );
+      rethrow;
+    }
+  }
+
+  /// Get attended festivals count for a user (from user document, same pattern as followers count).
+  Future<int> getAttendedFestivalsCount(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (!doc.exists) return 0;
+      final data = doc.data() as Map<String, dynamic>?;
+      final count = data?['attendedFestivalsCount'];
+      if (count == null) return 0;
+      if (count is int) return count.clamp(0, 0x7fffffff);
+      if (count is num) return count.toInt().clamp(0, 0x7fffffff);
+      return 0;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.getAttendedFestivalsCount',
+      );
+      return 0;
+    }
+  }
+
+  /// Leaderboard score: 50% festivals attended, 50% global/festival activity (posts).
+  /// Score 0–100: normAttended = min(100, attendedFestivalsCount*2), normActivity = min(100, postCount).
+  static double _computeLeaderboardScore(int attendedCount, int postCount) {
+    final normAttended = (attendedCount * 2).clamp(0, 100).toDouble();
+    final normActivity = postCount.clamp(0, 100).toDouble();
+    return (normAttended + normActivity) / 2;
+  }
+
+  /// Update user's leaderboardScore from current attendedFestivalsCount and postCount.
+  Future<void> updateLeaderboardScore(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (!doc.exists) return;
+      final data = doc.data() as Map<String, dynamic>?;
+      final attended = (data?['attendedFestivalsCount'] is int)
+          ? (data!['attendedFestivalsCount'] as int)
+          : ((data?['attendedFestivalsCount'] is num)
+              ? (data!['attendedFestivalsCount'] as num).toInt()
+              : 0);
+      final posts = (data?['postCount'] is int)
+          ? (data!['postCount'] as int)
+          : ((data?['postCount'] is num) ? (data!['postCount'] as num).toInt() : 0);
+      final score = _computeLeaderboardScore(attended, posts);
+      await _firestore.collection('users').doc(userId).set({
+        'leaderboardScore': score,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (kDebugMode) {
+        print('✅ [Leaderboard] updateLeaderboardScore: userId=$userId score=$score (attended=$attended posts=$posts)');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) print('❌ [Leaderboard] updateLeaderboardScore failed: $e');
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.updateLeaderboardScore',
+      );
+    }
+  }
+
+  /// Get top users by leaderboard score (top contributors/influencers). Default 20.
+  /// Returns list of maps: userId, displayName, photoUrl, leaderboardScore, attendedFestivalsCount, postCount.
+  Future<List<Map<String, dynamic>>> getLeaderboard({int limit = 20}) async {
+    if (kDebugMode) {
+      print('[Leaderboard] getLeaderboard() called, limit=$limit');
+    }
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .where('appIdentifier', isEqualTo: 'festivalrumor')
+          .orderBy('leaderboardScore', descending: true)
+          .limit(limit)
+          .get();
+      if (kDebugMode) {
+        print('[Leaderboard] Firestore query returned ${snapshot.docs.length} docs');
+      }
+      final list = <Map<String, dynamic>>[];
+      for (var doc in snapshot.docs) {
+        final d = doc.data();
+        final displayName = d['displayName'] as String? ?? 'User';
+        final score = (d['leaderboardScore'] is num)
+            ? (d['leaderboardScore'] as num).toDouble()
+            : 0.0;
+        if (kDebugMode) {
+          print('[Leaderboard]   doc ${doc.id}: displayName=$displayName, leaderboardScore=$score, appIdentifier=${d['appIdentifier']}');
+        }
+        list.add({
+          'userId': doc.id,
+          'displayName': displayName,
+          'photoUrl': d['photoUrl'] as String?,
+          'leaderboardScore': score,
+          'attendedFestivalsCount': (d['attendedFestivalsCount'] is int)
+              ? d['attendedFestivalsCount'] as int
+              : ((d['attendedFestivalsCount'] is num)
+                  ? (d['attendedFestivalsCount'] as num).toInt()
+                  : 0),
+          'postCount': (d['postCount'] is int)
+              ? d['postCount'] as int
+              : ((d['postCount'] is num) ? (d['postCount'] as num).toInt() : 0),
+        });
+      }
+      if (kDebugMode) {
+        print('[Leaderboard] getLeaderboard() returning ${list.length} users');
+      }
+      return list;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [Leaderboard] getLeaderboard failed: $e');
+        print('❌ [Leaderboard] stackTrace: $stackTrace');
+      }
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.getLeaderboard',
+      );
+      return [];
+    }
+  }
+
+  /// Get list of attended festivals for a user (for profile Attended tab).
+  Future<List<Map<String, dynamic>>> getAttendedFestivals(String userId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('attendedFestivals')
+          .orderBy('createdAt', descending: true)
+          .get();
+      final list = <Map<String, dynamic>>[];
+      for (var doc in snapshot.docs) {
+        final d = doc.data();
+        list.add({
+          'title': d['festivalTitle'] as String? ?? 'Festival',
+          'location': '', // optional: could store in doc if needed
+        });
+      }
+      return list;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.getAttendedFestivals',
+      );
+      return [];
     }
   }
 
@@ -4799,15 +5294,21 @@ class FirestoreService {
   /// [chatRoomName] - The name of the chat room
   /// [creatorId] - The user ID who created the chat room
   /// [memberIds] - List of user IDs to add as members (includes creator)
+  /// [fixedChatRoomId] - Optional. If provided, use this as the document ID (for deterministic 1:1 DMs).
+  /// [festivalId] - Optional. When set, room is a festival-scoped private room (from chat room screen). When null, room is 1:1 DM.
+  /// [festivalTitle] - Optional. Display name of festival (for festival-scoped private rooms).
   /// Returns the created chat room document ID
   Future<String> createPrivateChatRoom({
     required String chatRoomName,
     required String creatorId,
     required List<String> memberIds,
+    String? fixedChatRoomId,
+    String? festivalId,
+    String? festivalTitle,
   }) async {
     try {
-      // Generate unique chat room ID
-      final chatRoomId = _firestore.collection('chatRooms').doc().id;
+      final chatRoomId =
+          fixedChatRoomId ?? _firestore.collection('chatRooms').doc().id;
 
       // Ensure creator is in members list
       final allMembers = <String>{...memberIds, creatorId}.toList();
@@ -4822,6 +5323,12 @@ class FirestoreService {
         'lastMessageTime': null,
         'updatedAt': FieldValue.serverTimestamp(),
       };
+      if (festivalId != null) {
+        chatRoomData['festivalId'] = festivalId;
+        if (festivalTitle != null) chatRoomData['festivalTitle'] = festivalTitle;
+      } else {
+        chatRoomData['festivalId'] = null; // Explicit 1:1 DM
+      }
 
       await _firestore
           .collection('chatRooms')
@@ -4848,6 +5355,45 @@ class FirestoreService {
       );
       rethrow;
     }
+  }
+
+  /// Deterministic document ID for a 1:1 DM between two users.
+  /// Same pair always yields the same ID. Uses "::" so we can parse member IDs when creating on first message.
+  static String getDeterministicDmRoomId(String uid1, String uid2) {
+    final low = uid1.compareTo(uid2) <= 0 ? uid1 : uid2;
+    final high = uid1.compareTo(uid2) <= 0 ? uid2 : uid1;
+    return 'dm_${low}::$high';
+  }
+
+  /// Parse member IDs from a deterministic DM room ID. Returns [uid1, uid2] or null if not a dm_ room.
+  static List<String>? parseDmRoomMemberIds(String chatRoomId) {
+    if (!chatRoomId.startsWith('dm_')) return null;
+    final parts = chatRoomId.split('::');
+    if (parts.length != 2) return null;
+    final low = parts[0].substring(3); // after "dm_"
+    final high = parts[1];
+    if (low.isEmpty || high.isEmpty) return null;
+    return [low, high];
+  }
+
+  /// Get the deterministic 1:1 DM room ID. Does NOT create the room — room is created when the user sends the first message.
+  /// [currentUserId] - The logged-in user
+  /// [otherUserId] - The other user to message
+  /// Returns the chat room ID (same ID for both users; room doc may not exist yet).
+  Future<String> getOrCreateDmRoom({
+    required String currentUserId,
+    required String otherUserId,
+    String? otherUserName,
+  }) async {
+    if (currentUserId == otherUserId) {
+      throw ArgumentError('Cannot create DM with yourself');
+    }
+    final roomId =
+        FirestoreService.getDeterministicDmRoomId(currentUserId, otherUserId);
+    if (kDebugMode) {
+      print('✅ DM room ID (room created on first message): $roomId');
+    }
+    return roomId;
   }
 
   /// Add members to an existing private chat room (creator only).
@@ -5100,56 +5646,58 @@ class FirestoreService {
   /// Returns chat rooms where user is the creator or a member
   ///
   /// [userId] - The user ID
+  /// [festivalId] - When null: 1:1 DMs only (for chat list). When set: festival-scoped private rooms (for chat room screen).
   /// Returns a stream of chat room data maps
-  Stream<List<Map<String, dynamic>>> getPrivateChatRoomsForUser(String userId) {
+  Stream<List<Map<String, dynamic>>> getPrivateChatRoomsForUser(
+    String userId, {
+    String? festivalId,
+  }) {
     try {
-      // Query chat rooms where:
-      // 1. isPublic == false (private rooms)
-      // 2. createdBy == userId OR members array contains userId
+      // Build queries: isPublic == false, then by festivalId (when set), then createdBy / members
+      Query<Map<String, dynamic>> createdRoomsQuery = _firestore
+          .collection('chatRooms')
+          .where('isPublic', isEqualTo: false)
+          .where('createdBy', isEqualTo: userId);
 
-      // Note: Firestore doesn't support OR queries directly, so we need two queries
-      // We'll combine them using StreamZip
+      Query<Map<String, dynamic>> memberRoomsQuery = _firestore
+          .collection('chatRooms')
+          .where('isPublic', isEqualTo: false)
+          .where('members', arrayContains: userId);
 
-      final createdRoomsStream =
-          _firestore
-              .collection('chatRooms')
-              .where('isPublic', isEqualTo: false)
-              .where('createdBy', isEqualTo: userId)
-              .snapshots();
+      if (festivalId != null) {
+        createdRoomsQuery = createdRoomsQuery.where('festivalId', isEqualTo: festivalId);
+        memberRoomsQuery = memberRoomsQuery.where('festivalId', isEqualTo: festivalId);
+      }
 
-      final memberRoomsStream =
-          _firestore
-              .collection('chatRooms')
-              .where('isPublic', isEqualTo: false)
-              .where('members', arrayContains: userId)
-              .snapshots();
+      final createdRoomsStream = createdRoomsQuery.snapshots();
+      final memberRoomsStream = memberRoomsQuery.snapshots();
 
-      // Combine both streams - use StreamZip or combine manually
+      // Combine both streams
       return createdRoomsStream
           .asyncMap((createdSnapshot) async {
-            // Get member rooms snapshot
-            final memberSnapshot =
-                await _firestore
-                    .collection('chatRooms')
-                    .where('isPublic', isEqualTo: false)
-                    .where('members', arrayContains: userId)
-                    .get();
+            final memberSnapshot = await memberRoomsQuery.get();
 
             final allRooms = <String, Map<String, dynamic>>{};
 
-            // Process created rooms
             for (var doc in createdSnapshot.docs) {
               final data = doc.data() as Map<String, dynamic>;
+              if (festivalId == null) {
+                // 1:1 DMs: include only rooms with no festival (null or missing)
+                final rid = data['festivalId'];
+                if (rid != null && rid.toString().isNotEmpty) continue;
+              }
               data['chatRoomId'] = doc.id;
               allRooms[doc.id] = data;
             }
 
-            // Process member rooms (may overlap with created rooms)
             for (var doc in memberSnapshot.docs) {
               final data = doc.data() as Map<String, dynamic>;
+              if (festivalId == null) {
+                final rid = data['festivalId'];
+                if (rid != null && rid.toString().isNotEmpty) continue;
+              }
               data['chatRoomId'] = doc.id;
-              allRooms[doc.id] =
-                  data; // Will overwrite if already exists (no duplicates)
+              allRooms[doc.id] = data;
             }
 
             final roomsList = allRooms.values.toList();
@@ -5479,7 +6027,7 @@ class FirestoreService {
           'postCount': newCount,
           'updatedAt': FieldValue.serverTimestamp(),
         });
-
+        await updateLeaderboardScore(userId);
         if (kDebugMode) {
           print(
             '✅ Decremented post count for user $userId: $currentCount -> $newCount (decrement by $count)',

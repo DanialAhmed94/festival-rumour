@@ -55,7 +55,7 @@ class FollowingTab extends StatelessWidget {
                           'Not following anyone yet',
                           style: TextStyle(
                             color: AppColors.black,
-                            fontSize: AppDimensions.textL,
+                            fontSize: AppDimensions.textM,
                           ),
                         ),
                       ],
@@ -123,7 +123,7 @@ class FollowingTab extends StatelessWidget {
                             following['name'] ?? 'Unknown User',
                             style: const TextStyle(
                               color: AppColors.black,
-                              fontSize: AppDimensions.textL,
+                              fontSize: AppDimensions.textM,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -139,9 +139,24 @@ class FollowingTab extends StatelessWidget {
                       ),
                     ),
                     ElevatedButton(
-                      onPressed: () {
-                        // Navigate to chat view
-                        Navigator.pushNamed(context, AppRoutes.chat);
+                      onPressed: () async {
+                        final otherUserId = following['userId'] as String?;
+                        final otherName = following['name'] as String?;
+                        if (otherUserId == null || otherUserId.isEmpty) return;
+                        final chatRoomId = await viewModel.getOrCreateDmRoomWith(
+                          otherUserId,
+                          otherName,
+                        );
+                        if (context.mounted && chatRoomId != null) {
+                          Navigator.pushNamed(
+                            context,
+                            AppRoutes.directChat,
+                            arguments: {
+                              'chatRoomId': chatRoomId,
+                              'otherUserName': otherName,
+                            },
+                          );
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.accent,

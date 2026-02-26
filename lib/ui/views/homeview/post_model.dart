@@ -18,6 +18,8 @@ class PostModel {
   final String? userPhotoUrl; // User's profile photo URL from Firestore
   final String? userId; // User ID to fetch profile photo if userPhotoUrl is missing
   final String? postUrl; // Optional URL attached to the post
+  final String? linkPreviewImageUrl; // Thumbnail for link preview (og:image)
+  final String? linkPreviewTitle; // Title/headline for link preview (og:title)
 
   PostModel({
     this.postId,
@@ -37,6 +39,8 @@ class PostModel {
     this.userPhotoUrl,
     this.userId,
     this.postUrl,
+    this.linkPreviewImageUrl,
+    this.linkPreviewTitle,
   });
 
   /// Get total reaction count (sum of all emotion counts)
@@ -146,6 +150,8 @@ class PostModel {
       userPhotoUrl: data['userPhotoUrl'] as String?,
       userId: data['userId'] as String?,
       postUrl: data['postUrl'] as String?,
+      linkPreviewImageUrl: data['linkPreviewImageUrl'] as String?,
+      linkPreviewTitle: data['linkPreviewTitle'] as String?,
     );
   }
 
@@ -165,6 +171,8 @@ class PostModel {
       'userPhotoUrl': userPhotoUrl,
       'userId': userId,
       'postUrl': postUrl,
+      'linkPreviewImageUrl': linkPreviewImageUrl,
+      'linkPreviewTitle': linkPreviewTitle,
     };
   }
 
@@ -186,6 +194,8 @@ class PostModel {
     String? userPhotoUrl,
     String? userId,
     String? postUrl,
+    String? linkPreviewImageUrl,
+    String? linkPreviewTitle,
   }) {
     return PostModel(
       postId: postId ?? this.postId,
@@ -205,6 +215,8 @@ class PostModel {
       userPhotoUrl: userPhotoUrl ?? this.userPhotoUrl,
       userId: userId ?? this.userId,
       postUrl: postUrl ?? this.postUrl,
+      linkPreviewImageUrl: linkPreviewImageUrl ?? this.linkPreviewImageUrl,
+      linkPreviewTitle: linkPreviewTitle ?? this.linkPreviewTitle,
     );
   }
 
@@ -222,7 +234,9 @@ class PostModel {
         other.isVideo == isVideo &&
         other.mediaPaths == mediaPaths &&
         other.isVideoList == isVideoList &&
-        other.postUrl == postUrl;
+        other.postUrl == postUrl &&
+        other.linkPreviewImageUrl == linkPreviewImageUrl &&
+        other.linkPreviewTitle == linkPreviewTitle;
   }
 
   @override
@@ -237,7 +251,9 @@ class PostModel {
     isVideo.hashCode ^
     (mediaPaths?.hashCode ?? 0) ^
     (isVideoList?.hashCode ?? 0) ^
-    (postUrl?.hashCode ?? 0);
+    (postUrl?.hashCode ?? 0) ^
+    (linkPreviewImageUrl?.hashCode ?? 0) ^
+    (linkPreviewTitle?.hashCode ?? 0);
   }
 
   @override

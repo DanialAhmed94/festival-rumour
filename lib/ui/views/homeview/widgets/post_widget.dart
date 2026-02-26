@@ -294,15 +294,25 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     super.build(context); // Required for AutomaticKeepAliveClientMixin
     final post = widget.post;
     final bool hasMedia = post.hasMedia;
+    final bool hasUrl = post.postUrl != null && post.postUrl!.isNotEmpty;
+    final bool hasPreviewData = (post.linkPreviewImageUrl != null && post.linkPreviewImageUrl!.isNotEmpty) ||
+        (post.linkPreviewTitle != null && post.linkPreviewTitle!.isNotEmpty);
+    final bool hasLinkPreviewAsMedia = !hasMedia && hasUrl && hasPreviewData;
+    final bool hasUrlOnlyNoPreview = !hasMedia && hasUrl && !hasPreviewData;
+    final bool showLargeArea = hasMedia || hasLinkPreviewAsMedia;
+    final String contentTrimmed = post.content.trim();
+    final bool contentIsJustUrl = hasUrlOnlyNoPreview &&
+        post.postUrl != null &&
+        contentTrimmed == post.postUrl!.trim();
     return Container(
-      height: hasMedia
+      height: showLargeArea
           ? (context.isLargeScreen
               ? MediaQuery.of(context).size.height * 0.6
               : context.isMediumScreen
                   ? MediaQuery.of(context).size.height * 0.5
                   : MediaQuery.of(context).size.height * 0.6)
           : null,
-      constraints: hasMedia ? null : const BoxConstraints(minHeight: 200),
+      constraints: showLargeArea ? null : const BoxConstraints(minHeight: 200),
       decoration: BoxDecoration(
         color: widget.backgroundColor,
         borderRadius: const BorderRadius.only(
@@ -318,7 +328,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
         ],
       ),
       child: Column(
-        mainAxisSize: hasMedia ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisSize: showLargeArea ? MainAxisSize.max : MainAxisSize.min,
         children: [
 //          Header
           Container(
@@ -388,68 +398,33 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
             ),
           ),
 
-          // Post Content: black so it's readable on card background; username/time stay white in header
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.postContentPaddingHorizontal,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: DefaultTextStyle(
-                style: const TextStyle(color: AppColors.black),
-                child: Text(
-                  post.content,
-                  textAlign: TextAlign.left,
-                  maxLines: hasMedia ? null : 5,
-                  overflow: hasMedia ? null : TextOverflow.ellipsis,
+          // Post Content: hide when only URL is posted and no preview (avoid showing URL twice)
+          if (contentTrimmed.isNotEmpty && !contentIsJustUrl)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.postContentPaddingHorizontal,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: DefaultTextStyle(
+                  style: const TextStyle(color: AppColors.black),
+                  child: Text(
+                    post.content,
+                    textAlign: TextAlign.left,
+                    maxLines: hasMedia ? null : 5,
+                    overflow: hasMedia ? null : TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ),
-          ),
-          // Post URL (when user attached a link)
-          if (post.postUrl != null && post.postUrl!.isNotEmpty) ...[
+          // URL in description: when post has (URL + media) OR (URL but no preview data)
+          if (hasUrl && (hasMedia || hasUrlOnlyNoPreview)) ...[
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppDimensions.postContentPaddingHorizontal,
               ),
-              child: InkWell(
-                onTap: () async {
-                  String urlString = post.postUrl!.trim();
-                  if (urlString.isEmpty) return;
-                  if (!urlString.contains(RegExp(r'^https?://', caseSensitive: false))) {
-                    urlString = 'https://$urlString';
-                  }
-                  final uri = Uri.tryParse(urlString);
-                  if (uri != null) {
-                    try {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    } catch (_) {}
-                  }
-                },
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.link,
-                      size: 18,
-                      color: AppColors.white,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        post.postUrl!,
-                        style: const TextStyle(
-                          color: AppColors.black,
-                          fontSize: 14,
-                          decoration: TextDecoration.none,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: _buildCompactLinkRow(post),
             ),
           ],
           const SizedBox(height: AppDimensions.reactionIconSpacing),
@@ -538,6 +513,94 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                 ),
               ),
             ),
+          ] else if (hasLinkPreviewAsMedia) ...[
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppDimensions.postBorderRadius),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: _buildLinkPreviewThumbnailAsMedia(post),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _buildLinkPreviewOverlayBar(post),
+                    ),
+                    Positioned(
+                      bottom: 72,
+                      right: 12,
+                      child: Column(
+                        children: [
+                          GestureDetector(
+                            onTap: _toggleReactions,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: AppColors.black.withOpacity(0.6),
+                                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                              ),
+                              child: Row(
+                                children: [
+                                  _selectedReaction == null
+                                      ? Icon(Icons.thumb_up,
+                                          color: AppColors.white,
+                                          size: context.isLargeScreen ? 24 : context.isMediumScreen ? 22 : 20)
+                                      : Text(
+                                          _selectedReaction!,
+                                          style: TextStyle(
+                                            fontSize: AppDimensions.textL,
+                                            color: _reactionColor,
+                                          ),
+                                        ),
+                                  const SizedBox(width: AppDimensions.spaceXS),
+                                  Text(
+                                    "${post.totalReactions > 0 ? post.totalReactions : post.likes}",
+                                    style: const TextStyle(color: AppColors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: AppDimensions.spaceS),
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppColors.black.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: InkWell(
+                              onTap: () => _openComments(context, post),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.comment_outlined,
+                                    color: AppColors.white,
+                                    size: context.isLargeScreen ? 22 : context.isMediumScreen ? 20 : 18,
+                                  ),
+                                  const SizedBox(width: AppDimensions.spaceXS),
+                                  Text(
+                                    "${post.comments}",
+                                    style: const TextStyle(color: AppColors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_showReactions)
+                      Positioned(
+                        bottom: 148,
+                        right: 0,
+                        child: _buildReactionsPopup(),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ] else ...[
             const SizedBox(height: AppDimensions.paddingL),
             _buildNoMediaLikeCommentRow(context, post),
@@ -545,7 +608,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
 
           const SizedBox(height: AppDimensions.paddingL),
 
-          if (hasMedia) ...[
+          if (hasMedia || hasLinkPreviewAsMedia) ...[
             Container(
               width: double.infinity,
               color: Colors.transparent,
@@ -626,6 +689,444 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
       widget.onCommentsUpdated!();
     }
   }
+
+  Future<void> _launchPostUrl(String? urlString) async {
+    if (urlString == null || urlString.trim().isEmpty) return;
+    String s = urlString.trim();
+    if (!s.contains(RegExp(r'^https?://', caseSensitive: false))) {
+      s = 'https://$s';
+    }
+    final uri = Uri.tryParse(s);
+    if (uri != null) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
+  }
+
+  /// Compact link row for description: when URL+media or when URL but no preview available.
+  Widget _buildCompactLinkRow(PostModel post) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _launchPostUrl(post.postUrl),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.onSurfaceVariant.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.black.withOpacity(0.06), width: 1),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.link, size: 20, color: AppColors.black54),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  post.postUrl!,
+                  style: TextStyle(
+                    color: AppColors.black54,
+                    fontSize: 13,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.black54,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Open now',
+                style: TextStyle(
+                  color: AppColors.black,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Icon(Icons.open_in_new, size: 16, color: AppColors.black),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Thumbnail filling the post area (like media) when post has URL but no media.
+  Widget _buildLinkPreviewThumbnailAsMedia(PostModel post) {
+    final hasImage = post.linkPreviewImageUrl != null && post.linkPreviewImageUrl!.isNotEmpty;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _launchPostUrl(post.postUrl),
+        child: hasImage
+            ? CachedNetworkImage(
+                imageUrl: post.linkPreviewImageUrl!,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                placeholder: (_, __) => Container(
+                  color: AppColors.onSurfaceVariant.withOpacity(0.15),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+                    ),
+                  ),
+                ),
+                errorWidget: (_, __, ___) => _buildLinkPreviewThumbnailPlaceholder(),
+              )
+            : _buildLinkPreviewThumbnailPlaceholder(),
+      ),
+    );
+  }
+
+  Widget _buildLinkPreviewThumbnailPlaceholder() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.onSurfaceVariant.withOpacity(0.08),
+            AppColors.onSurfaceVariant.withOpacity(0.14),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.link, color: AppColors.black45, size: 40),
+            const SizedBox(height: 8),
+            Text(
+              'Link preview',
+              style: TextStyle(
+                color: AppColors.black45,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Bottom overlay bar on the link preview thumbnail: gradient + title/URL + Open now. Professional one-card preview.
+  Widget _buildLinkPreviewOverlayBar(PostModel post) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _launchPostUrl(post.postUrl),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                AppColors.black.withOpacity(0.5),
+                AppColors.black.withOpacity(0.82),
+                AppColors.black.withOpacity(0.94),
+              ],
+              stops: const [0.0, 0.4, 0.75, 1.0],
+            ),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (post.linkPreviewTitle != null && post.linkPreviewTitle!.isNotEmpty)
+                        Text(
+                          post.linkPreviewTitle!,
+                          style: const TextStyle(
+                            color: AppColors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
+                            height: 1.25,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      if (post.postUrl != null && post.postUrl!.isNotEmpty) ...[
+                        if (post.linkPreviewTitle != null && post.linkPreviewTitle!.isNotEmpty)
+                          const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.link,
+                              size: 12,
+                              color: AppColors.white.withOpacity(0.7),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                post.postUrl!,
+                                style: TextStyle(
+                                  color: AppColors.white.withOpacity(0.88),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w400,
+                                  letterSpacing: 0.1,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _launchPostUrl(post.postUrl),
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.black.withOpacity(0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Open now',
+                            style: TextStyle(
+                              color: AppColors.black,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.open_in_new, size: 16, color: AppColors.black),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Row below the thumbnail: URL text + Open now button (light grey bar). Used when overlay is not.
+  Widget _buildLinkPreviewUrlAndButtonRow(PostModel post) {
+    const double radius = 12.0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: AppColors.black.withOpacity(0.08), width: 1),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (post.linkPreviewTitle != null && post.linkPreviewTitle!.isNotEmpty)
+                  Text(
+                    post.linkPreviewTitle!,
+                    style: const TextStyle(
+                      color: AppColors.black,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                if (post.postUrl != null && post.postUrl!.isNotEmpty) ...[
+                  if (post.linkPreviewTitle != null && post.linkPreviewTitle!.isNotEmpty)
+                    const SizedBox(height: 4),
+                  Text(
+                    post.postUrl!,
+                    style: TextStyle(
+                      color: AppColors.black54,
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _launchPostUrl(post.postUrl),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8E8E8),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Open now',
+                  style: TextStyle(
+                    color: AppColors.black,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Link preview card: vertical thumbnail (left), title + URL, "Open now" button (right). Used when not using thumbnail-as-media layout.
+  Widget _buildLinkPreview(BuildContext context, PostModel post) {
+    const double radius = 12.0;
+    const double thumbnailWidth = 90.0;
+    const double thumbnailHeight = 112.0;
+    const double cardHeight = 112.0;
+
+    final hasImage = post.linkPreviewImageUrl != null && post.linkPreviewImageUrl!.isNotEmpty;
+    final hasTitle = post.linkPreviewTitle != null && post.linkPreviewTitle!.isNotEmpty;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _launchPostUrl(post.postUrl),
+        borderRadius: BorderRadius.circular(radius),
+        child: Container(
+          height: cardHeight,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F5F5),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: AppColors.black.withOpacity(0.08), width: 1),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(radius - 1),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: thumbnailWidth,
+                  height: thumbnailHeight,
+                  child: hasImage
+                      ? CachedNetworkImage(
+                          imageUrl: post.linkPreviewImageUrl!,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(
+                            color: AppColors.onSurfaceVariant.withOpacity(0.15),
+                            child: const Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+                              ),
+                            ),
+                          ),
+                        errorWidget: (_, __, ___) => _buildLinkPreviewThumbnailPlaceholder(),
+                      )
+                      : _buildLinkPreviewThumbnailPlaceholder(),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (hasTitle)
+                          Text(
+                            post.linkPreviewTitle!,
+                            style: const TextStyle(
+                              color: AppColors.black,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              height: 1.25,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        if (post.postUrl != null && post.postUrl!.isNotEmpty) ...[
+                          if (hasTitle) const SizedBox(height: 4),
+                          Text(
+                            post.postUrl!,
+                            style: TextStyle(
+                              color: AppColors.black54,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 10, top: 10, bottom: 10),
+                  child: Center(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _launchPostUrl(post.postUrl),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8E8E8),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Open now',
+                            style: TextStyle(
+                              color: AppColors.black,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Widget _buildNoMediaLikeCommentRow(BuildContext context, PostModel post) {
     // When popup is shown, reserve space above the row so the popup sits inside

@@ -687,62 +687,59 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final iconTileSize = context.isSmallScreen ? 56.0 : context.isMediumScreen ? 64.0 : 72.0;
     final logoSize = context.isSmallScreen ? 44.0 : context.isMediumScreen ? 52.0 : 56.0;
     final festivalChatWidth = logoSize * 2.4;
     final festivalChatHeight = logoSize * 1.5;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    final itemSpacing = context.isSmallScreen ? 12.0 : 16.0;
+    final listHeight = festivalChatHeight > _pinkButtonSize ? festivalChatHeight : _pinkButtonSize;
+
+    return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. Festival CHAT badge – taps navigate to global feed
-        _buildFestivalChatBadge(
-          context,
-          width: festivalChatWidth,
-          height: festivalChatHeight,
-          onTap: () => widget.viewModel.navigateToGlobalFeed(context),
+        SizedBox(
+          height: listHeight,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.symmetric(horizontal: itemSpacing),
+            children: [
+              _buildFestivalChatBadge(
+                context,
+                width: festivalChatWidth,
+                height: festivalChatHeight,
+                onTap: () => widget.viewModel.navigateToGlobalFeed(context),
+              ),
+              SizedBox(width: itemSpacing),
+              _buildPinkLabelButton(
+                context,
+                label: 'Festival Toilet',
+                onTap: () => widget.viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
+              ),
+              SizedBox(width: itemSpacing),
+              _buildPinkLabelButton(
+                context,
+                label: 'Organizer',
+                onTap: () => widget.viewModel.openAppStoreIOS(caAppStoreUrl),
+              ),
+              SizedBox(width: itemSpacing),
+              _buildPinkLabelButton(
+                context,
+                label: 'Festive Foodie',
+                onTap: () => widget.viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
+              ),
+            ],
+          ),
         ),
-        SizedBox(width: context.isSmallScreen ? 12 : 16),
-        // 2. Three App Store icons with "Download our App Suite" directly under them
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildAppStoreLogoItem(
-                  context,
-                  AppAssets.crapAdviserLogo,
-                  containerSize: iconTileSize,
-                  onTap: () => widget.viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
-                ),
-                SizedBox(width: context.isSmallScreen ? 12 : 16),
-                _buildAppStoreLogoItem(
-                  context,
-                  AppAssets.organiserLogo,
-                  containerSize: iconTileSize,
-                  onTap: () => widget.viewModel.openAppStoreIOS(caAppStoreUrl),
-                ),
-                SizedBox(width: context.isSmallScreen ? 12 : 16),
-                _buildAppStoreLogoItem(
-                  context,
-                  AppAssets.festieFoodieLogo,
-                  containerSize: iconTileSize,
-                  onTap: () => widget.viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ResponsiveTextWidget(
-              'Download our App Suite',
-              textType: TextType.body,
-              color: AppColors.black,
-              fontWeight: FontWeight.bold,
-              fontSize: context.isSmallScreen ? AppDimensions.textM : AppDimensions.textL,
-            ),
-          ],
+        const SizedBox(height: 16),
+        Padding(
+          padding: EdgeInsets.only(left: festivalChatWidth + itemSpacing),
+          child: ResponsiveTextWidget(
+            'Download our App Suite',
+            textType: TextType.body,
+            color: AppColors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: context.isSmallScreen ? AppDimensions.textM : AppDimensions.textL,
+          ),
         ),
       ],
     );
@@ -760,76 +757,53 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
         width: width,
         height: height,
         decoration: BoxDecoration(
+          color: const Color(0xFFFC2E95),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Center(
-            child: Image.asset(
-              AppAssets.festivalChatIcon,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) {
-                return Icon(
-                  Icons.image_not_supported,
-                  color: AppColors.grey400,
-                  size: height * 0.4,
-                );
-              },
-            ),
+        child: Center(
+          child: ResponsiveTextWidget(
+            'Festival Chat',
+            textType: TextType.body,
+            color: AppColors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: context.isSmallScreen ? AppDimensions.textS : AppDimensions.textM,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),
     );
   }
 
-  /// iOS-style app launcher tile: white rounded container larger than the icon, icon centered inside.
-  Widget _buildAppStoreLogoItem(
-    BuildContext context,
-    String assetPath, {
-    required double containerSize,
-    VoidCallback? onTap,
-  }) {
-    final iconSize = containerSize * 0.72;
-    final cornerRadius = containerSize * 0.22;
+  static const double _pinkButtonSize = 88.0;
 
+  /// Large pink square button with text label; same style for all app suite buttons.
+  Widget _buildPinkLabelButton(
+    BuildContext context, {
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: containerSize,
-        height: containerSize,
+        width: _pinkButtonSize,
+        height: _pinkButtonSize,
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(cornerRadius),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.black.withOpacity(0.08),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-            BoxShadow(
-              color: AppColors.black.withOpacity(0.04),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
+          color: const Color(0xFFFC2E95),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(cornerRadius),
-          child: Center(
-            child: SizedBox(
-              width: iconSize,
-              height: iconSize,
-              child: Image.asset(
-                assetPath,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    Icons.image_not_supported,
-                    color: AppColors.grey400,
-                    size: iconSize * 0.6,
-                  );
-                },
-              ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: ResponsiveTextWidget(
+              label,
+              textType: TextType.body,
+              color: AppColors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: context.isSmallScreen ? AppDimensions.textS : AppDimensions.textM,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ),

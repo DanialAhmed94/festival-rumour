@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../core/utils/base_view.dart';
@@ -192,7 +193,13 @@ class ChatView extends BaseView<ChatViewModel> {
           ),
           Expanded(
             child: GestureDetector(
-              onTap: () => viewModel.setSelectedTab(1),
+              onTap: () {
+                // Get selected festival from provider (same as discover screen)
+                final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+                final selectedFestival = festivalProvider.selectedFestival;
+                final festivalId = selectedFestival?.id.toString();
+                viewModel.setSelectedTab(1, festivalId: festivalId);
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   vertical: AppDimensions.paddingS,
@@ -333,6 +340,43 @@ class ChatView extends BaseView<ChatViewModel> {
   }
 
   Widget _buildPrivateChatList(BuildContext context, ChatViewModel viewModel) {
+    if (viewModel.busy) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.black),
+      );
+    }
+    if (viewModel.privateChats.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimensions.paddingXL),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.group_outlined,
+                size: 64,
+                color: AppColors.black.withOpacity(0.4),
+              ),
+              const SizedBox(height: AppDimensions.paddingM),
+              ResponsiveTextWidget(
+                'No private chat rooms yet',
+                textType: TextType.title,
+                color: AppColors.black,
+                fontWeight: FontWeight.w600,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppDimensions.spaceS),
+              ResponsiveTextWidget(
+                'Tap the + button below to create a chat room and invite others.',
+                textType: TextType.body,
+                color: AppColors.grey600,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return GridView.builder(
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingL,
@@ -682,6 +726,8 @@ class ChatView extends BaseView<ChatViewModel> {
                                 color: AppColors.white,
                                 fontWeight: FontWeight.w600,
                                 textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             const SizedBox(width: 4),
@@ -697,6 +743,8 @@ class ChatView extends BaseView<ChatViewModel> {
                       color: AppColors.white,
                       fontWeight: FontWeight.w600,
                       textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
             ),
           ),
@@ -869,6 +917,26 @@ class ChatView extends BaseView<ChatViewModel> {
                       fontSize: 14,
                       color: AppColors.black,
                     ),
+                    if (message.isLocationMessage && message.lat != null && message.lng != null) ...[
+                      const SizedBox(height: AppDimensions.spaceXS),
+                      GestureDetector(
+                        onTap: () => _openMap(message.lat!, message.lng!),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.map_outlined, size: 18, color: AppColors.accent),
+                            const SizedBox(width: 6),
+                            ResponsiveTextWidget(
+                              'View on map',
+                              textType: TextType.caption,
+                              fontSize: 13,
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: AppDimensions.spaceXS),
                     ResponsiveTextWidget(
                       message.timeAgo,
@@ -912,6 +980,15 @@ class ChatView extends BaseView<ChatViewModel> {
         ),
       ),
     );
+  }
+
+  Future<void> _openMap(double lat, double lng) async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps?q=$lat,$lng',
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   /// Build decorative dot for empty state
@@ -1174,6 +1251,28 @@ class ChatView extends BaseView<ChatViewModel> {
     );
   }
 
+  Future<void> _handleSendMessage(
+      BuildContext context, ChatViewModel viewModel) async {
+    final success = await viewModel.sendMessage();
+    if (!context.mounted) return;
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Couldn\'t send. Please check your connection and try again.',
+            style: TextStyle(color: AppColors.black),
+          ),
+          backgroundColor: Colors.red.shade200,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        ),
+      );
+    }
+  }
+
   Widget _buildInputSection(BuildContext context, ChatViewModel viewModel) {
     return Container(
       color: Colors.transparent,
@@ -1202,24 +1301,41 @@ class ChatView extends BaseView<ChatViewModel> {
                       border: InputBorder.none,
                     ),
                     style: const TextStyle(color: AppColors.black),
-                    onSubmitted: (_) => viewModel.sendMessage(),
+                    enabled: !viewModel.isSendingMessage,
+                    onSubmitted: (_) => _handleSendMessage(context, viewModel),
                   ),
                 ),
               ),
               const SizedBox(width: AppDimensions.paddingS),
-              GestureDetector(
-                onTap: () => viewModel.sendMessage(),
-                child: Container(
-                  width: AppDimensions.iconM,
-                  height: AppDimensions.iconM,
-                  decoration: const BoxDecoration(
-                    color: AppColors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.send,
-                    color: AppColors.black,
-                    size: 18,
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: viewModel.isSendingMessage
+                      ? null
+                      : () => _handleSendMessage(context, viewModel),
+                  borderRadius: BorderRadius.circular(28),
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: AppColors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: viewModel.isSendingMessage
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Color(0xFFFC2E95),
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.send,
+                            color: Color(0xFFFC2E95),
+                            size: 28,
+                          ),
                   ),
                 ),
               ),

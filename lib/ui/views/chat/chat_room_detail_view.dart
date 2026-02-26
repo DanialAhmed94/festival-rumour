@@ -48,6 +48,8 @@ class ChatRoomDetailView extends BaseView<ChatRoomDetailViewModel> {
           textType: TextType.title,
           color: AppColors.white,
           fontWeight: FontWeight.w600,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         centerTitle: true,
       ),
@@ -357,6 +359,16 @@ class ChatRoomDetailView extends BaseView<ChatRoomDetailViewModel> {
     }
   }
 
+  /// Skip URLs that look like post images (often 404 when used as profile).
+  static bool _isValidProfilePhotoUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return false;
+    final lower = url.trim().toLowerCase();
+    if (lower.contains('post_images') || lower.contains('posts%2fpost_images')) {
+      return false;
+    }
+    return true;
+  }
+
   Widget _buildAvatar(String displayName, String? photoUrl) {
     const colors = [
       AppColors.avatarPurple,
@@ -368,11 +380,12 @@ class ChatRoomDetailView extends BaseView<ChatRoomDetailViewModel> {
     ];
     final color = colors[displayName.hashCode % colors.length];
 
-    if (photoUrl != null && photoUrl.isNotEmpty) {
+    if (_isValidProfilePhotoUrl(photoUrl)) {
+      final url = photoUrl!.trim();
       return ClipRRect(
         borderRadius: BorderRadius.circular(25),
         child: CachedNetworkImage(
-          imageUrl: photoUrl,
+          imageUrl: url,
           width: 50,
           height: 50,
           fit: BoxFit.cover,

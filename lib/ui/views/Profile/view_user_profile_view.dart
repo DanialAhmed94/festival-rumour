@@ -267,10 +267,10 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                         fontSize: AppDimensions.textM,
                       ),
                     ],
-                    // Follow/Unfollow button (only show if viewing another user)
+                    // Follow/Unfollow and Message buttons in same row (only show if viewing another user)
                     if (!vm.isViewingOwnProfile) ...[
                       SizedBox(height: AppDimensions.spaceM),
-                      _buildFollowButton(context, vm),
+                      _buildFollowAndMessageRow(context, vm),
                     ],
                   ],
                 ),
@@ -279,6 +279,53 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
           ),
         );
       },
+    );
+  }
+
+  /// Build row with Follow/Unfollow and Message buttons
+  Widget _buildFollowAndMessageRow(BuildContext context, ProfileViewModel viewModel) {
+    return Row(
+      children: [
+        Expanded(child: _buildFollowButton(context, viewModel)),
+        SizedBox(width: AppDimensions.spaceM),
+        Expanded(
+          child: SizedBox(
+            height: AppDimensions.buttonHeightM,
+            child: ElevatedButton(
+              onPressed: () async {
+                final chatRoomId = await viewModel.getOrCreateDmRoomWith(
+                  userId,
+                  viewModel.userDisplayName,
+                );
+                if (context.mounted && chatRoomId != null) {
+                  Navigator.pushNamed(
+                    context,
+                    AppRoutes.directChat,
+                    arguments: {
+                      'chatRoomId': chatRoomId,
+                      'otherUserName': viewModel.userDisplayName,
+                    },
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: AppColors.onPrimary,
+                padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                ),
+              ),
+              child: ResponsiveTextWidget(
+                'Message',
+                color: AppColors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: AppDimensions.textM,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
