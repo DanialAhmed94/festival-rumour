@@ -64,16 +64,16 @@ class LocationPermissionHelper {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text(AppStrings.shareMyLocation),
-        content: const Text(AppStrings.locationPermissionRequired),
+        title: const Text(AppStrings.shareMyLocation, style: TextStyle(color: Colors.black)),
+        content: const Text(AppStrings.locationPermissionRequired, style: TextStyle(color: Colors.black)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(AppStrings.cancel),
+            child: const Text(AppStrings.cancel, style: TextStyle(color: Colors.black)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(AppStrings.ok),
+            child: const Text(AppStrings.ok, style: TextStyle(color: Colors.black)),
           ),
         ],
       ),
@@ -86,19 +86,19 @@ class LocationPermissionHelper {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text(AppStrings.shareMyLocation),
-        content: const Text(AppStrings.locationPermissionPermanentlyDenied),
+        title: const Text(AppStrings.shareMyLocation, style: TextStyle(color: Colors.black)),
+        content: const Text(AppStrings.locationPermissionPermanentlyDenied, style: TextStyle(color: Colors.black)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text(AppStrings.cancel),
+            child: const Text(AppStrings.cancel, style: TextStyle(color: Colors.black)),
           ),
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               openAppSettings();
             },
-            child: const Text(AppStrings.openSettings),
+            child: const Text(AppStrings.openSettings, style: TextStyle(color: Colors.black)),
           ),
         ],
       ),
