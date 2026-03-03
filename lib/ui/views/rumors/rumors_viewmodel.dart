@@ -49,9 +49,10 @@ class RumorsViewModel extends BaseViewModel {
   // Festival-specific collection name and display title
   String? _festivalCollectionName;
   String? _festivalTitle; // Human-readable festival name for app bar
+  int? _festivalId; // Selected festival id, to detect when user selects a different festival (e.g. from discover search)
   bool _isInitialized = false; // Track if already initialized
   DateTime? _newestPostTimestamp; // Track newest post timestamp for efficient stream updates
-  
+
   bool get hasMorePosts => _hasMorePosts;
   bool get isLoadingMore => _isLoadingMore;
   String? get festivalCollectionName => _festivalCollectionName;
@@ -79,6 +80,7 @@ class RumorsViewModel extends BaseViewModel {
     
     // Reset initialization flag
     _isInitialized = false;
+    _festivalId = null;
     _festivalCollectionName = null;
     _festivalTitle = null;
     _newestPostTimestamp = null;
@@ -94,42 +96,83 @@ class RumorsViewModel extends BaseViewModel {
   /// This should be called from the view after getting festival from provider
   /// Only initializes once to prevent multiple Firestore queries
   void initialize(BuildContext context) {
+    if (kDebugMode) {
+      print('📰 [RumorsVM] initialize() called, _isInitialized=$_isInitialized');
+    }
     // Prevent multiple initializations
     if (_isInitialized) {
       if (kDebugMode) {
-        print('⚠️ RumorsViewModel already initialized, skipping');
+        print('📰 [RumorsVM] initialize: already initialized, skipping');
       }
       return;
     }
-    
+
     // Get festival from provider
     final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
     final selectedFestival = festivalProvider.selectedFestival;
-    
+
     if (selectedFestival == null) {
       if (kDebugMode) {
-        print('⚠️ No festival selected, cannot initialize rumors');
+        print('📰 [RumorsVM] initialize: no festival selected, aborting');
       }
       return;
     }
-    
+
+    if (kDebugMode) {
+      print('📰 [RumorsVM] initialize: setting up for festival id=${selectedFestival.id} "${selectedFestival.title}"');
+    }
+    _festivalId = selectedFestival.id;
     _festivalTitle = selectedFestival.title;
     // Generate festival collection name
     _festivalCollectionName = FirestoreService.getFestivalCollectionName(
       selectedFestival.id,
       selectedFestival.title,
     );
-    
+
     if (kDebugMode) {
       print('🎪 Initializing rumors for festival: $_festivalTitle');
       print('🎪 Collection name: $_festivalCollectionName');
     }
-    
+
     // Mark as initialized BEFORE loading posts to prevent race conditions
     _isInitialized = true;
     
     // Load initial posts and ensure collection exists
     loadInitialPosts();
+  }
+
+  /// Re-initialize with the current selected festival if it changed (e.g. user selected a festival from discover search).
+  /// Call this when the Rumors tab is shown so it loads rumours for the latest selected festival.
+  void reinitializeIfFestivalChanged(BuildContext context) {
+    final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+    final selectedFestival = festivalProvider.selectedFestival;
+    if (kDebugMode) {
+      print('📰 [RumorsVM] reinitializeIfFestivalChanged: _festivalId=$_festivalId, selectedFestival?.id=${selectedFestival?.id}, selectedFestival?.title=${selectedFestival?.title}');
+    }
+    if (selectedFestival == null) {
+      if (kDebugMode) print('📰 [RumorsVM] reinitializeIfFestivalChanged: early return (no selected festival)');
+      return;
+    }
+    if (_festivalId == selectedFestival.id) {
+      if (kDebugMode) print('📰 [RumorsVM] reinitializeIfFestivalChanged: early return (same festival id)');
+      return;
+    }
+
+    if (kDebugMode) {
+      print('📰 [RumorsVM] festival changed from $_festivalId to ${selectedFestival.id}, re-initializing for "${selectedFestival.title}"');
+    }
+    _postsSubscription?.cancel();
+    _postsSubscription = null;
+    posts.clear();
+    allPosts.clear();
+    _isInitialized = false;
+    _festivalId = null;
+    _festivalCollectionName = null;
+    _festivalTitle = null;
+    _newestPostTimestamp = null;
+    _lastDocument = null;
+    _hasMorePosts = true;
+    initialize(context);
   }
 
   /// Load initial posts from festival collection

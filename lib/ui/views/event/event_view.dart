@@ -260,7 +260,7 @@ class EventView extends BaseView<EventViewModel> {
   }
 
   Widget _buildEventCardThumbnail(EventModel event) {
-    const size = 56.0;
+    const size = 44.0;
     final imageUrl = event.imageUrl;
     return SizedBox(
       width: size,

@@ -464,7 +464,7 @@ class ViewAllView extends BaseView<ViewAllViewModel> {
   }
 
   Widget _buildEventCardThumbnail(EventModel event) {
-    const size = 56.0;
+    const size = 44.0;
     final imageUrl = event.imageUrl;
     return SizedBox(
       width: size,
@@ -483,10 +483,10 @@ class ViewAllView extends BaseView<ViewAllViewModel> {
                   return Container(
                     color: AppColors.eventGreen,
                     alignment: Alignment.center,
-                    child: const SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(color: AppColors.black, strokeWidth: 2),
+                    child: SizedBox(
+                      width: size * 0.5,
+                      height: size * 0.5,
+                      child: const CircularProgressIndicator(color: AppColors.black, strokeWidth: 2),
                     ),
                   );
                 },
@@ -697,7 +697,7 @@ class ViewAllView extends BaseView<ViewAllViewModel> {
   }
 
   Widget _buildPerformanceCardThumbnail(PerformanceModel performance) {
-    const size = 56.0;
+    const size = 44.0;
     final imageUrl = performance.imageUrl;
     return SizedBox(
       width: size,
@@ -716,10 +716,10 @@ class ViewAllView extends BaseView<ViewAllViewModel> {
                   return Container(
                     color: AppColors.performanceGreen,
                     alignment: Alignment.center,
-                    child: const SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(color: AppColors.black, strokeWidth: 2),
+                    child: SizedBox(
+                      width: size * 0.5,
+                      height: size * 0.5,
+                      child: const CircularProgressIndicator(color: AppColors.black, strokeWidth: 2),
                     ),
                   );
                 },

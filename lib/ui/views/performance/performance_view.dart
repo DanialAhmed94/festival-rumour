@@ -248,7 +248,7 @@ class PerformanceView extends BaseView<PerformanceViewModel> {
   }
 
   Widget _buildPerformanceCardThumbnail(PerformanceModel performance) {
-    const size = 56.0;
+    const size = 44.0;
     final imageUrl = performance.imageUrl;
     return SizedBox(
       width: size,
@@ -264,8 +264,8 @@ class PerformanceView extends BaseView<PerformanceViewModel> {
                 fit: BoxFit.cover,
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
-    return Container(
-              color: AppColors.performanceGreen,
+                  return Container(
+                    color: AppColors.performanceGreen,
                     alignment: Alignment.center,
                     child: SizedBox(
                       width: size * 0.5,

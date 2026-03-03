@@ -25,8 +25,10 @@ class FestivalProvider extends ChangeNotifier {
       _selectedFestival = festival;
       notifyListeners();
       if (kDebugMode) {
-        print('🎪 [FestivalProvider] selected festival updated, _allFestivals.length=${_allFestivals.length}');
+        print('🎪 [FestivalProvider] notifyListeners() called after setSelectedFestival, new id=${festival?.id}');
       }
+    } else if (kDebugMode) {
+      print('🎪 [FestivalProvider] setSelectedFestival skipped (same id)');
     }
   }
 

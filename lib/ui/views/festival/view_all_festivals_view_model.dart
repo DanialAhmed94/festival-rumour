@@ -25,10 +25,27 @@ class ViewAllFestivalsViewModel extends BaseViewModel {
   int _currentPage = 0;
   bool _hasMore = true;
   bool _isLoadingMore = false;
+  int _selectedTab = 0; // 0: Live, 1: Upcoming, 2: Past
 
   List<FestivalModel> get festivals => List.unmodifiable(_festivals);
   bool get hasMore => _hasMore;
   bool get isLoadingMore => _isLoadingMore;
+  int get selectedTab => _selectedTab;
+
+  List<FestivalModel> get filteredFestivals {
+    final status = _selectedTab == 0
+        ? FestivalStatus.live
+        : _selectedTab == 1
+            ? FestivalStatus.upcoming
+            : FestivalStatus.past;
+    return _festivals.where((f) => f.status == status).toList();
+  }
+
+  void setSelectedTab(int index) {
+    if (_selectedTab == index) return;
+    _selectedTab = index;
+    notifyListeners();
+  }
 
   Future<void> loadInitial() async {
     if (isLoading) return;

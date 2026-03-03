@@ -444,12 +444,15 @@ class DiscoverViewModel extends BaseViewModel {
 
   /// Select a festival from search results
   void selectFestival(BuildContext context, FestivalModel festival) {
+    if (kDebugMode) {
+      print('🔍 [Discover] selectFestival: "${festival.title}" id=${festival.id}');
+    }
     final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
     festivalProvider.setSelectedFestival(festival);
     clearSearch(context);
     unfocusSearch();
     if (kDebugMode) {
-      print('✅ Selected festival: ${festival.title}');
+      print('🔍 [Discover] selectFestival done, provider updated');
     }
   }
 

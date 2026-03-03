@@ -37,6 +37,8 @@ class ViewAllFestivalsView extends BaseView<ViewAllFestivalsViewModel> {
               child: _buildAppBar(context, viewModel),
             ),
             const SizedBox(height: AppDimensions.spaceL),
+            _buildTabBar(context, viewModel),
+            const SizedBox(height: AppDimensions.spaceM),
             Expanded(child: _buildBody(context, viewModel)),
           ],
         ),
@@ -74,10 +76,103 @@ class ViewAllFestivalsView extends BaseView<ViewAllFestivalsViewModel> {
     );
   }
 
+  Widget _buildTabBar(BuildContext context, ViewAllFestivalsViewModel viewModel) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
+      child: Container(
+        padding: const EdgeInsets.all(AppDimensions.paddingXS),
+        decoration: BoxDecoration(
+          color: AppColors.grey100,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildTabButton(
+                context,
+                AppStrings.live,
+                0,
+                viewModel.selectedTab == 0,
+                () => viewModel.setSelectedTab(0),
+              ),
+            ),
+            const SizedBox(width: AppDimensions.spaceXS),
+            Expanded(
+              child: _buildTabButton(
+                context,
+                AppStrings.upcoming,
+                1,
+                viewModel.selectedTab == 1,
+                () => viewModel.setSelectedTab(1),
+              ),
+            ),
+            const SizedBox(width: AppDimensions.spaceXS),
+            Expanded(
+              child: _buildTabButton(
+                context,
+                AppStrings.past,
+                2,
+                viewModel.selectedTab == 2,
+                () => viewModel.setSelectedTab(2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabButton(
+    BuildContext context,
+    String label,
+    int index,
+    bool isSelected,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          vertical: AppDimensions.paddingS,
+          horizontal: AppDimensions.paddingXS,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected ? _pinkAppBar : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+        ),
+        child: Center(
+          child: ResponsiveTextWidget(
+            label,
+            textType: TextType.caption,
+            color: isSelected ? AppColors.white : AppColors.black,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildBody(BuildContext context, ViewAllFestivalsViewModel viewModel) {
     if (viewModel.isLoading && viewModel.festivals.isEmpty) {
       return const Center(
         child: CircularProgressIndicator(color: AppColors.black),
+      );
+    }
+
+    final filtered = viewModel.filteredFestivals;
+    if (viewModel.festivals.isNotEmpty && filtered.isEmpty && !viewModel.isLoading) {
+      final emptyMessage = viewModel.selectedTab == 0
+          ? AppStrings.noLiveFestivals
+          : viewModel.selectedTab == 1
+              ? AppStrings.noUpcomingFestivals
+              : AppStrings.noPastFestivals;
+      return Center(
+        child: ResponsiveTextWidget(
+          emptyMessage,
+          textType: TextType.body,
+          color: AppColors.grey600,
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
@@ -105,19 +200,25 @@ class ViewAllFestivalsView extends BaseView<ViewAllFestivalsViewModel> {
           horizontal: AppDimensions.paddingM,
           vertical: AppDimensions.spaceS,
         ),
-        itemCount: viewModel.festivals.length + (viewModel.hasMore ? 1 : 0),
+        itemCount: filtered.length + (viewModel.hasMore ? 1 : 0),
         itemBuilder: (context, index) {
-          if (index == viewModel.festivals.length) {
+          if (index == filtered.length) {
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceM),
-              child: Center(
-                child: viewModel.isLoadingMore
-                    ? const CircularProgressIndicator(color: AppColors.black)
-                    : const SizedBox.shrink(),
+              padding: const EdgeInsets.only(bottom: AppDimensions.spaceXXL),
+              child: SizedBox(
+                height: viewModel.isLoadingMore ? 80.0 : 24.0,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceM),
+                  child: Center(
+                    child: viewModel.isLoadingMore
+                        ? const CircularProgressIndicator(color: AppColors.black)
+                        : const SizedBox.shrink(),
+                  ),
+                ),
               ),
             );
           }
-          final festival = viewModel.festivals[index];
+          final festival = filtered[index];
           return _FestivalListTile(
             festival: festival,
             onTap: () => viewModel.navigateToHome(context, festival),

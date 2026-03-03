@@ -587,7 +587,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
       ),
     );
   }
-
+  
   /// Search results panel: loading, error, empty, or list (same pattern as festival view).
   Widget _buildDiscoverSearchResultsPanel(
     BuildContext context,
@@ -878,15 +878,15 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
                   _buildFestivalListItem(context, viewModel, festival),
                   if (!isLast)
                     Divider(
-                      height: 1,
-                      color: AppColors.black.withOpacity(0.08),
-                      indent: AppDimensions.spaceM,
-                      endIndent: AppDimensions.spaceM,
-                    ),
+          height: 1,
+          color: AppColors.black.withOpacity(0.08),
+          indent: AppDimensions.spaceM,
+          endIndent: AppDimensions.spaceM,
+        ),
                 ],
               );
-            },
-          ),
+        },
+      ),
         ),
       ],
     );

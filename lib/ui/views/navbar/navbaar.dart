@@ -1,8 +1,10 @@
 import 'package:festival_rumour/core/router/app_router.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/providers/festival_provider.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/utils/custom_navbar.dart';
 import '../discover/discover_view.dart';
@@ -79,21 +81,14 @@ class _NavBarBodyState extends State<_NavBarBody> {
   @override
   void initState() {
     super.initState();
-    // Pre-create and cache main tab views
+    // Cache only DiscoverView; RumorsView is built in the Consumer with a key from selectedFestival.id
+    // so it is recreated when user selects a different festival from discover search.
     _cachedMainViews = [
       DiscoverView(
         onBack: widget.viewModel.navigateToFestival,
         onNavigateToSub: widget.viewModel.setSubNavigation,
       ),
-      RumorsView(
-        onBack: () {
-
-          widget.viewModel.goToDiscover();
-        },
-      ),
     ];
-    
-    // Pre-initialize adjacent tabs in background
     _preInitializeTabs();
   }
   
@@ -185,13 +180,29 @@ class _NavBarBodyState extends State<_NavBarBody> {
           return _buildSubNavigation(viewModel);
         }
         
-        // Use IndexedStack to keep all tabs alive
+        // Use IndexedStack to keep all tabs alive.
+        // Consumer<FestivalProvider> ensures RumorsView rebuilds when selected festival changes
+        // (e.g. user selected a festival from discover search), so it can load that festival's rumours.
         return Selector<NavBaarViewModel, int>(
           selector: (_, vm) => vm.currentIndex,
           builder: (context, currentIndex, child) {
-            return IndexedStack(
-              index: currentIndex,
-              children: _cachedMainViews,
+            return Consumer<FestivalProvider>(
+              builder: (context, festivalProvider, child) {
+                if (kDebugMode) {
+                  print('📱 [NavBar] Consumer<FestivalProvider> rebuild, selectedFestival?.id=${festivalProvider.selectedFestival?.id}, currentIndex=$currentIndex');
+                }
+                final festivalId = festivalProvider.selectedFestival?.id ?? 0;
+                return IndexedStack(
+                  index: currentIndex,
+                  children: [
+                    _cachedMainViews[0],
+                    RumorsView(
+                      key: ValueKey('rumors_$festivalId'),
+                      onBack: () => viewModel.goToDiscover(),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );

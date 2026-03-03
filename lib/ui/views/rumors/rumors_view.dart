@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:festival_rumour/ui/views/homeview/widgets/post_widget.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../core/constants/app_sizes.dart';
@@ -29,18 +30,19 @@ class RumorsView extends BaseView<RumorsViewModel> {
 
   @override
   Widget buildView(BuildContext context, RumorsViewModel viewModel) {
-    // Initialize with festival from provider
-    // Check if collection name is already set (indicates initialization started)
-    // This prevents multiple callbacks from being scheduled
-    if (viewModel.festivalCollectionName == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Double-check inside callback to prevent race conditions
-        if (viewModel.festivalCollectionName == null) {
-          viewModel.initialize(context);
-        }
-      });
+    if (kDebugMode) {
+      print('📰 [RumorsView] buildView called, scheduling reinitializeIfFestivalChanged');
     }
-    
+    // Initialize or re-initialize when selected festival changes (e.g. user selected from discover search)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (kDebugMode) {
+        print('📰 [RumorsView] postFrameCallback running, mounted=${context.mounted}');
+      }
+      if (context.mounted) {
+        viewModel.reinitializeIfFestivalChanged(context);
+      }
+    });
+
     return _RumorsViewContent(viewModel: viewModel, onBack: onBack);
   }
 }
