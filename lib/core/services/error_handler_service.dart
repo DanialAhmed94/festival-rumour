@@ -75,9 +75,17 @@ class ErrorHandlerService {
   /// Check if error is retryable
   bool isRetryable(AppException exception) {
     if (exception is NetworkException) {
-      return exception.code != 'UNAUTHORIZED' &&
-          exception.code != 'FORBIDDEN' &&
-          exception.code != 'BAD_REQUEST';
+      // Don't retry auth or client errors
+      if (exception.code == 'UNAUTHORIZED' ||
+          exception.code == 'FORBIDDEN' ||
+          exception.code == 'BAD_REQUEST') {
+        return false;
+      }
+      // Don't retry connection/host errors - retrying won't help without network
+      if (exception.code == 'NO_INTERNET' || exception.code == 'TIMEOUT') {
+        return false;
+      }
+      return true;
     }
     if (exception is AuthException) {
       return exception.code == 'TOO_MANY_REQUESTS';

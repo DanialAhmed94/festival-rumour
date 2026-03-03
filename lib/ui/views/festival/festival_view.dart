@@ -1,6 +1,7 @@
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:festival_rumour/ui/views/festival/widgets/festivalcard.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
@@ -12,6 +13,7 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/providers/festival_provider.dart';
+import '../../../core/router/app_router.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/responsive_widget.dart';
 import 'festival_view_model.dart';
@@ -44,6 +46,10 @@ class FestivalView extends BaseView<FestivalViewModel> {
 
   @override
   Widget buildView(BuildContext context, FestivalViewModel viewModel) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('🎪 [FestivalView] buildView: isLoading=${viewModel.isLoading}, festivals.length=${viewModel.festivals.length}, allFestivals.length=${viewModel.allFestivals.length}, searchQuery="${viewModel.searchQuery}", filteredFestivals.length=${viewModel.filteredFestivals.length}');
+    }
     final pageController = viewModel.pageController;
 
     return PopScope(
@@ -72,7 +78,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                /// Header section (pink background) - above logos section
+                /// Header section (pink background) - search bar + search results when active
                 Container(
                   color: const Color(0xFFFC2E95),
                   child: ResponsiveContainer(
@@ -81,9 +87,12 @@ class FestivalView extends BaseView<FestivalViewModel> {
                     desktopMaxWidth: AppDimensions.desktopWidth,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         SizedBox(height: AppDimensions.spaceS),
                         _buildTopBarWithSearch(context, viewModel),
+                        if (viewModel.searchQuery.isNotEmpty)
+                          _buildSearchResultsPanel(context, viewModel),
                         SizedBox(height: AppDimensions.spaceS),
                       ],
                     ),
@@ -106,6 +115,9 @@ class FestivalView extends BaseView<FestivalViewModel> {
                           _buildLogosSection(context, viewModel),
                           SizedBox(height: AppDimensions.spaceS),
                           _buildFilterTabBar(context, viewModel),
+                          SizedBox(height: AppDimensions.spaceS),
+                          _buildViewAllButton(context),
+
                           SizedBox(
                             height:
                                 context.isSmallScreen
@@ -119,8 +131,6 @@ class FestivalView extends BaseView<FestivalViewModel> {
                               pageController,
                             ),
                           ),
-                          SizedBox(height: AppDimensions.spaceS),
-                          _buildBottomIcon(context),
                         ],
                       ),
                     ),
@@ -253,6 +263,366 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
+  /// Search results list shown below the search field when user is searching.
+  Widget _buildSearchResultsPanel(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.38;
+    return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.paddingS,
+        vertical: AppDimensions.spaceXS,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: AppColors.black.withOpacity(0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+            spreadRadius: 0,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        child: viewModel.isSearching
+            ? _buildSearchLoadingState()
+            : viewModel.searchError != null
+                ? _buildSearchErrorState(context, viewModel)
+                : viewModel.filteredFestivals.isEmpty
+                    ? _buildSearchEmptyState(context, viewModel)
+                    : _buildSearchResultsList(context, viewModel),
+      ),
+    );
+  }
+
+  Widget _buildSearchErrorState(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
+    final message = viewModel.searchError ??
+        'Something went wrong. Please try again.';
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppDimensions.spaceL,
+        horizontal: AppDimensions.spaceM,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(AppDimensions.spaceM),
+              decoration: BoxDecoration(
+                color: AppColors.errorContainer.withOpacity(0.6),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.wifi_off_rounded,
+                size: 40,
+                color: AppColors.onErrorContainer,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceM),
+          SizedBox(
+            width: double.infinity,
+            child: ResponsiveTextWidget(
+              'Search failed',
+              textType: TextType.title,
+              color: AppColors.black,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceS),
+          SizedBox(
+            width: double.infinity,
+            child: ResponsiveTextWidget(
+              message,
+              textType: TextType.caption,
+              color: AppColors.mutedText,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceL),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    viewModel.clearSearch();
+                    FocusScope.of(context).unfocus();
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.mutedText,
+                    side: BorderSide(color: AppColors.mutedText),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.spaceM,
+                      vertical: AppDimensions.spaceS,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppDimensions.radiusM),
+                    ),
+                  ),
+                  child: const ResponsiveTextWidget(
+                    AppStrings.clearSearch,
+                    textType: TextType.body,
+                    color: AppColors.mutedText,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppDimensions.spaceM),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => viewModel.retrySearch(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFC2E95),
+                    foregroundColor: AppColors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.spaceL,
+                      vertical: AppDimensions.spaceS,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppDimensions.radiusM),
+                    ),
+                  ),
+                  child: const ResponsiveTextWidget(
+                    'Try again',
+                    textType: TextType.body,
+                    color: AppColors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchLoadingState() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppDimensions.spaceXL,
+        horizontal: AppDimensions.spaceL,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              color: const Color(0xFFFC2E95),
+              strokeWidth: 2.5,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceM),
+          ResponsiveTextWidget(
+            'Searching…',
+            textType: TextType.body,
+            color: AppColors.mutedText,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchEmptyState(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppDimensions.spaceL,
+        horizontal: AppDimensions.spaceM,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(AppDimensions.spaceM),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.search_off_rounded,
+              size: 40,
+              color: AppColors.mutedText,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceM),
+          ResponsiveTextWidget(
+            'No festivals found',
+            textType: TextType.title,
+            color: AppColors.black,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppDimensions.spaceS),
+          ResponsiveTextWidget(
+            'We couldn\'t find anything for "${viewModel.searchQuery}". Try a different name or location.',
+            textType: TextType.caption,
+            color: AppColors.mutedText,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppDimensions.spaceL),
+          OutlinedButton(
+            onPressed: () {
+              viewModel.clearSearch();
+              FocusScope.of(context).unfocus();
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFFC2E95),
+              side: const BorderSide(color: Color(0xFFFC2E95)),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceL,
+                vertical: AppDimensions.spaceS,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+              ),
+            ),
+            child: const ResponsiveTextWidget(
+              AppStrings.clearSearch,
+              textType: TextType.body,
+              color: Color(0xFFFC2E95),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchResultsList(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
+    final list = viewModel.filteredFestivals;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimensions.spaceM,
+            AppDimensions.spaceS,
+            AppDimensions.spaceM,
+            AppDimensions.spaceXS,
+          ),
+          child: ResponsiveTextWidget(
+            '${list.length} ${list.length == 1 ? 'result' : 'results'}',
+            textType: TextType.caption,
+            color: AppColors.mutedText,
+          ),
+        ),
+        const Divider(height: 1),
+        Flexible(
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: list.length,
+            itemBuilder: (context, index) {
+              final festival = list[index];
+              final isLast = index == list.length - 1;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        viewModel.unfocusSearch();
+                        viewModel.clearSearch();
+                        viewModel.navigateToHome(context, festival);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppDimensions.spaceM,
+                          vertical: AppDimensions.spaceS,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceVariant,
+                                borderRadius:
+                                    BorderRadius.circular(AppDimensions.radiusS),
+                              ),
+                              child: Icon(
+                                Icons.festival_rounded,
+                                color: const Color(0xFFFC2E95),
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: AppDimensions.spaceM),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ResponsiveTextWidget(
+                                    festival.title,
+                                    textType: TextType.body,
+                                    color: AppColors.black,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (festival.location.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    ResponsiveTextWidget(
+                                      festival.location,
+                                      textType: TextType.caption,
+                                      color: AppColors.mutedText,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              size: 12,
+                              color: AppColors.mutedText,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (!isLast)
+                    const Divider(
+                      height: 1,
+                      indent: AppDimensions.spaceM + 44 + AppDimensions.spaceM,
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildFestivalsSlider(
     BuildContext context,
     FestivalViewModel viewModel,
@@ -276,38 +646,27 @@ class FestivalView extends BaseView<FestivalViewModel> {
       );
     }
 
-    // Show filtered festivals if there's a search query, otherwise show all festivals
-    final festivalsToShow =
-        viewModel.searchQuery.isNotEmpty
-            ? viewModel.filteredFestivals
-            : viewModel.festivals;
+    // Slider always shows tab-filtered festivals (search results are in the search panel)
+    final festivalsToShow = viewModel.festivals;
 
     if (festivalsToShow.isEmpty) {
+      final emptyMessage = _emptyMessageForFilter(viewModel.currentFilter);
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.search_off, size: 64, color: AppColors.black),
+            Icon(
+              Icons.event_busy,
+              size: 64,
+              color: AppColors.black,
+            ),
             const SizedBox(height: AppDimensions.spaceM),
             ResponsiveTextWidget(
-              viewModel.searchQuery.isNotEmpty
-                  ? "${AppStrings.noFestivalsAvailable} for '${viewModel.searchQuery}'"
-                  : AppStrings.noFestivalsAvailable,
+              emptyMessage,
               textType: TextType.body,
               color: AppColors.black,
               textAlign: TextAlign.center,
             ),
-            if (viewModel.searchQuery.isNotEmpty) ...[
-              const SizedBox(height: AppDimensions.spaceS),
-              TextButton(
-                onPressed: () => viewModel.clearSearch(),
-                child: const ResponsiveTextWidget(
-                  AppStrings.clearSearch,
-                  textType: TextType.body,
-                  color: AppColors.black,
-                ),
-              ),
-            ],
           ],
         ),
       );
@@ -345,34 +704,18 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
-  Widget _buildBottomIcon(BuildContext context) {
-    return Center(
-      child: Container(
-        height: AppDimensions.buttonHeightXL,
-        width: AppDimensions.buttonHeightXL,
-        child: ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [
-              Color(0xFFFB188A), // 0%
-              Color(0xFFFD774B), // 52%
-              Color(0xFFFED50B), // 100%
-            ],
-            stops: [0.0, 0.52, 1.0],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ).createShader(bounds),
-          blendMode: BlendMode.srcIn,
-          child: SvgPicture.asset(
-            AppAssets.note,
-            width: AppDimensions.iconM,
-            height: AppDimensions.iconM,
-            color: AppColors.white, // shader drives final color
-          ),
-        ),
-      ),
-    );
+  String _emptyMessageForFilter(String filter) {
+    switch (filter) {
+      case 'live':
+        return AppStrings.noLiveFestivals;
+      case 'upcoming':
+        return AppStrings.noUpcomingFestivals;
+      case 'past':
+        return AppStrings.noPastFestivals;
+      default:
+        return AppStrings.noFestivalsAvailable;
+    }
   }
-
 
   /// "What's on your mind?" bar above the logos row — white container, avatar, pill input, camera icon.
   Widget _buildCreatePostBar(
@@ -579,6 +922,38 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
+  Widget _buildViewAllButton(BuildContext context) {
+    return SizedBox(
+      height: 24,
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pushNamed(AppRoutes.viewAllFestivals);
+              },
+              style: TextButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingS),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const ResponsiveTextWidget(
+                AppStrings.viewAll,
+                textType: TextType.body,
+                color: AppColors.black,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Tab bar for Live / Upcoming / Past (same style as chat rooms tabs).
   Widget _buildFilterTabBar(
     BuildContext context,
@@ -685,28 +1060,23 @@ class _ScrollableLogosWidget extends StatefulWidget {
 
 class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
 
+  static const double _pinkButtonSize = 88.0;
+
   @override
   Widget build(BuildContext context) {
-    final logoSize = context.isSmallScreen ? 44.0 : context.isMediumScreen ? 52.0 : 56.0;
-    final festivalChatWidth = logoSize * 2.4;
-    final festivalChatHeight = logoSize * 1.5;
-
     final itemSpacing = context.isSmallScreen ? 12.0 : 16.0;
-    final listHeight = festivalChatHeight > _pinkButtonSize ? festivalChatHeight : _pinkButtonSize;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: listHeight,
+          height: _pinkButtonSize,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.symmetric(horizontal: itemSpacing),
             children: [
               _buildFestivalChatBadge(
                 context,
-                width: festivalChatWidth,
-                height: festivalChatHeight,
                 onTap: () => widget.viewModel.navigateToGlobalFeed(context),
               ),
               SizedBox(width: itemSpacing),
@@ -718,7 +1088,7 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
               SizedBox(width: itemSpacing),
               _buildPinkLabelButton(
                 context,
-                label: 'Organizer',
+                label: 'Festival Organizer',
                 onTap: () => widget.viewModel.openAppStoreIOS(caAppStoreUrl),
               ),
               SizedBox(width: itemSpacing),
@@ -731,8 +1101,7 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
           ),
         ),
         const SizedBox(height: 16),
-        Padding(
-          padding: EdgeInsets.only(left: festivalChatWidth + itemSpacing),
+        Center(
           child: ResponsiveTextWidget(
             'Download our App Suite',
             textType: TextType.body,
@@ -747,35 +1116,70 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
 
   Widget _buildFestivalChatBadge(
     BuildContext context, {
-    required double width,
-    required double height,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: width,
-        height: height,
+        width: _pinkButtonSize,
+        height: _pinkButtonSize,
         decoration: BoxDecoration(
           color: const Color(0xFFFC2E95),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Center(
-          child: ResponsiveTextWidget(
-            'Festival Chat',
-            textType: TextType.body,
-            color: AppColors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: context.isSmallScreen ? AppDimensions.textS : AppDimensions.textM,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          child: _buildTwoLineLabel(context, 'Festival Chat'),
         ),
       ),
     );
   }
 
-  static const double _pinkButtonSize = 88.0;
+  /// First word on top line, second word on bottom line (for all buttons in the row).
+  Widget _buildTwoLineLabel(BuildContext context, String label) {
+    final parts = label.split(' ');
+    final fontSize = context.isSmallScreen ? AppDimensions.textS : AppDimensions.textM;
+    if (parts.length >= 2) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            parts[0],
+            style: TextStyle(
+              color: AppColors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: fontSize,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            parts.sublist(1).join(' '),
+            style: TextStyle(
+              color: AppColors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: fontSize,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      );
+    }
+    return Text(
+      label,
+      style: TextStyle(
+        color: AppColors.white,
+        fontWeight: FontWeight.bold,
+        fontSize: fontSize,
+      ),
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
 
   /// Large pink square button with text label; same style for all app suite buttons.
   Widget _buildPinkLabelButton(
@@ -795,16 +1199,7 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: ResponsiveTextWidget(
-              label,
-              textType: TextType.body,
-              color: AppColors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: context.isSmallScreen ? AppDimensions.textS : AppDimensions.textM,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: _buildTwoLineLabel(context, label),
           ),
         ),
       ),

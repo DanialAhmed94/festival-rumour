@@ -18,12 +18,14 @@ class FestivalProvider extends ChangeNotifier {
 
   /// Set the selected festival (called when user selects from slider)
   void setSelectedFestival(FestivalModel? festival) {
+    if (kDebugMode) {
+      print('🎪 [FestivalProvider] setSelectedFestival called: festival=${festival?.title ?? "null"}, id=${festival?.id}, current _selectedFestival?.id=${_selectedFestival?.id}');
+    }
     if (_selectedFestival?.id != festival?.id) {
       _selectedFestival = festival;
       notifyListeners();
-      
       if (kDebugMode) {
-        print('🎪 Selected festival: ${festival?.title ?? 'None'}');
+        print('🎪 [FestivalProvider] selected festival updated, _allFestivals.length=${_allFestivals.length}');
       }
     }
   }
@@ -42,11 +44,13 @@ class FestivalProvider extends ChangeNotifier {
 
   /// Set all festivals list (for reference)
   void setAllFestivals(List<FestivalModel> festivals) {
+    if (kDebugMode) {
+      print('🎪 [FestivalProvider] setAllFestivals called: input list length=${festivals.length}, first id=${festivals.isNotEmpty ? festivals.first.id : "n/a"}');
+    }
     _allFestivals = List.from(festivals);
     notifyListeners();
-    
     if (kDebugMode) {
-      print('🎪 Updated festivals list: ${festivals.length} festivals');
+      print('🎪 [FestivalProvider] _allFestivals now has ${_allFestivals.length} festivals');
     }
   }
 

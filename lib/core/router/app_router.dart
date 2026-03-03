@@ -20,6 +20,7 @@ import '../../ui/views/detail/detail_view.dart';
 import '../../ui/views/discover/discover_view.dart';
 import '../../ui/views/event/event_view.dart';
 import '../../ui/views/festival/festival_view.dart';
+import '../../ui/views/festival/view_all_festivals_view.dart';
 import '../../ui/views/homeview/home_view.dart';
 import '../../ui/views/interest/interests_view.dart';
 import '../../ui/views/name/name_view.dart';
@@ -94,6 +95,7 @@ class AppRoutes {
   static const String firebaseTest = '/firebase_test';
   static const String photoUpload = '/photo_upload';
   static const String viewAll = '/view_all';
+  static const String viewAllFestivals = '/view_all_festivals';
   static const String forgotpassword = '/forgot_password';
   static const String createPost = '/create_post';
   static const String editPost = '/edit_post';
@@ -342,14 +344,20 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
         ),
       );
 
-    case AppRoutes.toilets:
-      return SmoothPageRoute(page: const ToiletView());
+    case AppRoutes.toilets: {
+      final festivalId = settings.arguments as int?;
+      return SmoothPageRoute(page: ToiletView(festivalId: festivalId));
+    }
 
-    case AppRoutes.performance:
-      return SmoothPageRoute(page: const PerformanceView());
+    case AppRoutes.performance: {
+      final festivalId = settings.arguments as int?;
+      return SmoothPageRoute(page: PerformanceView(festivalId: festivalId));
+    }
 
-    case AppRoutes.event:
-      return SmoothPageRoute(page: const EventView());
+    case AppRoutes.event: {
+      final festivalId = settings.arguments as int?;
+      return SmoothPageRoute(page: EventView(festivalId: festivalId));
+    }
 
     case AppRoutes.news:
       return SmoothPageRoute(page: const NewsView());
@@ -366,9 +374,21 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
     case AppRoutes.forgotpassword:
       return SmoothPageRoute(page: const ForgotPasswordView());
 
-    case AppRoutes.viewAll:
+    case AppRoutes.viewAll: {
+      final args = settings.arguments;
+      if (args is Map) {
+        final tab = args['tab'] as int?;
+        final festivalId = args['festivalId'] as int?;
+        return SmoothPageRoute(
+          page: ViewAllView(initialTab: tab, festivalIdForToilets: festivalId),
+        );
+      }
       final initialTab = settings.arguments as int?;
       return SmoothPageRoute(page: ViewAllView(initialTab: initialTab));
+    }
+
+    case AppRoutes.viewAllFestivals:
+      return SmoothPageRoute(page: const ViewAllFestivalsView());
 
     case AppRoutes.createPost:
       // Arguments can be collection name (String) when called from rumors context

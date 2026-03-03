@@ -213,6 +213,7 @@ class AppStrings {
   static const String image = "Image";
   static const String location = "LOCATION";
   static const String openMap = "Open Map";
+  static const String locationNotAvailable = "Location not available";
   static const String latitude = "Latitude";
   static const String longitude = "Longitude";
   static const String what3word = "What3word";
@@ -272,8 +273,16 @@ class AppStrings {
   static const String festivalsFilter = "Festivals";
   static const String loadingfestivals = "Loading festivals...";
   static const String noFestivalsAvailable = "No Festivals available";
+  static const String noLiveFestivals = "No live festivals right now";
+  static const String noUpcomingFestivals = "No upcoming festivals";
+  static const String noPastFestivals = "No past festivals";
   static const String exploreText = "Explore Festivals";
   static const String failedToLoadFestivals = "Failed to load festival";
+  static const String failedToLoadNews = "Failed to load news";
+  static const String failedToLoadToilets = "Failed to load toilets";
+  static const String failedToLoadEvents = "Failed to load events";
+  static const String failedToLoadPerformances = "Failed to load performances";
+  static const String noPerformances = "No performances for this festival";
   static const String commentHint =
       "Ask a question, gather people or share your thoughts";
   // Event titles
@@ -347,6 +356,7 @@ class AppStrings {
   static const String events = 'Events';
 
   static const String viewAll = 'View All';
+  static const String viewAllFestivals = 'All Festivals';
   static const String newEventPreview = 'New Event Preview';
   static const String newEventInformation = 'New Event Information';
   static const String title = 'Title';

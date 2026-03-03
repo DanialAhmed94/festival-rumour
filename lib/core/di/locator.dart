@@ -17,6 +17,10 @@ import '../services/chat_badge_service.dart';
 import '../services/notification_storage_service.dart';
 import '../api/api_config.dart';
 import '../api/festival_api_service.dart';
+import '../api/news_api_service.dart';
+import '../api/toilet_api_service.dart';
+import '../api/event_api_service.dart';
+import '../api/performance_api_service.dart';
 
 final GetIt locator = GetIt.instance;
 
@@ -52,6 +56,10 @@ Future<void> setupLocator() async {
 
   // API Services
   locator.registerLazySingleton<FestivalApiService>(() => FestivalApiService());
+  locator.registerLazySingleton<NewsApiService>(() => NewsApiService());
+  locator.registerLazySingleton<ToiletApiService>(() => ToiletApiService());
+  locator.registerLazySingleton<EventApiService>(() => EventApiService());
+  locator.registerLazySingleton<PerformanceApiService>(() => PerformanceApiService());
 
   // Repositories
   locator.registerLazySingleton<AuthRepository>(

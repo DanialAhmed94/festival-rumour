@@ -1,22 +1,33 @@
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/base_view.dart';
+import '../../../core/providers/festival_provider.dart';
+import '../../../core/models/toilet_model.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_assets.dart';
+import '../../../core/router/app_router.dart';
 import 'toilet_view_model.dart';
+import 'toilet_location_map.dart';
 
 class ToiletView extends BaseView<ToiletViewModel> {
   final VoidCallback? onBack;
-  const ToiletView({super.key, this.onBack});
+  final int? festivalId;
+  const ToiletView({super.key, this.onBack, this.festivalId});
 
   @override
   ToiletViewModel createViewModel() => ToiletViewModel();
 
   @override
   Widget buildView(BuildContext context, ToiletViewModel viewModel) {
+    final effectiveFestivalId = festivalId ?? Provider.of<FestivalProvider>(context, listen: false).selectedFestival?.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      viewModel.loadToiletsIfNeeded(effectiveFestivalId);
+    });
+
     if (viewModel.showToiletDetail) {
       return _buildToiletDetail(context, viewModel);
     }
@@ -39,6 +50,8 @@ class ToiletView extends BaseView<ToiletViewModel> {
                 const SizedBox(height: AppDimensions.spaceS),
                 _buildToiletsCard(context),
                 const SizedBox(height: AppDimensions.spaceM),
+                _buildToiletsSectionHeader(context, effectiveFestivalId),
+                const SizedBox(height: AppDimensions.spaceS),
                 Expanded(child: _buildToiletList(context, viewModel)),
               ],
             ),
@@ -88,6 +101,38 @@ class ToiletView extends BaseView<ToiletViewModel> {
       ),
     );
   }
+  Widget _buildToiletsSectionHeader(BuildContext context, int? effectiveFestivalId) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          ResponsiveTextWidget(
+            AppStrings.toilets,
+            textType: TextType.title,
+            color: AppColors.black,
+            fontWeight: FontWeight.bold,
+          ),
+          GestureDetector(
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                AppRoutes.viewAll,
+                arguments: {'tab': 3, 'festivalId': effectiveFestivalId},
+              );
+            },
+            child: ResponsiveTextWidget(
+              AppStrings.viewAll,
+              textType: TextType.body,
+              color: AppColors.black,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildToiletsCard(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
@@ -134,9 +179,24 @@ class ToiletView extends BaseView<ToiletViewModel> {
     );
   }
   Widget _buildToiletList(BuildContext context, ToiletViewModel viewModel) {
+    if (viewModel.isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.black),
+      );
+    }
+    if (viewModel.toilets.isEmpty) {
+      return Center(
+        child: ResponsiveTextWidget(
+          AppStrings.noData,
+          textType: TextType.body,
+          color: AppColors.grey600,
+        ),
+      );
+    }
+    final displayCount = viewModel.toilets.length > 4 ? 4 : viewModel.toilets.length;
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
-      itemCount: viewModel.toilets.length,
+      itemCount: displayCount,
       itemBuilder: (context, index) {
         final toilet = viewModel.toilets[index];
         return _buildToiletCard(context, toilet, viewModel);
@@ -146,17 +206,17 @@ class ToiletView extends BaseView<ToiletViewModel> {
 
   Widget _buildToiletCard(
       BuildContext context,
-      ToiletItem toilet,
+      ToiletModel toilet,
       ToiletViewModel viewModel,
       ) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginS),
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       decoration: BoxDecoration(
-        color: AppColors.white, // same as festival card
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
         border: Border.all(
-          color: AppColors.transparent,// same green border tone
+          color: AppColors.transparent,
           width: AppDimensions.borderWidthS,
         ),
         boxShadow: [
@@ -169,34 +229,16 @@ class ToiletView extends BaseView<ToiletViewModel> {
       ),
       child: Row(
         children: [
-          // 🔹 Toilet Icon (same circular design)
-          Container(
-            padding: const EdgeInsets.all(AppDimensions.paddingS),
-            decoration: const BoxDecoration(
-              color: AppColors.eventGreen,
-              shape: BoxShape.circle,
-            ),
-            child: Image.asset(
-              AppAssets.assignmentIcon,
-              width: AppDimensions.iconL,
-              height: AppDimensions.iconL,
-              fit: BoxFit.contain,
-            ),
-          ),
-
+          _buildToiletCardThumbnail(toilet),
           const SizedBox(width: AppDimensions.spaceM),
-
-          // 🔹 Toilet Name
           Expanded(
             child: ResponsiveTextWidget(
-              toilet.name,
+              toilet.toiletTypeName,
               textType: TextType.body,
               color: AppColors.black,
               fontWeight: FontWeight.w600,
             ),
           ),
-
-          // 🔹 View Detail button (same design & alignment)
           GestureDetector(
             onTap: () {
               viewModel.navigateToDetail(toilet);
@@ -223,17 +265,60 @@ class ToiletView extends BaseView<ToiletViewModel> {
     );
   }
 
+  /// Card thumbnail uses toilet type image (same as resource_module allToilets).
+  Widget _buildToiletCardThumbnail(ToiletModel toilet) {
+    final imageUrl = toilet.toiletTypeImageUrl;
+    const size = 56.0;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ClipOval(
+        child: imageUrl.isEmpty
+            ? Image.asset(AppAssets.toiletdetail, width: size, height: size, fit: BoxFit.cover)
+            : Image.network(
+                imageUrl,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    color: AppColors.eventGreen,
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: size * 0.5,
+                      height: size * 0.5,
+                      child: CircularProgressIndicator(color: AppColors.black, strokeWidth: 2),
+                    ),
+                  );
+                },
+                errorBuilder: (_, __, ___) => Image.asset(
+                  AppAssets.toiletdetail,
+                  width: size,
+                  height: size,
+                  fit: BoxFit.cover,
+                ),
+              ),
+      ),
+    );
+  }
+
   Widget _buildToiletDetail(BuildContext context, ToiletViewModel viewModel) {
     final toilet = viewModel.selectedToilet!;
 
-    return Scaffold(
-      backgroundColor: AppColors.screenBackground,
-      body: Container(
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildDetailAppBar(context, viewModel),
-              Expanded(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) viewModel.navigateBackToList();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.screenBackground,
+        body: Container(
+          child: SafeArea(
+            child: Column(
+              children: [
+                _buildDetailAppBar(context, viewModel),
+                Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(AppDimensions.paddingM),
                   child: Column(
@@ -257,7 +342,7 @@ class ToiletView extends BaseView<ToiletViewModel> {
             ],
           ),
         ),
-      ),
+      ),)
     );
   }
 
@@ -286,7 +371,7 @@ class ToiletView extends BaseView<ToiletViewModel> {
           ),
           const SizedBox(width: AppDimensions.spaceM),
           ResponsiveTextWidget(
-            viewModel.selectedToilet?.name ?? AppStrings.toiletDetail,
+            viewModel.selectedToilet?.toiletTypeName ?? AppStrings.toiletDetail,
             style: const TextStyle(
               color: AppColors.onPrimary,
               fontSize: AppDimensions.textL,
@@ -301,14 +386,14 @@ class ToiletView extends BaseView<ToiletViewModel> {
 
   Widget _buildFestivalInformationSection2(
     BuildContext context,
-    ToiletItem toilet,
+    ToiletModel toilet,
   ) {
     return _buildWhiteCard(
       context,
       '',
       Column(
         children: [
-          _buildInfoRow(context, Icons.people, AppStrings.festivalName, 'Magic show'),
+          _buildInfoRow(context, Icons.people, AppStrings.festivalName, toilet.festivalName ?? '—'),
         ],
       ),
     );
@@ -316,46 +401,67 @@ class ToiletView extends BaseView<ToiletViewModel> {
 
   Widget _buildFestivalInformationSection3(
     BuildContext context,
-    ToiletItem toilet,
+    ToiletModel toilet,
   ) {
     return _buildWhiteCard(
       context,
       '',
       Column(
         children: [
-          _buildInfoRow(context, Icons.wc, AppStrings.toiletCategory, 'Magic show'),
+          _buildInfoRow(context, Icons.wc, AppStrings.toiletCategory, toilet.toiletTypeName),
         ],
       ),
     );
   }
 
-  Widget _buildImageSection(BuildContext context, ToiletItem toilet) {
+  Widget _buildImageSection(BuildContext context, ToiletModel toilet) {
+    final imageUrl = toilet.imageUrl.isNotEmpty ? toilet.imageUrl : toilet.toiletTypeImageUrl;
     return _buildWhiteCard(
       context,
       AppStrings.image,
       Container(
         height: AppDimensions.imageXXL,
         decoration: BoxDecoration(
-          //color: toilet.color,
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-          child: Container(
-            child: Center(
-              child: Image.asset(
-                AppAssets.toiletdetail, // 👈 your custom icon path
-                // color: Colors.white, // optional if you want to tint the image
-                fit: BoxFit.contain,
-              ),
-            ),
-          ),
+          child: imageUrl.isNotEmpty
+              ? Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        child,
+                        Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.black,
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    (loadingProgress.expectedTotalBytes ?? 1)
+                                : null,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => Center(
+                    child: Image.asset(AppAssets.toiletdetail, fit: BoxFit.contain),
+                  ),
+                )
+              : Center(
+                  child: Image.asset(AppAssets.toiletdetail, fit: BoxFit.contain),
+                ),
         ),
       ),
     );
   }
 
-  Widget _buildLocationSection(BuildContext context, ToiletItem toilet) {
+  Widget _buildLocationSection(BuildContext context, ToiletModel toilet) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM, vertical: AppDimensions.paddingS),
       child: Row(
@@ -400,17 +506,24 @@ class ToiletView extends BaseView<ToiletViewModel> {
     );
   }
 
-  Widget _buildLocationSection2(BuildContext context, ToiletItem toilet) {
+  Widget _buildLocationSection2(BuildContext context, ToiletModel toilet) {
     return _buildWhiteCard(
       context,
       '',
       Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoRow(context, Icons.location_on, AppStrings.latitude, 'Lorem Ipsum'),
+          ToiletLocationMap(
+            latitude: toilet.latitude,
+            longitude: toilet.longitude,
+            height: 180,
+          ),
           const SizedBox(height: AppDimensions.spaceM),
-          _buildInfoRow(context, Icons.location_on, AppStrings.longitude, 'Lorem Ipsum'),
+          _buildInfoRow(context, Icons.location_on, AppStrings.latitude, toilet.latitude ?? '—'),
           const SizedBox(height: AppDimensions.spaceM),
-          _buildInfoRow(context, Icons.location_on, AppStrings.what3word, 'Lorem Ipsum'),
+          _buildInfoRow(context, Icons.location_on, AppStrings.longitude, toilet.longitude ?? '—'),
+          const SizedBox(height: AppDimensions.spaceM),
+          _buildInfoRow(context, Icons.location_on, AppStrings.what3word, toilet.what3Words ?? '—'),
         ],
       ),
     );
@@ -501,16 +614,4 @@ class ToiletView extends BaseView<ToiletViewModel> {
       ],
     );
   }
-}
-
-class ToiletItem {
-  final String name;
-  final String description;
-  final Color color;
-
-  ToiletItem({
-    required this.name,
-    required this.description,
-    required this.color,
-  });
 }

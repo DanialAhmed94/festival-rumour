@@ -1,59 +1,63 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
 import '../../../core/viewmodels/base_view_model.dart';
-import 'toilet_view.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/api/toilet_api_service.dart';
+import '../../../core/models/toilet_model.dart';
+import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/app_durations.dart';
 
 class ToiletViewModel extends BaseViewModel {
-  List<ToiletItem> _toilets = [];
-  bool _showToiletDetail = false;
-  ToiletItem? _selectedToilet;
+  final ToiletApiService _toiletApiService = locator<ToiletApiService>();
 
-  List<ToiletItem> get toilets => _toilets;
+  List<ToiletModel> _toilets = [];
+  bool _showToiletDetail = false;
+  ToiletModel? _selectedToilet;
+  int? _lastLoadedFestivalId;
+
+  List<ToiletModel> get toilets => _toilets;
   bool get showToiletDetail => _showToiletDetail;
-  ToiletItem? get selectedToilet => _selectedToilet;
+  ToiletModel? get selectedToilet => _selectedToilet;
 
   @override
   void init() {
     super.init();
-    _loadToilets();
   }
 
-  void _loadToilets() {
-    _toilets = [
-      ToiletItem(
-        name: 'Femme Fatal',
-        description: 'Red themed toilet',
-        color: Colors.red,
-      ),
-      ToiletItem(
-        name: 'Pretty In Pink Tardis',
-        description: 'Pink themed toilet',
-        color: Colors.pink,
-      ),
-      ToiletItem(
-        name: 'Long Drop',
-        description: 'Outdoor rustic toilet',
-        color: const Color(0xFF8B4513), // Brown color
-      ),
-      ToiletItem(
-        name: 'China Blue Royal Flush',
-        description: 'Blue modern portable toilet',
-        color: Colors.blue,
-      ),
-    ];
-    notifyListeners();
+  /// Call from view when context is available. Uses festivalId from args or from FestivalProvider.
+  Future<void> loadToiletsIfNeeded(int? festivalId) async {
+    if (festivalId == null) return;
+    if (_lastLoadedFestivalId == festivalId) return;
+
+    _lastLoadedFestivalId = festivalId;
+    await loadToilets(festivalId);
   }
 
-  void addToilet(ToiletItem toilet) {
-    _toilets.add(toilet);
-    notifyListeners();
-  }
-
-  void removeToilet(int index) {
-    if (index >= 0 && index < _toilets.length) {
-      _toilets.removeAt(index);
+  Future<void> loadToilets(int? festivalId) async {
+    if (festivalId == null) {
+      _toilets = [];
       notifyListeners();
+      return;
     }
+
+    await handleAsync(
+      () async {
+        final response = await _toiletApiService.getToilets(festivalId);
+
+        if (response.success && response.data != null) {
+          _toilets = response.data!
+              .map((json) => ToiletModel.fromApiJson(json))
+              .toList();
+          if (kDebugMode) {
+            print('ToiletViewModel: loaded ${_toilets.length} toilets for festival $festivalId');
+          }
+        } else {
+          throw Exception(response.message ?? AppStrings.failedToLoadToilets);
+        }
+      },
+      errorMessage: AppStrings.failedToLoadToilets,
+      minimumLoadingDuration: AppDurations.minimumLoadingDuration,
+    );
   }
 
   void set showToiletDetail(bool value) {
@@ -61,15 +65,12 @@ class ToiletViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  void set selectedToilet(ToiletItem? toilet) {
+  void set selectedToilet(ToiletModel? toilet) {
     _selectedToilet = toilet;
     notifyListeners();
   }
-  // void navigateBack(BuildContext context) {
-  //   Navigator.pop(context);
-  // }
 
-  void navigateToDetail(ToiletItem toilet) {
+  void navigateToDetail(ToiletModel toilet) {
     _selectedToilet = toilet;
     _showToiletDetail = true;
     notifyListeners();
@@ -77,7 +78,7 @@ class ToiletViewModel extends BaseViewModel {
 
   void navigateBackToList() {
     _showToiletDetail = false;
+    _selectedToilet = null;
     notifyListeners();
   }
-
 }

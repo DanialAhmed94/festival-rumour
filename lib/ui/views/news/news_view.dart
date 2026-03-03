@@ -8,6 +8,7 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/models/bulletin_model.dart';
 import 'news_view_model.dart';
 
 class NewsView extends BaseView<NewsViewModel> {
@@ -50,7 +51,7 @@ class NewsView extends BaseView<NewsViewModel> {
               const SizedBox(height: AppDimensions.spaceL),
               _buildToiletsSection(context),
               const SizedBox(height: AppDimensions.spaceM),
-              Expanded(child: _buildFestivalCards(context, viewModel)),
+              Expanded(child: _buildBulletinList(context, viewModel)),
             ],
           ),
         ),
@@ -166,19 +167,33 @@ class NewsView extends BaseView<NewsViewModel> {
     );
   }
 
-  Widget _buildFestivalCards(BuildContext context, NewsViewModel viewModel) {
+  Widget _buildBulletinList(BuildContext context, NewsViewModel viewModel) {
+    if (viewModel.isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.black),
+      );
+    }
+    if (viewModel.bulletins.isEmpty) {
+      return Center(
+        child: ResponsiveTextWidget(
+          AppStrings.noNews,
+          textType: TextType.body,
+          color: AppColors.grey600,
+        ),
+      );
+    }
+    final displayCount = viewModel.bulletins.length > 4 ? 4 : viewModel.bulletins.length;
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
-      itemCount: viewModel.festivals.length,
+      itemCount: displayCount,
       itemBuilder: (context, index) {
-        final festival = viewModel.festivals[index];
-        return _buildFestivalCard(context, festival, viewModel);
+        final bulletin = viewModel.bulletins[index];
+        return _buildBulletinListItem(context, bulletin, viewModel);
       },
     );
   }
 
-  Widget _buildFestivalCard(BuildContext context, FestivalItem festival,
-      NewsViewModel viewModel) {
+  Widget _buildBulletinListItem(BuildContext context, BulletinModel bulletin, NewsViewModel viewModel) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppDimensions.marginS),
       padding: const EdgeInsets.all(AppDimensions.paddingM),
@@ -197,7 +212,6 @@ class NewsView extends BaseView<NewsViewModel> {
       ),
       child: Row(
         children: [
-          // Icon
           Container(
             padding: const EdgeInsets.all(AppDimensions.paddingS),
             decoration: BoxDecoration(
@@ -212,23 +226,30 @@ class NewsView extends BaseView<NewsViewModel> {
             ),
           ),
           const SizedBox(width: AppDimensions.spaceM),
-
-          // Festival name
           Expanded(
-            child: ResponsiveTextWidget(
-              festival.name,
-              textType: TextType.body,
-              color: AppColors.black,
-              fontWeight: FontWeight.w600,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ResponsiveTextWidget(
+                  bulletin.title ?? AppStrings.news,
+                  textType: TextType.body,
+                  color: AppColors.black,
+                  fontWeight: FontWeight.w600,
+                ),
+                if (bulletin.content != null && bulletin.content!.isNotEmpty) ...[
+                  const SizedBox(height: AppDimensions.spaceXS),
+                  ResponsiveTextWidget(
+                    bulletin.content!,
+                    textType: TextType.caption,
+                    color: AppColors.grey600,
+                    maxLines: 2,
+                  ),
+                ],
+              ],
             ),
           ),
-
-          // View Detail button
           GestureDetector(
-            onTap: () {
-              viewModel.showPerformancePreview = true;
-              viewModel.notifyListeners();
-            },
+            onTap: () => viewModel.openBulletinDetail(bulletin),
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppDimensions.paddingM,
@@ -505,24 +526,31 @@ class NewsView extends BaseView<NewsViewModel> {
 
   Widget _buildPerformancePreview(BuildContext context,
       NewsViewModel viewModel) {
-    return Scaffold(
-      backgroundColor: AppColors.screenBackground,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildPreviewAppBar(context, viewModel),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppDimensions.paddingM),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildPerformanceInformationSection(context),
-                  ],
+    final bulletin = viewModel.selectedBulletin;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) viewModel.navigateBackFromPerformancePreview();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.screenBackground,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildPreviewAppBar(context, viewModel),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(AppDimensions.paddingM),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildPerformanceInformationSection(context, bulletin),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -567,44 +595,27 @@ class NewsView extends BaseView<NewsViewModel> {
     );
   }
 
-  Widget _buildPerformanceInformationSection(BuildContext context) {
+  Widget _buildPerformanceInformationSection(BuildContext context, BulletinModel? bulletin) {
+    final title = bulletin?.title ?? AppStrings.news;
+    final content = bulletin?.content ?? '';
+    final timeStr = bulletin?.time ?? '—';
+    final dateStr = bulletin?.date ?? '—';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
-        // Festival Name
         _buildPerformanceInfoCard(
           context,
           AppStrings.titleName,
-          AppStrings.magicShow,
+          title,
           Icons.auto_fix_high,
         ),
         const SizedBox(height: AppDimensions.spaceM),
-
-        // Select Event
         _buildPerformanceInfoCard(
           context,
           AppStrings.content,
-          '',
+          content,
           Icons.content_paste,
-        ),
-        const SizedBox(height: AppDimensions.spaceM),
-
-        // Start Date
-        _buildPerformanceInfoCard(
-          context,
-          AppStrings.scheduleOptions,
-          AppStrings.publishNow,
-          Icons.verified,
-        ),
-        const SizedBox(height: AppDimensions.spaceM),
-
-        ResponsiveTextWidget(
-          AppStrings.scheduleForLater,
-          fontSize: AppDimensions.textL,
-          textType: TextType.title,
-          color: AppColors.black,
-          fontWeight: FontWeight.bold,
         ),
         const SizedBox(height: AppDimensions.spaceM),
         Row(
@@ -613,7 +624,7 @@ class NewsView extends BaseView<NewsViewModel> {
               child: _buildPerformanceInfoCard2(
                 context,
                 AppStrings.time,
-                '10:00 AM',
+                timeStr,
                 Icons.access_time,
               ),
             ),
@@ -622,7 +633,7 @@ class NewsView extends BaseView<NewsViewModel> {
               child: _buildPerformanceInfoCard2(
                 context,
                 AppStrings.date,
-                '07.12.2024',
+                dateStr,
                 Icons.calendar_today,
               ),
             ),

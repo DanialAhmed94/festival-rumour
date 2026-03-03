@@ -580,53 +580,315 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
               ],
             ),
           ),
-          // Dropdown with matching festivals
-          if (viewModel.hasSearchResults)
-            _buildFestivalDropdown(context, viewModel),
+          // Search results panel (loading, error, empty, or results)
+          if (viewModel.searchQuery.isNotEmpty)
+            _buildDiscoverSearchResultsPanel(context, viewModel),
         ],
       ),
     );
   }
-  
-  /// ---------------- FESTIVAL DROPDOWN ----------------
-  Widget _buildFestivalDropdown(BuildContext context, DiscoverViewModel viewModel) {
+
+  /// Search results panel: loading, error, empty, or list (same pattern as festival view).
+  Widget _buildDiscoverSearchResultsPanel(
+    BuildContext context,
+    DiscoverViewModel viewModel,
+  ) {
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.38;
     return Container(
+      constraints: BoxConstraints(maxHeight: maxHeight),
       margin: EdgeInsets.only(
         left: context.responsiveMargin.left,
         right: context.responsiveMargin.right,
         top: AppDimensions.spaceXS,
       ),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.4,
-      ),
       decoration: BoxDecoration(
-        color: AppColors.grey200,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
         boxShadow: [
           BoxShadow(
-            color: AppColors.black.withOpacity(0.2),
-            blurRadius: 8,
+            color: AppColors.black.withOpacity(0.08),
+            blurRadius: 12,
             offset: const Offset(0, 4),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: AppColors.black.withOpacity(0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+            spreadRadius: 0,
           ),
         ],
       ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: EdgeInsets.symmetric(
-          vertical: AppDimensions.spaceXS,
-        ),
-        itemCount: viewModel.filteredFestivals.length,
-        separatorBuilder: (context, index) => Divider(
-          height: 1,
-          color: AppColors.black.withOpacity(0.08),
-          indent: AppDimensions.spaceM,
-          endIndent: AppDimensions.spaceM,
-        ),
-        itemBuilder: (context, index) {
-          final festival = viewModel.filteredFestivals[index];
-          return _buildFestivalListItem(context, viewModel, festival);
-        },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        child: viewModel.isSearching
+            ? _buildDiscoverSearchLoadingState()
+            : viewModel.searchError != null
+                ? _buildDiscoverSearchErrorState(context, viewModel)
+                : viewModel.filteredFestivals.isEmpty
+                    ? _buildDiscoverSearchEmptyState(context, viewModel)
+                    : _buildDiscoverSearchResultsList(context, viewModel),
       ),
+    );
+  }
+
+  Widget _buildDiscoverSearchLoadingState() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppDimensions.spaceM,
+        horizontal: AppDimensions.spaceM,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              color: const Color(0xFFFC2E95),
+              strokeWidth: 2,
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spaceS),
+          ResponsiveTextWidget(
+            'Searching…',
+            textType: TextType.caption,
+            color: AppColors.mutedText,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiscoverSearchErrorState(
+    BuildContext context,
+    DiscoverViewModel viewModel,
+  ) {
+    final message = viewModel.searchError ??
+        'Something went wrong. Please try again.';
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppDimensions.spaceL,
+        horizontal: AppDimensions.spaceM,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(AppDimensions.spaceM),
+              decoration: BoxDecoration(
+                color: AppColors.errorContainer.withOpacity(0.6),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.wifi_off_rounded,
+                size: 40,
+                color: AppColors.onErrorContainer,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceM),
+          SizedBox(
+            width: double.infinity,
+            child: ResponsiveTextWidget(
+              'Search failed',
+              textType: TextType.title,
+              color: AppColors.black,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceS),
+          SizedBox(
+            width: double.infinity,
+            child: ResponsiveTextWidget(
+              message,
+              textType: TextType.caption,
+              color: AppColors.mutedText,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceL),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    viewModel.clearSearch(context);
+                    FocusScope.of(context).unfocus();
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.mutedText,
+                    side: BorderSide(color: AppColors.mutedText),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.spaceM,
+                      vertical: AppDimensions.spaceS,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppDimensions.radiusM),
+                    ),
+                  ),
+                  child: const ResponsiveTextWidget(
+                    AppStrings.clearSearch,
+                    textType: TextType.body,
+                    color: AppColors.mutedText,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppDimensions.spaceM),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => viewModel.retrySearch(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFC2E95),
+                    foregroundColor: AppColors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.spaceL,
+                      vertical: AppDimensions.spaceS,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppDimensions.radiusM),
+                    ),
+                  ),
+                  child: const ResponsiveTextWidget(
+                    'Try again',
+                    textType: TextType.body,
+                    color: AppColors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiscoverSearchEmptyState(
+    BuildContext context,
+    DiscoverViewModel viewModel,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppDimensions.spaceL,
+        horizontal: AppDimensions.spaceM,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(AppDimensions.spaceM),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.search_off_rounded,
+              size: 40,
+              color: AppColors.mutedText,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceM),
+          SizedBox(
+            width: double.infinity,
+            child: ResponsiveTextWidget(
+              'No festivals found',
+              textType: TextType.title,
+              color: AppColors.black,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceS),
+          SizedBox(
+            width: double.infinity,
+            child: ResponsiveTextWidget(
+              'We couldn\'t find anything for "${viewModel.searchQuery}". Try a different name or location.',
+              textType: TextType.caption,
+              color: AppColors.mutedText,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceL),
+          OutlinedButton(
+            onPressed: () {
+              viewModel.clearSearch(context);
+              FocusScope.of(context).unfocus();
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFFC2E95),
+              side: const BorderSide(color: Color(0xFFFC2E95)),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceL,
+                vertical: AppDimensions.spaceS,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+              ),
+            ),
+            child: const ResponsiveTextWidget(
+              AppStrings.clearSearch,
+              textType: TextType.body,
+              color: Color(0xFFFC2E95),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiscoverSearchResultsList(
+    BuildContext context,
+    DiscoverViewModel viewModel,
+  ) {
+    final list = viewModel.filteredFestivals;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimensions.spaceM,
+            AppDimensions.spaceS,
+            AppDimensions.spaceM,
+            AppDimensions.spaceXS,
+          ),
+          child: ResponsiveTextWidget(
+            '${list.length} ${list.length == 1 ? 'result' : 'results'}',
+            textType: TextType.caption,
+            color: AppColors.mutedText,
+          ),
+        ),
+        const Divider(height: 1),
+        Flexible(
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: list.length,
+            itemBuilder: (context, index) {
+              final festival = list[index];
+              final isLast = index == list.length - 1;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildFestivalListItem(context, viewModel, festival),
+                  if (!isLast)
+                    Divider(
+                      height: 1,
+                      color: AppColors.black.withOpacity(0.08),
+                      indent: AppDimensions.spaceM,
+                      endIndent: AppDimensions.spaceM,
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
   

@@ -1,123 +1,159 @@
 import 'package:flutter/material.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/constants/app_strings.dart';
-import '../../../core/constants/app_assets.dart';
-import '../event/event_view.dart';
-import '../performance/performance_view.dart';
-import '../news/news_view_model.dart';
-
+import '../../../core/constants/app_durations.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/api/news_api_service.dart';
+import '../../../core/api/toilet_api_service.dart';
+import '../../../core/api/event_api_service.dart';
+import '../../../core/api/performance_api_service.dart';
+import '../../../core/models/bulletin_model.dart';
+import '../../../core/models/toilet_model.dart';
+import '../../../core/models/event_model.dart';
+import '../../../core/models/performance_model.dart';
 
 class ViewAllViewModel extends BaseViewModel {
   final int? _initialTab;
+  final int? _festivalIdForToilets;
   int _selectedTab = 0;
-  List<EventCategory> _events = [];
-  List<PerformanceCategory> _performances = [];
-  List<FestivalItem> _news = [];
+  List<EventModel> _events = [];
+  List<PerformanceModel> _performances = [];
+  List<BulletinModel> _bulletins = [];
+  List<ToiletModel> _toilets = [];
+  int? _lastToiletsFestivalId;
+  int? _lastEventsFestivalId;
+  int? _lastPerformancesFestivalId;
 
-  ViewAllViewModel({int? initialTab}) : _initialTab = initialTab;
+  final NewsApiService _newsApiService = locator<NewsApiService>();
+  final ToiletApiService _toiletApiService = locator<ToiletApiService>();
+  final EventApiService _eventApiService = locator<EventApiService>();
+  final PerformanceApiService _performanceApiService = locator<PerformanceApiService>();
+
+  ViewAllViewModel({int? initialTab, int? festivalIdForToilets})
+      : _initialTab = initialTab,
+        _festivalIdForToilets = festivalIdForToilets;
 
   int get selectedTab => _selectedTab;
-  List<EventCategory> get events => _events;
-  List<PerformanceCategory> get performances => _performances;
-  List<FestivalItem> get news => _news;
+  List<EventModel> get events => _events;
+  List<PerformanceModel> get performances => _performances;
+  List<BulletinModel> get bulletins => _bulletins;
+  List<ToiletModel> get toilets => _toilets;
+  int? get festivalIdForToilets => _festivalIdForToilets;
   bool get showTabSelector => _initialTab == null;
 
   @override
   void init() {
     super.init();
-    if (_initialTab != null && _initialTab! >= 0 && _initialTab! <= 2) {
+    if (_initialTab != null && _initialTab! >= 0 && _initialTab! <= 3) {
       _selectedTab = _initialTab!;
     }
     _loadAllData();
   }
 
-  void _loadAllData() {
-    // Load Events
-    _events = [
-      EventCategory(
-        name: AppStrings.workshopsAndTalks,
-        description: AppStrings.educationalWorkshopsAndSpeakerSessions,
-      ),
-      EventCategory(
-        name: AppStrings.filmScreenings,
-        description: AppStrings.movieAndDocumentaryScreenings,
-      ),
-      EventCategory(
-        name: AppStrings.artInstallations,
-        description: AppStrings.interactiveArtDisplaysAndExhibitions,
-      ),
-      EventCategory(
-        name: AppStrings.charityAndCommunityEvents,
-        description: AppStrings.communityServiceAndCharityActivities,
-      ),
-      EventCategory(
-        name: AppStrings.musicPerformances,
-        description: AppStrings.liveMusicAndEntertainmentShows,
-      ),
-    ];
+  Future<void> _loadAllData() async {
+    if (_selectedTab == 0 && _festivalIdForToilets != null) {
+      await loadEventsIfNeeded(_festivalIdForToilets);
+    } else if (_selectedTab == 1) {
+      await _loadBulletins();
+    } else if (_selectedTab == 2 && _festivalIdForToilets != null) {
+      await loadPerformancesIfNeeded(_festivalIdForToilets);
+    } else if (_selectedTab == 3 && _festivalIdForToilets != null) {
+      await loadToiletsIfNeeded(_festivalIdForToilets);
+    } else {
+      notifyListeners();
+    }
+  }
 
-    // Load Performances
-    _performances = [
-      PerformanceCategory(
-        name: AppStrings.music,
-        description: AppStrings.liveMusicPerformances,
-        icon: Icons.music_note,
-      ),
-      PerformanceCategory(
-        name: AppStrings.sportsAndGames,
-        description: AppStrings.sportsActivitiesAndGames,
-        icon: Icons.sports_soccer,
-      ),
-      PerformanceCategory(
-        name: AppStrings.exhibitionsAndArtDisplays,
-        description: AppStrings.artExhibitionsAndDisplays,
-        icon: Icons.palette,
-      ),
-      PerformanceCategory(
-        name: AppStrings.culturalPerformances,
-        description: AppStrings.traditionalCulturalPerformances,
-        icon: Icons.theater_comedy,
-      ),
-    ];
+  Future<void> _loadBulletins() async {
+    await handleAsync(
+      () async {
+        final response = await _newsApiService.getBulletins();
+        if (response.success && response.data != null) {
+          _bulletins = response.data!.map((json) => BulletinModel.fromApiJson(json)).toList();
+        } else {
+          throw Exception(response.message ?? AppStrings.failedToLoadNews);
+        }
+      },
+      errorMessage: AppStrings.failedToLoadNews,
+      minimumLoadingDuration: AppDurations.minimumLoadingDuration,
+    );
+  }
 
-    // Load News
-    _news = [
-      FestivalItem(
-        name: AppStrings.glastonburyFestival,
-        description: AppStrings.musicAndArtsFestival,
-      ),
-      FestivalItem(
-        name: AppStrings.readingAndLeedsFestival,
-        description: AppStrings.rockAndAlternativeMusicFestival,
-      ),
-      FestivalItem(
-        name: AppStrings.downloadFestival,
-        description: AppStrings.rockAndMetalMusicFestival,
-      ),
-      FestivalItem(
-        name: AppStrings.newBulletin,
-        description: AppStrings.latestFestivalUpdates,
-      ),
-    ];
+  Future<void> _loadToilets(int festivalId) async {
+    _lastToiletsFestivalId = festivalId;
+    await handleAsync(
+      () async {
+        final response = await _toiletApiService.getToilets(festivalId);
+        if (response.success && response.data != null) {
+          _toilets = response.data!.map((json) => ToiletModel.fromApiJson(json)).toList();
+        } else {
+          throw Exception(response.message ?? AppStrings.failedToLoadToilets);
+        }
+      },
+      errorMessage: AppStrings.failedToLoadToilets,
+      minimumLoadingDuration: AppDurations.minimumLoadingDuration,
+    );
+  }
 
-    notifyListeners();
+  Future<void> _loadEvents(int festivalId) async {
+    _lastEventsFestivalId = festivalId;
+    await handleAsync(
+      () async {
+        final response = await _eventApiService.getEvents(festivalId);
+        if (response.success && response.data != null) {
+          _events = response.data!.map((json) => EventModel.fromApiJson(json)).toList();
+        } else {
+          throw Exception(response.message ?? AppStrings.failedToLoadEvents);
+        }
+      },
+      errorMessage: AppStrings.failedToLoadEvents,
+      minimumLoadingDuration: AppDurations.minimumLoadingDuration,
+    );
+  }
+
+  Future<void> _loadPerformances(int festivalId) async {
+    _lastPerformancesFestivalId = festivalId;
+    await handleAsync(
+      () async {
+        final response = await _performanceApiService.getPerformances(festivalId);
+        if (response.success && response.data != null) {
+          _performances = response.data!.map((json) => PerformanceModel.fromApiJson(json)).toList();
+        } else {
+          throw Exception(response.message ?? AppStrings.failedToLoadPerformances);
+        }
+      },
+      errorMessage: AppStrings.failedToLoadPerformances,
+      minimumLoadingDuration: AppDurations.minimumLoadingDuration,
+    );
+  }
+
+  Future<void> loadToiletsIfNeeded(int? festivalId) async {
+    if (festivalId == null) return;
+    if (_lastToiletsFestivalId == festivalId) return;
+    await _loadToilets(festivalId);
+  }
+
+  Future<void> loadEventsIfNeeded(int? festivalId) async {
+    if (festivalId == null) return;
+    if (_lastEventsFestivalId == festivalId) return;
+    await _loadEvents(festivalId);
+  }
+
+  Future<void> loadPerformancesIfNeeded(int? festivalId) async {
+    if (festivalId == null) return;
+    if (_lastPerformancesFestivalId == festivalId) return;
+    await _loadPerformances(festivalId);
   }
 
   void setSelectedTab(int index) {
     _selectedTab = index;
     notifyListeners();
-  }
-
-  void navigateToEventDetail(EventCategory event) {
-    // Handle navigation to event detail
-  }
-
-  void navigateToPerformanceDetail(PerformanceCategory performance) {
-    // Handle navigation to performance detail
-  }
-
-  void navigateToNewsDetail(FestivalItem newsItem) {
-    // Handle navigation to news detail
+    if (index == 1 && _bulletins.isEmpty && !isLoading) {
+      _loadBulletins();
+    } else if (index == 0 && _festivalIdForToilets != null && _events.isEmpty && !isLoading) {
+      loadEventsIfNeeded(_festivalIdForToilets);
+    } else if (index == 2 && _festivalIdForToilets != null && _performances.isEmpty && !isLoading) {
+      loadPerformancesIfNeeded(_festivalIdForToilets);
+    }
   }
 }
-

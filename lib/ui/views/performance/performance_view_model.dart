@@ -1,61 +1,50 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/constants/app_strings.dart';
-import 'performance_view.dart';
+import '../../../core/constants/app_durations.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/api/performance_api_service.dart';
+import '../../../core/models/performance_model.dart';
 
 class PerformanceViewModel extends BaseViewModel {
-  List<PerformanceCategory> _performanceCategories = [];
-  bool _showPerformancePreview = false;
+  final PerformanceApiService _performanceApiService = locator<PerformanceApiService>();
 
-  List<PerformanceCategory> get performanceCategories => _performanceCategories;
-  bool get showPerformancePreview => _showPerformancePreview;
+  List<PerformanceModel> _performances = [];
+  int? _lastLoadedFestivalId;
+
+  List<PerformanceModel> get performances => _performances;
 
   @override
   void init() {
     super.init();
-    _loadPerformanceCategories();
   }
 
-  void _loadPerformanceCategories() {
-    _performanceCategories = [
-      PerformanceCategory(
-        name: AppStrings.music,
-        description: AppStrings.liveMusicPerformances,
-        icon: Icons.music_note,
-      ),
-      PerformanceCategory(
-        name: AppStrings.sportsAndGames,
-        description: AppStrings.sportsActivitiesAndGames,
-        icon: Icons.sports_soccer,
-      ),
-      PerformanceCategory(
-        name: AppStrings.exhibitionsAndArtDisplays,
-        description: AppStrings.artExhibitionsAndDisplays,
-        icon: Icons.palette,
-      ),
-      PerformanceCategory(
-        name: AppStrings.culturalPerformances,
-        description: AppStrings.traditionalCulturalPerformances,
-        icon: Icons.theater_comedy,
-      ),
-    ];
-    notifyListeners();
+  Future<void> loadPerformancesIfNeeded(int? festivalId) async {
+    if (festivalId == null) return;
+    // Only load once per festival (avoid repeated calls when API returns 0 or view rebuilds)
+    if (_lastLoadedFestivalId == festivalId) return;
+
+    _lastLoadedFestivalId = festivalId;
+    await _loadPerformances(festivalId);
   }
 
-  void addPerformanceCategory(PerformanceCategory category) {
-    _performanceCategories.add(category);
-    notifyListeners();
-  }
-
-  void removePerformanceCategory(int index) {
-    if (index >= 0 && index < _performanceCategories.length) {
-      _performanceCategories.removeAt(index);
-      notifyListeners();
-    }
-  }
-
-  void set showPerformancePreview(bool value) {
-    _showPerformancePreview = value;
-    notifyListeners();
+  Future<void> _loadPerformances(int festivalId) async {
+    await handleAsync(
+      () async {
+        final response = await _performanceApiService.getPerformances(festivalId);
+        if (response.success && response.data != null) {
+          _performances = response.data!
+              .map((json) => PerformanceModel.fromApiJson(json))
+              .toList();
+          if (kDebugMode) {
+            print('PerformanceViewModel: loaded ${_performances.length} performances for festival $festivalId');
+          }
+        } else {
+          throw Exception(response.message ?? AppStrings.failedToLoadPerformances);
+        }
+      },
+      errorMessage: AppStrings.failedToLoadPerformances,
+      minimumLoadingDuration: AppDurations.minimumLoadingDuration,
+    );
   }
 }

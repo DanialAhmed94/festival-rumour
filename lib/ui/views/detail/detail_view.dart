@@ -1,6 +1,8 @@
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../core/utils/base_view.dart';
+import '../../../core/providers/festival_provider.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/responsive_widget.dart';
 import '../../../core/constants/app_strings.dart';
@@ -109,7 +111,10 @@ class DetailView extends BaseView<DetailViewModel> {
                   context,
                   'TOILET',
                   AppAssets.toilet,
-                  onTap: () => Navigator.pushNamed(context, AppRoutes.toilets),
+                  onTap: () {
+                    final festivalId = Provider.of<FestivalProvider>(context, listen: false).selectedFestival?.id;
+                    Navigator.pushNamed(context, AppRoutes.toilets, arguments: festivalId);
+                  },
                 ),
               ),
             ],
@@ -122,7 +127,10 @@ class DetailView extends BaseView<DetailViewModel> {
             'WHERE THE BEATS DROP',
             AppAssets.post1,
             isFullWidth: true,
-            onTap: () => Navigator.pushNamed(context, AppRoutes.performance),
+            onTap: () {
+              final festivalId = Provider.of<FestivalProvider>(context, listen: false).selectedFestival?.id;
+              Navigator.pushNamed(context, AppRoutes.performance, arguments: festivalId);
+            },
           ),
           const SizedBox(height: AppDimensions.spaceL),
           
@@ -131,7 +139,10 @@ class DetailView extends BaseView<DetailViewModel> {
             'EVENTS HUB',
             AppAssets.post2,
             isFullWidth: true,
-            onTap: () => Navigator.pushNamed(context, AppRoutes.event),
+            onTap: () {
+              final festivalId = Provider.of<FestivalProvider>(context, listen: false).selectedFestival?.id;
+              Navigator.pushNamed(context, AppRoutes.event, arguments: festivalId);
+            },
           ),
         ],
       ),

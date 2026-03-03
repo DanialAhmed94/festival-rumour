@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +13,8 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/network_service.dart';
+import '../../../core/api/festival_api_service.dart';
+import '../../../core/services/geocoding_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../festival/festival_model.dart';
 
@@ -19,7 +23,9 @@ class DiscoverViewModel extends BaseViewModel {
   final AuthService _authService = locator<AuthService>();
   final NavigationService _navigationService = locator<NavigationService>();
   final NetworkService _networkService = locator<NetworkService>();
-  
+  final FestivalApiService _festivalApiService = locator<FestivalApiService>();
+  final GeocodingService _geocodingService = locator<GeocodingService>();
+
   String selected = AppStrings.live;
   bool _isFavorited = false;
   bool _isLoadingFavorite = false; // Prevent multiple simultaneous loads
@@ -27,21 +33,26 @@ class DiscoverViewModel extends BaseViewModel {
   String searchQuery = ''; // Search query
   late FocusNode searchFocusNode; // Search field focus node
   final TextEditingController searchController = TextEditingController();
-  
-  List<FestivalModel> _filteredFestivals = [];
+
+  final List<FestivalModel> _searchResults = []; // API search results
+  bool _isSearching = false;
+  String? _searchError;
+  Timer? _searchDebounce;
 
   bool get isFavorited => _isFavorited;
   String get currentSearchQuery => searchQuery;
-  List<FestivalModel> get filteredFestivals => _filteredFestivals;
-  bool get hasSearchResults => searchQuery.isNotEmpty && _filteredFestivals.isNotEmpty;
+  List<FestivalModel> get filteredFestivals => _searchResults;
+  bool get hasSearchResults => searchQuery.isNotEmpty && _searchResults.isNotEmpty;
+  bool get isSearching => _isSearching;
+  String? get searchError => _searchError;
 
   DiscoverViewModel() {
     searchFocusNode = FocusNode();
-    // Note: Search query updates will be handled in the view where we have access to context
   }
 
   @override
   void onDispose() {
+    _searchDebounce?.cancel();
     searchFocusNode.dispose();
     searchController.dispose();
     super.onDispose();
@@ -328,48 +339,115 @@ class DiscoverViewModel extends BaseViewModel {
     // Navigate between tabs
   }
 
-  // Search methods
+  // Search methods (API-based, debounced)
   void setSearchQuery(String query, BuildContext context) {
     searchQuery = query;
-    _filterFestivals(context);
-    notifyListeners();
-  }
-  
-  /// Filter festivals based on search query using festivals from FestivalProvider
-  void _filterFestivals(BuildContext context) {
-    if (searchQuery.isEmpty) {
-      _filteredFestivals = [];
+    if (query.isEmpty) {
+      _searchResults.clear();
+      _isSearching = false;
+      _searchError = null;
+      _searchDebounce?.cancel();
+      _searchDebounce = null;
+      notifyListeners();
       return;
     }
-    
-    final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
-    final allFestivals = festivalProvider.allFestivals;
-    
-    final query = searchQuery.toLowerCase().trim();
-    _filteredFestivals = allFestivals.where((festival) {
-      final title = festival.title.toLowerCase();
-      final location = festival.location.toLowerCase();
-      return title.contains(query) || location.contains(query);
-    }).toList();
-    
-    // Limit to 10 results for better UX
-    if (_filteredFestivals.length > 10) {
-      _filteredFestivals = _filteredFestivals.take(10).toList();
+    _searchError = null;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(query);
+    });
+    notifyListeners();
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query != searchQuery || isDisposed) return;
+    _isSearching = true;
+    _searchError = null;
+    notifyListeners();
+    try {
+      final response = await _festivalApiService.getFestivals(search: query);
+      if (query != searchQuery || isDisposed) return;
+      if (response.success && response.data != null) {
+        final parsed = <FestivalModel>[];
+        for (var festivalData in response.data!) {
+          try {
+            parsed.add(FestivalModel.fromApiJson(festivalData));
+          } catch (e) {
+            if (kDebugMode) {
+              print('🎪 [DiscoverViewModel] Error parsing search festival: $e');
+            }
+          }
+        }
+        final withLocation = await _convertCoordinatesForFestivalList(parsed);
+        if (query != searchQuery || isDisposed) return;
+        _searchResults
+          ..clear()
+          ..addAll(withLocation);
+        _searchError = null;
+      } else {
+        _searchResults.clear();
+        if (query == searchQuery && !isDisposed) {
+          _searchError = response.message ??
+              'Something went wrong. Please try again.';
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('🎪 [DiscoverViewModel] Search API error: $e');
+      }
+      if (!isDisposed && query == searchQuery) {
+        _searchResults.clear();
+        _searchError = e is Exception
+            ? e.toString().replaceFirst('Exception: ', '')
+            : 'Something went wrong. Please check your connection and try again.';
+      }
+    } finally {
+      if (!isDisposed) {
+        _isSearching = false;
+        notifyListeners();
+      }
     }
   }
-  
+
+  Future<List<FestivalModel>> _convertCoordinatesForFestivalList(
+    List<FestivalModel> list,
+  ) async {
+    final updated = <FestivalModel>[];
+    for (var festival in list) {
+      if (festival.latitude != null && festival.longitude != null) {
+        try {
+          final location = await _geocodingService.getLocationFromCoordinates(
+            festival.latitude,
+            festival.longitude,
+          );
+          updated.add(festival.copyWith(location: location));
+        } catch (e) {
+          if (kDebugMode) {
+            print(
+              'Error converting coordinates for festival ${festival.id}: $e',
+            );
+          }
+          updated.add(festival);
+        }
+      } else {
+        updated.add(festival);
+      }
+    }
+    return updated;
+  }
+
+  void retrySearch() {
+    if (searchQuery.isEmpty) return;
+    _searchError = null;
+    _performSearch(searchQuery);
+  }
+
   /// Select a festival from search results
   void selectFestival(BuildContext context, FestivalModel festival) {
-    // Update FestivalProvider
     final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
     festivalProvider.setSelectedFestival(festival);
-    
-    // Clear search
     clearSearch(context);
-    
-    // Unfocus search field
     unfocusSearch();
-    
     if (kDebugMode) {
       print('✅ Selected festival: ${festival.title}');
     }
@@ -378,7 +456,11 @@ class DiscoverViewModel extends BaseViewModel {
   void clearSearch(BuildContext context) {
     searchQuery = '';
     searchController.clear();
-    _filteredFestivals = [];
+    _searchResults.clear();
+    _isSearching = false;
+    _searchError = null;
+    _searchDebounce?.cancel();
+    _searchDebounce = null;
     notifyListeners();
   }
 

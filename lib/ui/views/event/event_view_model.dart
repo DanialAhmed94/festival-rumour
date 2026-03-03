@@ -1,60 +1,49 @@
+import 'package:flutter/foundation.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/constants/app_strings.dart';
-import 'event_view.dart';
+import '../../../core/constants/app_durations.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/api/event_api_service.dart';
+import '../../../core/models/event_model.dart';
 
 class EventViewModel extends BaseViewModel {
-  List<EventCategory> _eventCategories = [];
-  bool _showEventPreview = false;
+  final EventApiService _eventApiService = locator<EventApiService>();
 
-  List<EventCategory> get eventCategories => _eventCategories;
-  bool get showEventPreview => _showEventPreview;
+  List<EventModel> _events = [];
+  int? _lastLoadedFestivalId;
+
+  List<EventModel> get events => _events;
 
   @override
   void init() {
     super.init();
-    _loadEventCategories();
   }
 
-  void _loadEventCategories() {
-    _eventCategories = [
-      EventCategory(
-        name: AppStrings.workshopsAndTalks,
-        description: AppStrings.educationalWorkshopsAndSpeakerSessions,
-      ),
-      EventCategory(
-        name: AppStrings.filmScreenings,
-        description: AppStrings.movieAndDocumentaryScreenings,
-      ),
-      EventCategory(
-        name: AppStrings.artInstallations,
-        description: AppStrings.interactiveArtDisplaysAndExhibitions,
-      ),
-      EventCategory(
-        name: AppStrings.charityAndCommunityEvents,
-        description: AppStrings.communityServiceAndCharityActivities,
-      ),
-      EventCategory(
-        name: AppStrings.musicPerformances,
-        description: AppStrings.liveMusicAndEntertainmentShows,
-      ),
-    ];
-    notifyListeners();
+  Future<void> loadEventsIfNeeded(int? festivalId) async {
+    if (festivalId == null) return;
+    if (_lastLoadedFestivalId == festivalId) return;
+
+    _lastLoadedFestivalId = festivalId;
+    await _loadEvents(festivalId);
   }
 
-  void addEventCategory(EventCategory category) {
-    _eventCategories.add(category);
-    notifyListeners();
-  }
-
-  void removeEventCategory(int index) {
-    if (index >= 0 && index < _eventCategories.length) {
-      _eventCategories.removeAt(index);
-      notifyListeners();
-    }
-  }
-
-  void set showEventPreview(bool value) {
-    _showEventPreview = value;
-    notifyListeners();
+  Future<void> _loadEvents(int festivalId) async {
+    await handleAsync(
+      () async {
+        final response = await _eventApiService.getEvents(festivalId);
+        if (response.success && response.data != null) {
+          _events = response.data!
+              .map((json) => EventModel.fromApiJson(json))
+              .toList();
+          if (kDebugMode) {
+            print('EventViewModel: loaded ${_events.length} events for festival $festivalId');
+          }
+        } else {
+          throw Exception(response.message ?? AppStrings.failedToLoadEvents);
+        }
+      },
+      errorMessage: AppStrings.failedToLoadEvents,
+      minimumLoadingDuration: AppDurations.minimumLoadingDuration,
+    );
   }
 }

@@ -1,54 +1,54 @@
-import 'package:flutter/cupertino.dart';
-
+import 'package:flutter/foundation.dart';
 import '../../../core/viewmodels/base_view_model.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/api/news_api_service.dart';
+import '../../../core/models/bulletin_model.dart';
+import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/app_durations.dart';
 
 class NewsViewModel extends BaseViewModel {
-  List<FestivalItem> _festivals = [];
+  final NewsApiService _newsApiService = locator<NewsApiService>();
+
+  List<BulletinModel> _bulletins = [];
+  BulletinModel? _selectedBulletin;
   bool _showBulletinPreview = false;
   bool _showPerformancePreview = false;
 
-  List<FestivalItem> get festivals => _festivals;
+  List<BulletinModel> get bulletins => _bulletins;
+  BulletinModel? get selectedBulletin => _selectedBulletin;
   bool get showBulletinPreview => _showBulletinPreview;
   bool get showPerformancePreview => _showPerformancePreview;
 
   @override
   void init() {
     super.init();
-    _loadFestivals();
+    loadBulletins();
   }
 
-  void _loadFestivals() {
-    _festivals = [
-      FestivalItem(
-        name: 'Glastonbury Festival',
-        description: 'Music and Arts Festival',
-      ),
-      FestivalItem(
-        name: 'Reading And Leeds Festival',
-        description: 'Rock and Alternative Music Festival',
-      ),
-      FestivalItem(
-        name: 'Download Festival',
-        description: 'Rock and Metal Music Festival',
-      ),
-      FestivalItem(
-        name: 'New Bulletin',
-        description: 'Latest Festival Updates',
-      ),
-    ];
+  Future<void> loadBulletins() async {
+    await handleAsync(
+      () async {
+        final response = await _newsApiService.getBulletins();
+
+        if (response.success && response.data != null) {
+          _bulletins = response.data!
+              .map((json) => BulletinModel.fromApiJson(json))
+              .toList();
+          if (kDebugMode) {
+            print('NewsViewModel: loaded ${_bulletins.length} bulletins from API');
+          }
+        } else {
+          throw Exception(response.message ?? AppStrings.failedToLoadNews);
+        }
+      },
+      errorMessage: AppStrings.failedToLoadNews,
+      minimumLoadingDuration: AppDurations.minimumLoadingDuration,
+    );
+  }
+
+  void setSelectedBulletin(BulletinModel? bulletin) {
+    _selectedBulletin = bulletin;
     notifyListeners();
-  }
-
-  void addFestival(FestivalItem festival) {
-    _festivals.add(festival);
-    notifyListeners();
-  }
-
-  void removeFestival(int index) {
-    if (index >= 0 && index < _festivals.length) {
-      _festivals.removeAt(index);
-      notifyListeners();
-    }
   }
 
   void set showBulletinPreview(bool value) {
@@ -61,11 +61,6 @@ class NewsViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  // Navigation methods
-  // void navigateBack(BuildContext context) {
-  //   Navigator.pop(context);
-  // }
-
   void navigateToBulletinPreview() {
     _showBulletinPreview = true;
     notifyListeners();
@@ -76,23 +71,15 @@ class NewsViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  void navigateToPerformancePreview() {
+  void openBulletinDetail(BulletinModel bulletin) {
+    _selectedBulletin = bulletin;
     _showPerformancePreview = true;
     notifyListeners();
   }
 
   void navigateBackFromPerformancePreview() {
     _showPerformancePreview = false;
+    _selectedBulletin = null;
     notifyListeners();
   }
-}
-
-class FestivalItem {
-  final String name;
-  final String description;
-
-  FestivalItem({
-    required this.name,
-    required this.description,
-  });
 }
