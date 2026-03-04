@@ -229,8 +229,8 @@ class AppStrings {
   static const String time = "Time";
   static const String date = "Date";
   static const String shareMessage =
-      "Let's enjoy the vibe together 🌙🔥\n\nDownload now: https://festival-romour.link";
-  static const String shareSubject = "Join me at LunaFest!";
+      "Let's enjoy the vibe together 🌙🔥 Download Festival App now\n\nhttps://festival-romour.link";
+  static const String shareSubject = "Download Festival App";
   static const String shareLocation = "Share Location";
   static const String shareMyLocation = "Share My Location";
   static const String shareWithEveryone = "Share with everyone";

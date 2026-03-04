@@ -26,8 +26,8 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
 
   @override
   Widget buildView(BuildContext context, ProfileViewModel viewModel) {
-    // Initialize and load user profile data on first build
-    // Always reload when userId changes to ensure fresh data and follow status
+    // Set viewing user silently so getters don't show current user's data (no notify during build)
+    viewModel.setViewingUserIdSilent(userId);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!viewModel.isLoading) {
         viewModel.initialize(context, userId: userId);
@@ -203,9 +203,9 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Username
+                    // Username (show Loading when viewing another user and data not yet loaded)
                     ResponsiveTextWidget(
-                      vm.userDisplayName ?? 'User',
+                      vm.userDisplayName ?? (vm.isViewingOwnProfile ? 'User' : (vm.isLoading ? 'Loading...' : 'User')),
                       color: AppColors.black,
                       fontWeight: FontWeight.bold,
                       fontSize: AppDimensions.textL,
@@ -388,33 +388,39 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
               elevation: isUpdating ? 0 : 2,
             ),
             child: isUpdating
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            AppColors.black,
+                ? FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.black,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: AppDimensions.spaceS),
-                      ResponsiveTextWidget(
-                        isFollowing ? 'Unfollowing...' : 'Following...',
-                        color: AppColors.black,
-                        fontWeight: FontWeight.w600,
-                        fontSize: AppDimensions.textM,
-                      ),
-                    ],
+                        const SizedBox(width: AppDimensions.spaceS),
+                        ResponsiveTextWidget(
+                          isFollowing ? 'Unfollowing...' : 'Following...',
+                          color: AppColors.black,
+                          fontWeight: FontWeight.w600,
+                          fontSize: AppDimensions.textM,
+                        ),
+                      ],
+                    ),
                   )
-                : ResponsiveTextWidget(
-                    isFollowing ? 'Unfollow' : 'Follow',
-                    color: AppColors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: AppDimensions.textM,
+                : FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: ResponsiveTextWidget(
+                      isFollowing ? 'Unfollow' : 'Follow',
+                      color: AppColors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: AppDimensions.textM,
+                    ),
                   ),
           ),
         );

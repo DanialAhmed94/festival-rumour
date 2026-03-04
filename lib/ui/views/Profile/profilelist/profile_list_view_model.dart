@@ -8,7 +8,6 @@ import '../../../../core/di/locator.dart';
 import '../../../../core/services/firestore_service.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../core/viewmodels/base_view_model.dart';
-import '../../../../core/providers/festival_provider.dart';
 
 /// ViewModel for ProfileListView that manages followers, following, and festivals.
 class ProfileListViewModel extends BaseViewModel {
@@ -39,13 +38,13 @@ class ProfileListViewModel extends BaseViewModel {
   // --- Data Lists ---
   final List<Map<String, dynamic>> _allFollowers = [];
   final List<Map<String, dynamic>> _allFollowing = [];
-  final List<Map<String, String>> _allFestivals = [];
-  final List<Map<String, String>> _attendedFestivals = [];
+  final List<Map<String, dynamic>> _allFestivals = [];
+  final List<Map<String, dynamic>> _attendedFestivals = [];
 
   // --- Filtered Lists ---
   List<Map<String, dynamic>> _followers = [];
   List<Map<String, dynamic>> _following = [];
-  List<Map<String, String>> _festivals = [];
+  List<Map<String, dynamic>> _festivals = [];
   
   // Loading state for festivals
   bool _isLoadingFestivals = false;
@@ -65,8 +64,8 @@ class ProfileListViewModel extends BaseViewModel {
 
   List<Map<String, dynamic>> get followers => _followers;
   List<Map<String, dynamic>> get following => _following;
-  List<Map<String, String>> get festivals => _festivals;
-  List<Map<String, String>> get attendedFestivals => _attendedFestivals;
+  List<Map<String, dynamic>> get festivals => _festivals;
+  List<Map<String, dynamic>> get attendedFestivals => _attendedFestivals;
   bool get hasMoreFollowers => _hasMoreFollowers;
   bool get hasMoreFollowing => _hasMoreFollowing;
   bool get isLoadingMoreFollowers => _isLoadingMoreFollowers;
@@ -82,7 +81,7 @@ class ProfileListViewModel extends BaseViewModel {
     if (_currentTab != tab) {
       _currentTab = tab;
       
-      // Note: For festivals tab, we need context to access FestivalProvider
+      // Note: For festivals tab, load from Firebase when tab is selected
       // This will be handled in the view when the tab is selected
       if (_userId != null) {
         if (tab == 0 && _allFollowers.isEmpty && _followersLastIndex == null) {
@@ -155,7 +154,7 @@ class ProfileListViewModel extends BaseViewModel {
       // Load data asynchronously
       loadFollowers();
       loadFollowing();
-      // Festivals will be loaded when tab is selected (needs context for FestivalProvider)
+      // Festivals will be loaded when tab is selected (from Firebase)
     } else {
       if (kDebugMode) {
         print('❌ [ProfileListViewModel.initialize] userId is still null after fallback, cannot load followers/following');
@@ -368,8 +367,7 @@ class ProfileListViewModel extends BaseViewModel {
     }
   }
 
-  /// Load favorite festivals with festival names from FestivalProvider
-  /// This method should be called with BuildContext to access FestivalProvider
+  /// Load favorite festivals from Firebase only (full info stored when user favourited in discover).
   Future<void> loadFavoriteFestivals(BuildContext context) async {
     if (_userId == null) {
       if (kDebugMode) {
@@ -377,81 +375,37 @@ class ProfileListViewModel extends BaseViewModel {
       }
       return;
     }
-    
+
     if (_isLoadingFestivals) {
       if (kDebugMode) {
         print('ℹ️ Already loading favorite festivals, skipping...');
       }
       return;
     }
-    
+
     _isLoadingFestivals = true;
     notifyListeners();
-    
+
     try {
       if (kDebugMode) {
-        print('🔄 Loading favorite festivals with names for userId: $_userId');
+        print('🔄 Loading favorite festivals from Firebase for userId: $_userId');
       }
-      
-      // Get favorite festival IDs from Firebase
-      final favoriteIds = await _firestoreService.getFavoriteFestivalIds(_userId!);
-      
+
+      final list = await _firestoreService.getFavoriteFestivals(_userId!);
+
       if (kDebugMode) {
-        print('📋 Found ${favoriteIds.length} favorite festival IDs: $favoriteIds');
+        print('📋 Found ${list.length} favorite festivals (full data from Firebase)');
       }
-      
-      // Clear existing festivals
+
       _allFestivals.clear();
-      
-      if (favoriteIds.isEmpty) {
-        if (kDebugMode) {
-          print('ℹ️ No favorite festivals found');
-        }
-        _festivals = [];
-        _isLoadingFestivals = false;
-        _hasLoadedFestivals = true; // Mark as loaded to prevent infinite loop
-        _applySearchFilter(); // This will call notifyListeners() through searchFestivals
-        return;
-      }
-      
-      // Get FestivalProvider to access festival data
-      final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
-      
-      // Map favorite IDs to festival names
-      final favoriteFestivals = <Map<String, String>>[];
-      for (final id in favoriteIds) {
-        final festival = festivalProvider.getFestivalById(id);
-        if (festival != null) {
-          favoriteFestivals.add({
-            'title': festival.title,
-            'location': festival.location,
-          });
-          if (kDebugMode) {
-            print('✅ Found festival: ${festival.title} (ID: $id)');
-          }
-        } else {
-          if (kDebugMode) {
-            print('⚠️ Festival with ID $id not found in FestivalProvider');
-          }
-        }
-      }
-      
-      _allFestivals.clear();
-      _allFestivals.addAll(favoriteFestivals);
-      
+      _allFestivals.addAll(list);
+
+      _isLoadingFestivals = false;
+      _hasLoadedFestivals = true;
+      _applySearchFilter();
+
       if (kDebugMode) {
         print('✅ Loaded ${_allFestivals.length} favorite festivals into _allFestivals');
-        print('   _festivalsSearch before filter: "$_festivalsSearch"');
-      }
-      
-      _isLoadingFestivals = false;
-      _hasLoadedFestivals = true; // Mark as loaded BEFORE calling _applySearchFilter to prevent rebuild loop
-      
-      // Apply search filter (this will show all if search is empty)
-      _applySearchFilter(); // This will call notifyListeners() through searchFestivals
-      
-      if (kDebugMode) {
-        print('✅ After filter: ${_festivals.length} festivals in _festivals (from ${_allFestivals.length} total)');
       }
     } catch (e, stackTrace) {
       if (kDebugMode) {
@@ -459,12 +413,12 @@ class ProfileListViewModel extends BaseViewModel {
         print('   Stack trace: $stackTrace');
       }
       _isLoadingFestivals = false;
-      _hasLoadedFestivals = true; // Mark as loaded even on error to prevent infinite retries
+      _hasLoadedFestivals = true;
       notifyListeners();
     }
   }
 
-  /// Load attended festivals from Firestore (for Attended tab).
+  /// Load attended festivals from Firestore (for Attended tab). Full info from Firebase (saved when user marked attended in discover).
   Future<void> loadAttendedFestivals() async {
     if (_userId == null) return;
     if (_isLoadingAttended) return;
@@ -473,15 +427,10 @@ class ProfileListViewModel extends BaseViewModel {
     try {
       final list = await _firestoreService.getAttendedFestivals(_userId!);
       _attendedFestivals.clear();
-      for (var e in list) {
-        _attendedFestivals.add({
-          'title': (e['title'] as String? ?? 'Festival').toString(),
-          'location': (e['location'] as String? ?? '').toString(),
-        });
-      }
+      _attendedFestivals.addAll(list);
       _hasLoadedAttended = true;
       if (kDebugMode) {
-        print('✅ [ProfileListViewModel] Loaded ${_attendedFestivals.length} attended festivals');
+        print('✅ [ProfileListViewModel] Loaded ${_attendedFestivals.length} attended festivals (full data from Firebase)');
       }
     } catch (e) {
       if (kDebugMode) print('❌ [ProfileListViewModel] loadAttendedFestivals error: $e');
@@ -565,18 +514,18 @@ class ProfileListViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  /// Search only festivals
+  /// Search only festivals (title/location from Firebase)
   void searchFestivals(String query) {
     _festivalsSearch = query.toLowerCase();
     if (_festivalsSearch.isEmpty) {
-      // No search query - show all festivals
       _festivals = List.from(_allFestivals);
     } else {
-      // Filter festivals based on search query
       _festivals = _allFestivals
-          .where((item) =>
-              item['title']!.toLowerCase().contains(_festivalsSearch) ||
-              item['location']!.toLowerCase().contains(_festivalsSearch))
+          .where((item) {
+            final title = (item['title']?.toString() ?? '').toLowerCase();
+            final location = (item['location']?.toString() ?? '').toLowerCase();
+            return title.contains(_festivalsSearch) || location.contains(_festivalsSearch);
+          })
           .toList();
     }
     notifyListeners();

@@ -100,15 +100,16 @@ class SettingsView extends BaseView<SettingsViewModel> {
                       onChanged: viewModel.toggleNotifications,
                       subtitle: AppStrings.enableOrDisableNotifications,
                     ),
-                    _buildSwitchTile(
-                      icon: Icons.lock_outline,
-                      iconColor: AppColors.purple,
-                      title: AppStrings.privacySettingsPro,
-                      subtitle: AppStrings.includingAnonymousToggle,
-                      value: viewModel.privacy,
-                      onChanged:
-                          (value) => _showPrivacyUpgradeDialog(context, viewModel),
-                    ),
+                    // Privacy Settings Pro section - commented out
+                    // _buildSwitchTile(
+                    //   icon: Icons.lock_outline,
+                    //   iconColor: AppColors.purple,
+                    //   title: AppStrings.privacySettingsPro,
+                    //   subtitle: AppStrings.includingAnonymousToggle,
+                    //   value: viewModel.privacy,
+                    //   onChanged:
+                    //       (value) => _showPrivacyUpgradeDialog(context, viewModel),
+                    // ),
                     _buildTile(
                       icon: Icons.military_tech_outlined,
                       iconColor: AppColors.orange,
@@ -753,63 +754,64 @@ class SettingsView extends BaseView<SettingsViewModel> {
     );
   }
 
-  /// Show privacy upgrade dialog (paid feature)
-  void _showPrivacyUpgradeDialog(
-    BuildContext context,
-    SettingsViewModel viewModel,
-  ) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.4),
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-          ),
-          backgroundColor: AppColors.screenBackground,
-          title: const ResponsiveTextWidget(
-            'Premium Feature',
-            textType: TextType.heading,
-            fontWeight: FontWeight.bold,
-            fontSize: AppDimensions.textL,
-            color: AppColors.onPrimary,
-          ),
-          content: const ResponsiveTextWidget(
-            'Privacy Settings Pro is a paid feature that allows anonymous posting so you can share without revealing your identity. Please upgrade your plan to access this feature.',
-            textType: TextType.body,
-            fontSize: AppDimensions.textM,
-            color: AppColors.grey600,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const ResponsiveTextWidget(
-                AppStrings.cancel,
-                textType: TextType.body,
-                fontSize: AppDimensions.textM,
-                fontWeight: FontWeight.w600,
-                color: AppColors.grey600,
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                viewModel.goToSubscription();
-              },
-              child: const ResponsiveTextWidget(
-                'Upgrade Plan',
-                textType: TextType.body,
-                fontSize: AppDimensions.textM,
-                fontWeight: FontWeight.bold,
-                color: AppColors.accent,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  // Privacy Settings Pro section - commented out
+  // /// Show privacy upgrade dialog (paid feature)
+  // void _showPrivacyUpgradeDialog(
+  //   BuildContext context,
+  //   SettingsViewModel viewModel,
+  // ) {
+  //   showDialog(
+  //     context: context,
+  //     barrierDismissible: true,
+  //     barrierColor: Colors.black.withOpacity(0.4),
+  //     builder: (BuildContext dialogContext) {
+  //       return AlertDialog(
+  //         shape: RoundedRectangleBorder(
+  //           borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+  //         ),
+  //         backgroundColor: AppColors.screenBackground,
+  //         title: const ResponsiveTextWidget(
+  //           'Premium Feature',
+  //           textType: TextType.heading,
+  //           fontWeight: FontWeight.bold,
+  //           fontSize: AppDimensions.textL,
+  //           color: AppColors.onPrimary,
+  //         ),
+  //         content: const ResponsiveTextWidget(
+  //           'Privacy Settings Pro is a paid feature that allows anonymous posting so you can share without revealing your identity. Please upgrade your plan to access this feature.',
+  //           textType: TextType.body,
+  //           fontSize: AppDimensions.textM,
+  //           color: AppColors.grey600,
+  //         ),
+  //         actions: [
+  //           TextButton(
+  //             onPressed: () => Navigator.pop(dialogContext),
+  //             child: const ResponsiveTextWidget(
+  //               AppStrings.cancel,
+  //               textType: TextType.body,
+  //               fontSize: AppDimensions.textM,
+  //               fontWeight: FontWeight.w600,
+  //               color: AppColors.grey600,
+  //             ),
+  //           ),
+  //           TextButton(
+  //             onPressed: () {
+  //               Navigator.pop(dialogContext);
+  //               viewModel.goToSubscription();
+  //             },
+  //             child: const ResponsiveTextWidget(
+  //               'Upgrade Plan',
+  //               textType: TextType.body,
+  //               fontSize: AppDimensions.textM,
+  //               fontWeight: FontWeight.bold,
+  //               color: AppColors.accent,
+  //             ),
+  //           ),
+  //         ],
+  //       );
+  //     },
+  //   );
+  // }
 
   /// Show rate app dialog
   void _showRateAppDialog(BuildContext context, SettingsViewModel viewModel) {

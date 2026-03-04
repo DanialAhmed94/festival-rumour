@@ -18,6 +18,7 @@ import '../../../core/api/festival_api_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/firestore_service.dart';
+import '../../../util/firebase_notification_service.dart';
 import 'festival_model.dart';
 
 const String caAppStoreUrl =
@@ -69,6 +70,12 @@ class FestivalViewModel extends BaseViewModel {
     // Use cached photo immediately so it doesn't reload when returning from create post etc.
     _userPhotoUrl = _authService.cachedUserPhotoUrl;
     _loadUserPhoto();
+    _requestNotificationPermission();
+  }
+
+  /// Request notification permission once when user lands on festival screen (no prompt on splash).
+  void _requestNotificationPermission() {
+    FirebaseNotificationService.requestPermissionIfNeeded();
   }
 
   /// Load user profile photo URL and update cache so it's available when returning to this screen.

@@ -26,14 +26,29 @@ class NavBaar extends BaseView<NavBaarViewModel> {
 
   @override
   Widget buildView(BuildContext context, NavBaarViewModel viewModel) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final fromProfileList = (args as Map?)?['fromProfileList'] == true;
+    viewModel.setFromProfileList(fromProfileList);
+    if (kDebugMode) {
+      print('🔙 [NavBar] buildView: route arguments=$args, fromProfileList=$fromProfileList');
+    }
     return WillPopScope(
       onWillPop: () async {
+        if (kDebugMode) {
+          print('🔙 [NavBar] onWillPop: fromProfileList=$fromProfileList, currentIndex=${viewModel.currentIndex}');
+        }
+        if (fromProfileList) {
+          if (kDebugMode) print('🔙 [NavBar] onWillPop: returning true → pop back to profile list');
+          return true; // pop back to profile list
+        }
         // Rumours (index 1): device back → switch to Discover tab
         if (viewModel.currentIndex == 1) {
+          if (kDebugMode) print('🔙 [NavBar] onWillPop: on Rumours tab → goToDiscover()');
           viewModel.goToDiscover();
           return false;
         }
         // Discover (index 0): device back → navigate to Festival screen
+        if (kDebugMode) print('🔙 [NavBar] onWillPop: on Discover tab → navigateToFestival()');
         viewModel.navigateToFestival();
         return false;
       },
@@ -148,6 +163,10 @@ class _NavBarBodyState extends State<_NavBarBody> {
             initialTab: 2,
             Username: AppStrings.name,
             onBack: () => viewModel.setSubNavigation(null),
+            onFestivalSelected: (context, festival) {
+              Provider.of<FestivalProvider>(context, listen: false).setSelectedFestival(festival);
+              viewModel.goToDiscover(); // switches to Discover tab and clears sub-nav (no pop needed)
+            },
           );
           break;
         case 'attended':
@@ -155,6 +174,10 @@ class _NavBarBodyState extends State<_NavBarBody> {
             initialTab: 3,
             Username: AppStrings.name,
             onBack: () => viewModel.setSubNavigation(null),
+            onFestivalSelected: (context, festival) {
+              Provider.of<FestivalProvider>(context, listen: false).setSelectedFestival(festival);
+              viewModel.goToDiscover(); // switches to Discover tab and clears sub-nav (no pop needed)
+            },
           );
           break;
         default:

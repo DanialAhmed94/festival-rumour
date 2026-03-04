@@ -1,3 +1,5 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:festival_rumour/shared/widgets/responsive_text_widget.dart';
 import 'package:festival_rumour/shared/widgets/responsive_widget.dart';
 import 'package:flutter/material.dart';
 import '../../../../../core/constants/app_assets.dart';
@@ -51,12 +53,10 @@ class FollowingTab extends StatelessWidget {
                           color: AppColors.black54,
                         ),
                         const SizedBox(height: AppDimensions.paddingM),
-                        ResponsiveText(
+                        ResponsiveTextWidget(
                           'Not following anyone yet',
-                          style: TextStyle(
-                            color: AppColors.black,
-                            fontSize: AppDimensions.textM,
-                          ),
+                          textType: TextType.body,
+                          color: AppColors.black,
                         ),
                       ],
                     ),
@@ -87,6 +87,7 @@ class FollowingTab extends StatelessWidget {
 
                     final following = viewModel.following[index];
               final photoUrl = following['photoUrl'] as String? ?? following['image'] as String? ?? '';
+              final otherUserId = following['userId'] as String? ?? '';
               return Container(
                 margin: const EdgeInsets.only(bottom: AppDimensions.paddingS),
                 padding: const EdgeInsets.all(AppDimensions.paddingM),
@@ -100,42 +101,85 @@ class FollowingTab extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: AppDimensions.avatarS,
-                      backgroundImage: photoUrl.isNotEmpty
-                          ? NetworkImage(photoUrl)
+                    InkWell(
+                      onTap: otherUserId.isNotEmpty
+                          ? () {
+                              Navigator.pushNamed(
+                                context,
+                                AppRoutes.viewUserProfile,
+                                arguments: otherUserId,
+                              );
+                            }
                           : null,
-                      backgroundColor: AppColors.primary.withOpacity(0.1),
-                      child: photoUrl.isEmpty
-                          ? Image.asset(
-                              AppAssets.profile,
-                              width: AppDimensions.avatarS * 2,
-                              height: AppDimensions.avatarS * 2,
-                            )
-                          : null,
+                      borderRadius: BorderRadius.circular(AppDimensions.avatarS),
+                      child: ClipOval(
+                        child: SizedBox(
+                          width: AppDimensions.avatarS * 2,
+                          height: AppDimensions.avatarS * 2,
+                          child: photoUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: photoUrl,
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, __) => Container(
+                                    color: AppColors.grey300,
+                                    child: const Center(
+                                      child: SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          color: AppColors.black,
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  errorWidget: (_, __, ___) => Image.asset(
+                                    AppAssets.profile,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : Image.asset(
+                                  AppAssets.profile,
+                                  fit: BoxFit.cover,
+                                ),
+                        ),
+                      ),
                     ),
                     const SizedBox(width: AppDimensions.paddingXS),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ResponsiveText(
-                            following['name'] ?? 'Unknown User',
-                            style: const TextStyle(
-                              color: AppColors.black,
-                              fontSize: AppDimensions.textM,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      child: InkWell(
+                        onTap: otherUserId.isNotEmpty
+                            ? () {
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.viewUserProfile,
+                                  arguments: otherUserId,
+                                );
+                              }
+                            : null,
+                        borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingXS),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ResponsiveTextWidget(
+                                following['name'] ?? 'Unknown User',
+                                textType: TextType.body,
+                                color: AppColors.black,
+                                fontWeight: FontWeight.w600,
+                                maxLines: 2,
+                              ),
+                              const SizedBox(height: AppDimensions.spaceXS),
+                              ResponsiveTextWidget(
+                                following['username'] ?? '',
+                                textType: TextType.caption,
+                                color: AppColors.grey600,
+                                maxLines: 1,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: AppDimensions.spaceXS),
-                          ResponsiveText(
-                            following['username'] ?? '',
-                            style: const TextStyle(
-                              color: AppColors.grey600,
-                              fontSize: AppDimensions.textM,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                     ElevatedButton(

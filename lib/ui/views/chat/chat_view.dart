@@ -1294,7 +1294,7 @@ class ChatView extends BaseView<ChatViewModel> {
                   ),
                   child: TextField(
                     controller: viewModel.messageController,
-                    cursorColor: AppColors.primary,
+                    cursorColor: AppColors.black,
                     decoration: const InputDecoration(
                       hintText: AppStrings.typeSomething,
                       hintStyle: TextStyle(color: AppColors.grey600),

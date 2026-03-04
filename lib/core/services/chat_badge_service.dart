@@ -15,6 +15,17 @@ class ChatBadgeService extends ChangeNotifier {
     return _counts[chatRoomId] ?? 0;
   }
 
+  /// True if any chat room has unread messages (for app bar badge dot).
+  bool get hasUnread => _counts.values.any((c) => c > 0);
+
+  /// True if any of the given room IDs has unread (use for app bar badge when restricting to chat list).
+  bool hasUnreadInRooms(Iterable<String?> roomIds) {
+    for (final id in roomIds) {
+      if (id != null && id.isNotEmpty && (getBadgeCount(id) > 0)) return true;
+    }
+    return false;
+  }
+
   /// Call when chat list is shown so we pick up any updates from background handler.
   Future<void> loadFromStorage() async {
     try {

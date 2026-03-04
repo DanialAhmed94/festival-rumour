@@ -3,6 +3,7 @@ import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/attended_fe
 import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/festivals_tab.dart';
 import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/followers_tab.dart';
 import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/following_tab.dart';
+import 'package:festival_rumour/ui/views/festival/festival_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_assets.dart';
@@ -15,19 +16,24 @@ import '../../../../shared/widgets/responsive_text_widget.dart';
 import '../../../../shared/widgets/responsive_widget.dart';
 import 'profile_list_view_model.dart';
 
+/// Called when user taps a festival in Favourite or Attended list: (context, festival).
+typedef OnFestivalSelected = void Function(BuildContext context, FestivalModel festival);
 
 class ProfileListView extends BaseView<ProfileListViewModel> {
   final int initialTab; // 0 = Followers, 1 = Following, 2 = Favourite Festivals, 3 = Attended festivals
   final String Username;
   final String? userId; // User ID whose followers/following we're viewing
   final VoidCallback? onBack;
+  final OnFestivalSelected? onFestivalSelected;
+  final GlobalKey _selectedTabKey = GlobalKey();
 
-  const ProfileListView({
+  ProfileListView({
     super.key,
     required this.initialTab,
     required this.Username,
     this.userId,
     this.onBack,
+    this.onFestivalSelected,
   });
 
   @override
@@ -44,19 +50,6 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
     }
     viewModel.initialize(userId);
     viewModel.setTab(initialTab);
-    
-    // If festivals tab is selected initially, load festivals
-    if (initialTab == 2) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Use a small delay to ensure context is available
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (viewModel.currentTab == 2 && !viewModel.isLoadingFestivals) {
-            // Get context from the view - we'll need to pass it
-            // Actually, we need to do this in buildView where we have context
-          }
-        });
-      });
-    }
   }
 
   @override
@@ -91,6 +84,19 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
         }
       });
     }
+
+    // Scroll tab bar so the selected tab (opened from profile counter) is visible
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _selectedTabKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
     
     return Scaffold(
       backgroundColor: AppColors.screenBackground,
@@ -135,23 +141,26 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
 
             const SizedBox(height: AppDimensions.paddingS),
 
-            /// 🔹 Tabs Row
+            /// 🔹 Tabs Row — scroll so selected tab is visible when opened from profile counter
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
                   _buildTabButton(
+                    key: initialTab == 0 ? _selectedTabKey : null,
                     label: AppStrings.followers,
                     isActive: viewModel.currentTab == 0,
                     onTap: () => viewModel.setTab(0),
                   ),
                   _buildTabButton(
+                    key: initialTab == 1 ? _selectedTabKey : null,
                     label: AppStrings.following,
                     isActive: viewModel.currentTab == 1,
                     onTap: () => viewModel.setTab(1),
                   ),
                   _buildTabButton(
+                    key: initialTab == 2 ? _selectedTabKey : null,
                     label: 'Favourite Festivals',
                     isActive: viewModel.currentTab == 2,
                     onTap: () {
@@ -166,6 +175,7 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
                     },
                   ),
                   _buildTabButton(
+                    key: initialTab == 3 ? _selectedTabKey : null,
                     label: 'Attended festivals',
                     isActive: viewModel.currentTab == 3,
                     onTap: () => viewModel.setTab(3),
@@ -180,7 +190,7 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 300),
-                child: _buildTabView(viewModel),
+                child: _buildTabView(context, viewModel),
               ),
             ),
           ],
@@ -189,27 +199,35 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
     );
   }
 
-  Widget _buildTabView(ProfileListViewModel viewModel) {
+  Widget _buildTabView(BuildContext context, ProfileListViewModel viewModel) {
+    final onFestivalTap = onFestivalSelected != null
+        ? (BuildContext ctx, Map<String, dynamic> item) {
+            final festival = FestivalModel.fromMap(item);
+            onFestivalSelected!(ctx, festival);
+          }
+        : null;
     switch (viewModel.currentTab) {
       case 0:
         return FollowersTab(viewModel: viewModel);
       case 1:
         return FollowingTab(viewModel: viewModel);
       case 2:
-        return FestivalsTab(viewModel: viewModel);
+        return FestivalsTab(viewModel: viewModel, onFestivalTap: onFestivalTap);
       case 3:
-        return AttendedFestivalsTab(viewModel: viewModel);
+        return AttendedFestivalsTab(viewModel: viewModel, onFestivalTap: onFestivalTap);
       default:
         return FollowersTab(viewModel: viewModel);
     }
   }
 
   Widget _buildTabButton({
+    Key? key,
     required String label,
     required bool isActive,
     required VoidCallback onTap,
   }) {
     return Padding(
+      key: key,
       padding: const EdgeInsets.symmetric(horizontal: 6),
       child: GestureDetector(
         onTap: onTap,

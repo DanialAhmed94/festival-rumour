@@ -10,6 +10,8 @@ import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/di/locator.dart';
+import '../../../core/services/chat_badge_service.dart';
+import '../../../core/services/current_chat_list_service.dart';
 import '../../../core/services/notification_storage_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/utils/backbutton.dart';
@@ -26,6 +28,12 @@ class ProfileView extends BaseView<ProfileViewModel> {
 
   @override
   ProfileViewModel createViewModel() => ProfileViewModel();
+
+  @override
+  void onViewModelReady(ProfileViewModel viewModel) {
+    super.onViewModelReady(viewModel);
+    locator<ChatBadgeService>().loadFromStorage();
+  }
 
   @override
   Widget buildView(BuildContext context, ProfileViewModel viewModel) {
@@ -522,21 +530,62 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                 ),
               if (widget.userId == null) SizedBox(width: context.getConditionalSpacing()),
               if (widget.userId == null)
-                IconButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, AppRoutes.chatList);
+                ListenableBuilder(
+                  listenable: Listenable.merge([
+                    locator<ChatBadgeService>(),
+                    locator<CurrentChatListService>(),
+                  ]),
+                  builder: (context, _) {
+                    final badgeService = locator<ChatBadgeService>();
+                    final listService = locator<CurrentChatListService>();
+                    final roomIds = listService.roomIds;
+                    // If chat list not loaded yet (user never opened it), show badge for any unread.
+                    // Once list is loaded, only show badge for unread in that list.
+                    final hasUnreadChats = roomIds.isEmpty
+                        ? badgeService.hasUnread
+                        : badgeService.hasUnreadInRooms(roomIds);
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            Navigator.pushNamed(context, AppRoutes.chatList);
+                          },
+                          icon: Icon(
+                            Icons.chat,
+                            color: AppColors.white,
+                            size: AppDimensions.iconL,
+                          ),
+                          padding: context.responsivePadding,
+                          constraints: BoxConstraints(
+                            minWidth: context.getConditionalIconSize(),
+                            minHeight: context.getConditionalIconSize(),
+                          ),
+                          tooltip: 'Chats',
+                        ),
+                        if (hasUnreadChats)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: AppColors.accent,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.black.withOpacity(0.26),
+                                    blurRadius: 2,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
                   },
-                  icon: Icon(
-                    Icons.chat,
-                    color: AppColors.white,
-                    size: AppDimensions.iconL,
-                  ),
-                  padding: context.responsivePadding,
-                  constraints: BoxConstraints(
-                    minWidth: context.getConditionalIconSize(),
-                    minHeight: context.getConditionalIconSize(),
-                  ),
-                  tooltip: 'Chats',
                 ),
               if (widget.userId == null) SizedBox(width: context.getConditionalSpacing()),
               IconButton(

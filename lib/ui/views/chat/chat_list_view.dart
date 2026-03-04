@@ -41,7 +41,12 @@ class ChatListView extends BaseView<ChatViewModel> {
           children: [
             _buildAppBar(context, viewModel),
             _buildSearchField(context, viewModel),
-            Expanded(child: _buildChatList(context, viewModel)),
+            Expanded(
+              child: ListenableBuilder(
+                listenable: locator<ChatBadgeService>(),
+                builder: (context, _) => _buildChatList(context, viewModel),
+              ),
+            ),
           ],
         ),
       ),
@@ -149,6 +154,7 @@ class ChatListView extends BaseView<ChatViewModel> {
       ),
       child: TextField(
         onChanged: viewModel.setChatSearchQuery,
+        cursorColor: AppColors.black,
         decoration: InputDecoration(
           hintText: 'Search from chats',
           hintStyle: TextStyle(color: AppColors.grey600, fontSize: AppDimensions.textM),

@@ -334,12 +334,11 @@ class _MarkAttendedSheetState extends State<MarkAttendedSheet> {
         }
         return;
       }
-      final imageUrl = await _uploadPhoto();
+      final proofImageUrl = await _uploadPhoto();
       await _firestore.saveAttendedFestival(
         userId: uid,
-        festivalId: widget.festival.id,
-        festivalTitle: widget.festival.title,
-        imageUrl: imageUrl,
+        festivalData: widget.festival.toMap(),
+        proofImageUrl: proofImageUrl,
         lat: _lat!,
         lng: _lng!,
       );

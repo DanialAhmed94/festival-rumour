@@ -329,17 +329,39 @@ class FirestoreService {
     }
   }
 
-  /// Add a festival to user's favorites
-  /// Stores festival ID in an array field 'favoriteFestivals' in user document
-  Future<void> addFavoriteFestival(String userId, int festivalId) async {
+  /// Add a festival to user's favorites. Stores full festival info in subcollection so profile can read from Firebase.
+  /// [festivalData] must contain at least 'id' (int); all other fields (title, location, date, imagepath, etc.) are stored as-is.
+  Future<void> addFavoriteFestival(String userId, Map<String, dynamic> festivalData) async {
     try {
-      await _firestore.collection('users').doc(userId).update({
+      final festivalId = festivalData['id'] is int
+          ? festivalData['id'] as int
+          : (festivalData['id'] is num ? (festivalData['id'] as num).toInt() : null);
+      if (festivalId == null) {
+        throw ArgumentError('addFavoriteFestival: festivalData must contain id');
+      }
+      await _firestore.collection('users').doc(userId).set({
         'favoriteFestivals': FieldValue.arrayUnion([festivalId]),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
+      final subRef = _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('favoriteFestivals')
+          .doc(festivalId.toString());
+      final data = Map<String, dynamic>.from(festivalData);
+      data['savedAt'] = FieldValue.serverTimestamp();
+      await subRef.set(data, SetOptions(merge: true));
 
       if (kDebugMode) {
-        print('✅ Added festival $festivalId to favorites for user $userId');
+        print('✅ [FAVORITE] Saved to users/$userId/favoriteFestivals/$festivalId');
+        print('   [FAVORITE] Data saved:');
+        for (final e in data.entries) {
+          if (e.key == 'savedAt') {
+            print('   [FAVORITE]   ${e.key}: (server timestamp)');
+          } else {
+            print('   [FAVORITE]   ${e.key}: ${e.value}');
+          }
+        }
       }
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
@@ -355,10 +377,16 @@ class FirestoreService {
   /// Remove a festival from user's favorites
   Future<void> removeFavoriteFestival(String userId, int festivalId) async {
     try {
-      await _firestore.collection('users').doc(userId).update({
+      await _firestore.collection('users').doc(userId).set({
         'favoriteFestivals': FieldValue.arrayRemove([festivalId]),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('favoriteFestivals')
+          .doc(festivalId.toString())
+          .delete();
 
       if (kDebugMode) {
         print('✅ Removed festival $festivalId from favorites for user $userId');
@@ -371,6 +399,35 @@ class FirestoreService {
         'FirestoreService.removeFavoriteFestival',
       );
       rethrow;
+    }
+  }
+
+  /// Get full list of favorite festivals from Firebase (all stored fields). No defaults; data comes from Firebase only.
+  Future<List<Map<String, dynamic>>> getFavoriteFestivals(String userId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('favoriteFestivals')
+          .get();
+      final list = <Map<String, dynamic>>[];
+      for (var doc in snapshot.docs) {
+        final d = doc.data();
+        final id = d['id'] is int ? d['id'] as int : (d['id'] is num ? (d['id'] as num).toInt() : int.tryParse(doc.id));
+        if (id == null) continue;
+        final map = Map<String, dynamic>.from(d);
+        map['id'] = id;
+        list.add(map);
+      }
+      return list;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.getFavoriteFestivals',
+      );
+      return [];
     }
   }
 
@@ -4517,17 +4574,23 @@ class FirestoreService {
     }
   }
 
-  /// Save an attended festival for the user (photo + location). Used for "Mark as attended" flow.
+  /// Save an attended festival for the user (photo + location + full festival info). Used for "Mark as attended" flow.
+  /// [festivalData] = full festival map (id, title, location, date, imagepath, etc.) so profile can read from Firebase.
   /// Stored in users/{userId}/attendedFestivals/{festivalId}. Increments user's attendedFestivalsCount when new.
   Future<void> saveAttendedFestival({
     required String userId,
-    required int festivalId,
-    required String festivalTitle,
-    required String imageUrl,
+    required Map<String, dynamic> festivalData,
+    required String proofImageUrl,
     required double lat,
     required double lng,
   }) async {
     try {
+      final festivalId = festivalData['id'] is int
+          ? festivalData['id'] as int
+          : (festivalData['id'] is num ? (festivalData['id'] as num).toInt() : null);
+      if (festivalId == null) {
+        throw ArgumentError('saveAttendedFestival: festivalData must contain id');
+      }
       final subRef = _firestore
           .collection('users')
           .doc(userId)
@@ -4535,14 +4598,12 @@ class FirestoreService {
           .doc(festivalId.toString());
       final doc = await subRef.get();
       final isNew = !doc.exists;
-      await subRef.set({
-        'festivalId': festivalId,
-        'festivalTitle': festivalTitle,
-        'imageUrl': imageUrl,
-        'lat': lat,
-        'lng': lng,
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final data = Map<String, dynamic>.from(festivalData);
+      data['proofImageUrl'] = proofImageUrl;
+      data['lat'] = lat;
+      data['lng'] = lng;
+      data['createdAt'] = FieldValue.serverTimestamp();
+      await subRef.set(data, SetOptions(merge: true));
       if (isNew) {
         final userRef = _firestore.collection('users').doc(userId);
         await userRef.set({
@@ -4551,7 +4612,13 @@ class FirestoreService {
         await updateLeaderboardScore(userId);
       }
       if (kDebugMode) {
-        print('✅ [Attended] saveAttendedFestival: userId=$userId festivalId=$festivalId isNew=$isNew');
+        print('✅ [ATTENDED] Saved to users/$userId/attendedFestivals/$festivalId (isNew=$isNew)');
+        print('   [ATTENDED] Festival data saved:');
+        for (final e in festivalData.entries) {
+          print('   [ATTENDED]   ${e.key}: ${e.value}');
+        }
+        print('   [ATTENDED] proofImageUrl: $proofImageUrl');
+        print('   [ATTENDED] lat: $lat, lng: $lng');
       }
     } catch (e, stackTrace) {
       if (kDebugMode) print('❌ [Attended] saveAttendedFestival failed: $e');
@@ -4688,7 +4755,7 @@ class FirestoreService {
     }
   }
 
-  /// Get list of attended festivals for a user (for profile Attended tab).
+  /// Get list of attended festivals for a user (for profile Attended tab). Returns full stored data from Firebase.
   Future<List<Map<String, dynamic>>> getAttendedFestivals(String userId) async {
     try {
       final snapshot = await _firestore
@@ -4700,10 +4767,11 @@ class FirestoreService {
       final list = <Map<String, dynamic>>[];
       for (var doc in snapshot.docs) {
         final d = doc.data();
-        list.add({
-          'title': d['festivalTitle'] as String? ?? 'Festival',
-          'location': '', // optional: could store in doc if needed
-        });
+        final id = d['id'] is int ? d['id'] as int : (d['id'] is num ? (d['id'] as num).toInt() : int.tryParse(doc.id));
+        final map = Map<String, dynamic>.from(d);
+        if (id != null) map['id'] = id;
+        if (!map.containsKey('title') && map.containsKey('festivalTitle')) map['title'] = map['festivalTitle'];
+        list.add(map);
       }
       return list;
     } catch (e, stackTrace) {

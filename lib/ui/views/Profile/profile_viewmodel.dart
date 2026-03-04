@@ -75,8 +75,9 @@ class ProfileViewModel extends BaseViewModel {
   bool get hasSearchResults => _userSearchQuery.isNotEmpty && _searchResults.isNotEmpty;
   
   String? get userBio => _userBio;
-  String? get userDisplayName => _userDisplayName ?? _authService.userDisplayName;
-  String? get userPhotoUrl => _userPhotoUrl ?? _authService.userPhotoUrl;
+  /// When viewing another user (_viewingUserId != null), never fall back to current user's data.
+  String? get userDisplayName => _viewingUserId != null ? _userDisplayName : (_userDisplayName ?? _authService.userDisplayName);
+  String? get userPhotoUrl => _viewingUserId != null ? _userPhotoUrl : (_userPhotoUrl ?? _authService.userPhotoUrl);
   
   // Store selected post data for sub-navigation
   List<Map<String, dynamic>>? _selectedPostData;
@@ -198,6 +199,27 @@ class ProfileViewModel extends BaseViewModel {
   /// Initialize and load user profile data
   String? _viewingUserId; // ID of the user whose profile is being viewed
   String? _fromRoute; // Route we came from (for proper back navigation)
+
+  /// Set when opening ViewUserProfileView so we never show current user's data while loading.
+  /// Call this from build; does not notify (avoids setState during build).
+  void setViewingUserIdSilent(String? userId) {
+    if (_viewingUserId == userId) return;
+    _viewingUserId = userId;
+    if (userId != null) {
+      _userDisplayName = null;
+      _userPhotoUrl = null;
+      _postCount = 0;
+      _followersCount = 0;
+      _followingCount = 0;
+    }
+  }
+
+  /// Set viewing user and notify. Call only from post-frame or outside build.
+  void setViewingUserId(String? userId) {
+    if (_viewingUserId == userId) return;
+    setViewingUserIdSilent(userId);
+    notifyListeners();
+  }
   
   Future<void> initialize(BuildContext context, {String? userId, String? fromRoute}) async {
     // If already initialized but userId changed, reset and reinitialize

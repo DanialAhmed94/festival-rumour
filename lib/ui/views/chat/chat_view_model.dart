@@ -12,6 +12,7 @@ import '../../../core/services/navigation_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/chat_badge_service.dart';
+import '../../../core/services/current_chat_list_service.dart';
 import '../../../core/services/current_chat_room_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../core/exceptions/app_exception.dart';
@@ -303,6 +304,11 @@ class ChatViewModel extends BaseViewModel {
     _privateChatsSubscription?.cancel();
     _privateChatsSubscription = null;
     _privateChats = [];
+    try {
+      if (locator.isRegistered<CurrentChatListService>()) {
+        locator<CurrentChatListService>().setRoomIds([]);
+      }
+    } catch (_) {}
     notifyListeners();
 
     _privateChatsSubscription = _firestoreService
@@ -376,6 +382,16 @@ class ChatViewModel extends BaseViewModel {
 
             if (isDisposed) return;
             _privateChats = enriched;
+            final roomIds = enriched
+                .map((r) => r['chatRoomId'] as String?)
+                .where((id) => id != null && id.isNotEmpty)
+                .cast<String>()
+                .toList();
+            try {
+              if (locator.isRegistered<CurrentChatListService>()) {
+                locator<CurrentChatListService>().setRoomIds(roomIds);
+              }
+            } catch (_) {}
             setBusy(false);
             notifyListeners();
 
@@ -631,6 +647,7 @@ class ChatViewModel extends BaseViewModel {
     _isInChatRoom = false;
     _currentChatRoom = null;
     _chatRoomId = null;
+    if (kDebugMode) print('[NOTIF] ChatViewModel.exitChatRoom: clearing current chat room');
     locator<CurrentChatRoomService>().clearCurrentChatRoom();
     messageController.clear();
     _messages.clear();

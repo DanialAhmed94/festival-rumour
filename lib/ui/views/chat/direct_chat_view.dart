@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/services/current_chat_room_service.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
@@ -45,15 +48,34 @@ class DirectChatView extends BaseView<ChatViewModel> {
       });
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.screenBackground,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(context, viewModel, otherUserName),
-            Expanded(child: _buildChatContent(context, viewModel)),
-            _buildInputSection(context, viewModel),
-          ],
+    return _DirectChatLifecycle(
+      onDeactivate: () {
+        try {
+          if (locator.isRegistered<CurrentChatRoomService>()) {
+            locator<CurrentChatRoomService>().clearCurrentChatRoom();
+            if (kDebugMode) print('[NOTIF] DirectChatView: cleared current chat room (deactivate)');
+          }
+        } catch (_) {}
+      },
+      child: PopScope(
+        onPopInvokedWithResult: (didPop, _) {
+          if (kDebugMode) print('[NOTIF] DirectChatView: PopScope onPopInvokedWithResult didPop=$didPop');
+          if (didPop) {
+            viewModel.exitChatRoom();
+            if (kDebugMode) print('[NOTIF] DirectChatView: called exitChatRoom after pop');
+          }
+        },
+        child: Scaffold(
+          backgroundColor: AppColors.screenBackground,
+          body: SafeArea(
+            child: Column(
+              children: [
+                _buildAppBar(context, viewModel, otherUserName),
+                Expanded(child: _buildChatContent(context, viewModel)),
+                _buildInputSection(context, viewModel),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -429,7 +451,7 @@ class DirectChatView extends BaseView<ChatViewModel> {
               ),
               child: TextField(
                 controller: viewModel.messageController,
-                cursorColor: AppColors.primary,
+                cursorColor: AppColors.black,
                 decoration: const InputDecoration(
                   hintText: AppStrings.typeSomething,
                   hintStyle: TextStyle(color: AppColors.grey600),
@@ -478,4 +500,30 @@ class DirectChatView extends BaseView<ChatViewModel> {
       ),
     );
   }
+}
+
+/// Wrapper that clears CurrentChatRoomService when this screen is deactivated
+/// (e.g. user switched to Profile tab without popping the route).
+class _DirectChatLifecycle extends StatefulWidget {
+  const _DirectChatLifecycle({
+    required this.onDeactivate,
+    required this.child,
+  });
+
+  final VoidCallback onDeactivate;
+  final Widget child;
+
+  @override
+  State<_DirectChatLifecycle> createState() => _DirectChatLifecycleState();
+}
+
+class _DirectChatLifecycleState extends State<_DirectChatLifecycle> {
+  @override
+  void deactivate() {
+    widget.onDeactivate();
+    super.deactivate();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

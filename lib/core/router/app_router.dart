@@ -1,6 +1,9 @@
 import 'package:festival_rumour/ui/views/username/username_view.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:festival_rumour/core/providers/festival_provider.dart';
+import 'package:festival_rumour/ui/views/festival/festival_model.dart';
 import '../../ui/views/forgot_password/forgot_password_view.dart';
 import '../../ui/views/jobdetail/festivals_job_view.dart';
 import '../../ui/views/jobpost/festivals_job_post_view.dart';
@@ -159,7 +162,10 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       return SmoothPageRoute(page: const HomeView());
 
     case AppRoutes.navbaar:
-      return SmoothPageRoute(page: const NavBaar());
+      if (kDebugMode) {
+        print('🔙 [AppRouter.navbaar] Creating route, settings.arguments=${settings.arguments}');
+      }
+      return SmoothPageRoute(page: const NavBaar(), settings: settings);
 
     case AppRoutes.subscription:
       return SmoothPageRoute(page: const SubscriptionView());
@@ -295,11 +301,34 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
         print('   userId: $userId');
       }
 
+      final isFestivalTab = initialTab == 2 || initialTab == 3;
       return SmoothPageRoute(
-        page: ProfileListView(
-          initialTab: initialTab,
-          Username: username,
-          userId: userId,
+        page: Builder(
+          builder: (context) {
+            OnFestivalSelected? onFestivalSelected;
+            if (isFestivalTab) {
+              onFestivalSelected = (ctx, festival) {
+                if (kDebugMode) {
+                  print('🔙 [ProfileList→Discover] Setting selected festival: ${festival.title} (id=${festival.id})');
+                }
+                Provider.of<FestivalProvider>(ctx, listen: false).setSelectedFestival(festival);
+                if (!ctx.mounted) return;
+                if (kDebugMode) {
+                  print('🔙 [ProfileList→Discover] Pushing NavBar with arguments: fromProfileList=true (back should return to profile list)');
+                }
+                Navigator.of(ctx).pushNamed(
+                  AppRoutes.navbaar,
+                  arguments: {'fromProfileList': true},
+                );
+              };
+            }
+            return ProfileListView(
+              initialTab: initialTab,
+              Username: username,
+              userId: userId,
+              onFestivalSelected: onFestivalSelected,
+            );
+          },
         ),
       );
 

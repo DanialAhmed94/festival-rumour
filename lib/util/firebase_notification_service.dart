@@ -13,10 +13,9 @@ class FirebaseNotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
   static Future<void> init() async {
-    // 🔔 Permission (iOS + Android 13+)
-    await _messaging.requestPermission(alert: true, badge: true, sound: true);
+    // 🔔 Permission is requested on the festival screen (see requestPermissionIfNeeded).
 
-    // 📱 Get & save FCM token (local + Firestore so Cloud Function can send to this device)
+    // 📱 Get & save FCM token when permission already granted (e.g. returning user)
     await _getAndSaveToken();
 
     // 🔁 Always listen for refresh (this guarantees correctness)
@@ -57,6 +56,15 @@ class FirebaseNotificationService {
     }
 
     print('[NOTIF] Device: FCM init done, listening for messages');
+  }
+
+  /// Call this when you want to show the notification permission prompt (e.g. on festival screen).
+  static Future<void> requestPermissionIfNeeded() async {
+    final settings = await _messaging.requestPermission(alert: true, badge: true, sound: true);
+    final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+    await StorageService().setNotificationsEnabled(granted);
+    if (granted) await _getAndSaveToken();
   }
 
   static Future<String?> _getAndSaveToken() async {
@@ -116,12 +124,17 @@ class FirebaseNotificationService {
       }
     } catch (_) {}
 
+    print('[NOTIF] Device: dataChatRoomId=$dataChatRoomId currentRoom=$currentRoom match=${dataChatRoomId != null && currentRoom != null && dataChatRoomId == currentRoom}');
+
     if (dataChatRoomId != null && dataChatRoomId.isNotEmpty && currentRoom != null && currentRoom == dataChatRoomId) {
       print('[NOTIF] Device: suppress - user is viewing this room (chatRoomId=$dataChatRoomId)');
       return;
     }
 
-    print('[NOTIF] Device: showing notification title="${notification.title}" body="${notification.body}"');
+    final isPublicRoom = dataChatRoomId != null &&
+        dataChatRoomId.isNotEmpty &&
+        dataChatRoomId.endsWith('_PublicChat');
+
     if (dataChatRoomId != null && dataChatRoomId.isNotEmpty) {
       try {
         if (locator.isRegistered<ChatBadgeService>()) {
@@ -129,6 +142,12 @@ class FirebaseNotificationService {
         }
       } catch (_) {}
     }
+
+    if (isPublicRoom) {
+      return;
+    }
+
+    print('[NOTIF] Device: showing notification title="${notification.title}" body="${notification.body}"');
     _addToNotificationList(message);
     NotificationService.show(
       title: notification.title ?? '',

@@ -6,10 +6,19 @@ import '../../../core/viewmodels/base_view_model.dart';
 class NavBaarViewModel extends BaseViewModel {
   int _currentIndex = 0;
   String? _subNavigation; // For handling sub-navigation within tabs
+  bool _fromProfileList = false;
   final NavigationService _navigationService = locator<NavigationService>();
 
   int get currentIndex => _currentIndex;
   String? get subNavigation => _subNavigation;
+  bool get fromProfileList => _fromProfileList;
+
+  /// Set when NavBar route is built (from route arguments). When true, back from Discover pops to profile list.
+  void setFromProfileList(bool value) {
+    if (_fromProfileList == value) return;
+    _fromProfileList = value;
+    notifyListeners();
+  }
 
   void setIndex(int index) {
     if (_currentIndex == index) return;
@@ -31,10 +40,12 @@ class NavBaarViewModel extends BaseViewModel {
     setIndex(0); // Discover is first tab (index 0)
   }
 
-  /// Call before goToDiscover() when RumorsView handles device back, so NavBaar skips navigateToFestival.
-
-  /// Navigate to Festival screen and clear the stack (used when back from Discover).
+  /// When opened from profile list (Favourites/Attended), back goes to profile list. Otherwise go to Festival screen.
   void navigateToFestival() {
+    if (_fromProfileList) {
+      _navigationService.pop();
+      return;
+    }
     _navigationService.pushNamedAndRemoveUntil(
       AppRoutes.festivals,
       (route) => false,

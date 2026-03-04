@@ -215,8 +215,8 @@ class DiscoverViewModel extends BaseViewModel {
 
     try {
       if (newFavoriteStatus) {
-        // Add to favorites - arrayUnion automatically prevents duplicates
-        await _firestoreService.addFavoriteFestival(userId, selectedFestival.id);
+        // Add to favorites with full festival data so profile can read from Firebase
+        await _firestoreService.addFavoriteFestival(userId, selectedFestival.toMap());
       } else {
         // Remove from favorites
         await _firestoreService.removeFavoriteFestival(userId, selectedFestival.id);

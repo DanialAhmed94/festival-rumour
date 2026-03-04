@@ -184,6 +184,53 @@ class FestivalModel {
     return _getFestivalStatus(startingDate, endingDate) == FestivalStatus.live;
   }
 
+  /// Create FestivalModel from map stored in Firebase (favorites/attended subcollections).
+  factory FestivalModel.fromMap(Map<String, dynamic> map) {
+    final id = map['id'] is int ? map['id'] as int : (map['id'] is num ? (map['id'] as num).toInt() : 0);
+    final statusIndex = map['status'] is int ? map['status'] as int : (map['status'] is num ? (map['status'] as num).toInt() : 2);
+    final status = statusIndex == 0 ? FestivalStatus.past : (statusIndex == 1 ? FestivalStatus.live : FestivalStatus.upcoming);
+    return FestivalModel(
+      id: id,
+      title: (map['title']?.toString()) ?? '',
+      location: (map['location']?.toString()) ?? '',
+      date: (map['date']?.toString()) ?? '',
+      imagepath: (map['imagepath']?.toString()) ?? '',
+      isLive: map['isLive'] == true,
+      status: status,
+      description: map['description']?.toString(),
+      descriptionOrganizer: map['descriptionOrganizer']?.toString(),
+      nameOrganizer: map['nameOrganizer']?.toString(),
+      latitude: map['latitude']?.toString(),
+      longitude: map['longitude']?.toString(),
+      time: map['time']?.toString(),
+      price: map['price']?.toString(),
+      startingDate: map['startingDate']?.toString(),
+      endingDate: map['endingDate']?.toString(),
+    );
+  }
+
+  /// Serialize to map for Firestore (favorites/attended). All fields stored so profile can read from Firebase.
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'title': title,
+      'location': location,
+      'date': date,
+      'imagepath': imagepath,
+      'isLive': isLive,
+      'status': status.index,
+      'description': description,
+      'descriptionOrganizer': descriptionOrganizer,
+      'nameOrganizer': nameOrganizer,
+      'latitude': latitude,
+      'longitude': longitude,
+      'time': time,
+      'price': price,
+      'startingDate': startingDate,
+      'endingDate': endingDate,
+    };
+  }
+
   /// Create a copy of this model with updated fields
   FestivalModel copyWith({
     int? id,

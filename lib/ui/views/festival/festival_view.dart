@@ -125,10 +125,17 @@ class FestivalView extends BaseView<FestivalViewModel> {
                                     : AppDimensions.spaceL,
                           ),
                           Expanded(
-                            child: _buildFestivalsSlider(
-                              context,
-                              viewModel,
-                              pageController,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: _buildFestivalsSlider(
+                                    context,
+                                    viewModel,
+                                    pageController,
+                                  ),
+                                ),
+                                SizedBox(height: AppDimensions.spaceXL),
+                              ],
                             ),
                           ),
                         ],
