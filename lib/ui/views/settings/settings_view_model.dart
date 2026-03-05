@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart' as AppSettings;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -34,20 +35,54 @@ class SettingsViewModel extends BaseViewModel {
   @override
   void init() {
     super.init();
-    _loadNotificationsPreference();
+    if (Platform.isIOS) {
+      syncNotificationPermissionIOS();
+    } else {
+      _loadNotificationsPreference(); // Android remains same
+    }
     _loadUserProfileFromStorage();
   }
 
   Future<void> _loadUserProfileFromStorage() async {
     _userName = await _storageService.getStoredDisplayName();
     _userPhotoUrl = await _storageService.getStoredPhotoUrl();
-    if ((_userName == null || _userName!.isEmpty) || (_userPhotoUrl == null || _userPhotoUrl!.isEmpty)) {
+    if ((_userName == null || _userName!.isEmpty) ||
+        (_userPhotoUrl == null || _userPhotoUrl!.isEmpty)) {
       final fromAuth = _authService.userDisplayName;
       final photoFromAuth = _authService.userPhotoUrl;
       if (_userName == null || _userName!.isEmpty) _userName = fromAuth;
-      if (_userPhotoUrl == null || _userPhotoUrl!.isEmpty) _userPhotoUrl = photoFromAuth;
-      await _storageService.setUserProfile(displayName: _userName, photoUrl: _userPhotoUrl);
+      if (_userPhotoUrl == null || _userPhotoUrl!.isEmpty)
+        _userPhotoUrl = photoFromAuth;
+      await _storageService.setUserProfile(
+        displayName: _userName,
+        photoUrl: _userPhotoUrl,
+      );
     }
+    notifyListeners();
+  }
+
+  Future<void> syncNotificationPermissionIOS() async {
+    if (!Platform.isIOS) return;
+
+    final stored = await _storageService.getNotificationsEnabled();
+
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+
+    if (kDebugMode) {
+      print("🔄 Sync iOS Notification Permission");
+      print("📡 Current permission: ${settings.authorizationStatus}");
+      print("💾 Stored preference: $stored");
+    }
+
+    /// If iOS permission is denied -> force OFF
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      notifications = false;
+      await _storageService.setNotificationsEnabled(false);
+    } else {
+      /// Otherwise respect stored preference
+      notifications = stored ?? true;
+    }
+
     notifyListeners();
   }
 
@@ -56,8 +91,10 @@ class SettingsViewModel extends BaseViewModel {
     if (stored != null) {
       notifications = stored;
     } else {
-      final settings = await FirebaseMessaging.instance.getNotificationSettings();
-      final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
+      final settings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+      final granted =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
       notifications = granted;
       await _storageService.setNotificationsEnabled(granted);
@@ -65,30 +102,182 @@ class SettingsViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  /// When turning ON: check/request permission; if user denies, keep toggle OFF.
   Future<void> toggleNotifications(bool value) async {
+    if (kDebugMode) {
+      print("🔔 toggleNotifications called");
+      print("📱 Platform: ${Platform.isIOS ? "iOS" : "Android"}");
+      print("🎚 Switch value: $value");
+    }
+
+    if (Platform.isIOS) {
+      await _toggleNotificationsIOS(value);
+    } else {
+      await _toggleNotificationsAndroid(value);
+    }
+  }
+
+  Future<void> _toggleNotificationsIOS(bool value) async {
+    if (kDebugMode) {
+      print("🍎 iOS Notification Toggle Started");
+      print("🎚 Toggle value: $value");
+    }
+
+    /// USER TURNED SWITCH OFF
+    if (!value) {
+      if (kDebugMode) {
+        print("🔕 User turned OFF notifications");
+      }
+
+      final settings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+
+      if (kDebugMode) {
+        print(
+          "📡 Permission when turning OFF: ${settings.authorizationStatus}",
+        );
+      }
+
+      notifications = false;
+
+      await _storageService.setNotificationsEnabled(false);
+
+      notifyListeners();
+      return;
+    }
+
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+
+    if (kDebugMode) {
+      print(
+        "📡 Current iOS Permission Status: ${settings.authorizationStatus}",
+      );
+    }
+
+    /// ALREADY AUTHORIZED
+    if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional) {
+      if (kDebugMode) {
+        print("✅ Notifications already authorized");
+      }
+
+      notifications = true;
+
+      await _storageService.setNotificationsEnabled(true);
+
+      notifyListeners();
+      return;
+    }
+
+    /// FIRST TIME PERMISSION
+    if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+      if (kDebugMode) {
+        print("❓ Requesting notification permission");
+      }
+
+      final request = await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      if (kDebugMode) {
+        print("📨 Permission result: ${request.authorizationStatus}");
+      }
+
+      if (request.authorizationStatus == AuthorizationStatus.authorized ||
+          request.authorizationStatus == AuthorizationStatus.provisional) {
+        notifications = true;
+      } else {
+        notifications = false;
+      }
+
+      await _storageService.setNotificationsEnabled(notifications);
+
+      notifyListeners();
+      return;
+    }
+
+    /// PERMISSION DENIED
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      if (kDebugMode) {
+        print("⚠️ Permission denied previously. Opening settings...");
+      }
+
+      await AppSettings.openAppSettings();
+
+      final newSettings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+
+      if (kDebugMode) {
+        print(
+          "🔄 Permission after returning: ${newSettings.authorizationStatus}",
+        );
+      }
+
+      if (newSettings.authorizationStatus == AuthorizationStatus.authorized ||
+          newSettings.authorizationStatus == AuthorizationStatus.provisional) {
+        notifications = true;
+      } else {
+        notifications = false;
+      }
+
+      await _storageService.setNotificationsEnabled(notifications);
+
+      notifyListeners();
+    }
+  }
+
+  Future<void> syncNotificationPermission() async {
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+
+    if (kDebugMode) {
+      print("🔄 Syncing notification permission");
+      print("📡 Permission status: ${settings.authorizationStatus}");
+    }
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional) {
+      notifications = true;
+    } else {
+      notifications = false;
+    }
+
+    await _storageService.setNotificationsEnabled(notifications);
+
+    notifyListeners();
+  }
+
+  Future<void> _toggleNotificationsAndroid(bool value) async {
     if (value == false) {
       notifications = false;
       await _storageService.setNotificationsEnabled(false);
       notifyListeners();
       return;
     }
+
     final settings = await FirebaseMessaging.instance.getNotificationSettings();
-    final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
+
+    final granted =
+        settings.authorizationStatus == AuthorizationStatus.authorized ||
         settings.authorizationStatus == AuthorizationStatus.provisional;
+
     if (granted) {
       notifications = true;
       await _storageService.setNotificationsEnabled(true);
       notifyListeners();
       return;
     }
+
     final requested = await FirebaseMessaging.instance.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
-    final nowGranted = requested.authorizationStatus == AuthorizationStatus.authorized ||
+
+    final nowGranted =
+        requested.authorizationStatus == AuthorizationStatus.authorized ||
         requested.authorizationStatus == AuthorizationStatus.provisional;
+
     if (nowGranted) {
       notifications = true;
       await _storageService.setNotificationsEnabled(true);
@@ -96,8 +285,45 @@ class SettingsViewModel extends BaseViewModel {
       notifications = false;
       await _storageService.setNotificationsEnabled(false);
     }
+
     notifyListeners();
   }
+
+  /// When turning ON: check/request permission; if user denies, keep toggle OFF.
+  // Future<void> toggleNotifications(bool value) async {
+  //   if (value == false) {
+  //     notifications = false;
+  //     await _storageService.setNotificationsEnabled(false);
+  //     notifyListeners();
+  //     return;
+  //   }
+  //   final settings = await FirebaseMessaging.instance.getNotificationSettings();
+  //   final granted =
+  //       settings.authorizationStatus == AuthorizationStatus.authorized ||
+  //       settings.authorizationStatus == AuthorizationStatus.provisional;
+  //   if (granted) {
+  //     notifications = true;
+  //     await _storageService.setNotificationsEnabled(true);
+  //     notifyListeners();
+  //     return;
+  //   }
+  //   final requested = await FirebaseMessaging.instance.requestPermission(
+  //     alert: true,
+  //     badge: true,
+  //     sound: true,
+  //   );
+  //   final nowGranted =
+  //       requested.authorizationStatus == AuthorizationStatus.authorized ||
+  //       requested.authorizationStatus == AuthorizationStatus.provisional;
+  //   if (nowGranted) {
+  //     notifications = true;
+  //     await _storageService.setNotificationsEnabled(true);
+  //   } else {
+  //     notifications = false;
+  //     await _storageService.setNotificationsEnabled(false);
+  //   }
+  //   notifyListeners();
+  // }
 
   void togglePrivacy(bool value) {
     privacy = value;

@@ -33,6 +33,7 @@ dependencies:
   hive_flutter: ^1.1.0
   firebase_messaging: 
   flutter_local_notifications: 
+  app_settings:
 
   # Navigation
   go_router: ^16.3.0
