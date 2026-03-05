@@ -57,6 +57,9 @@ class ChatViewModel extends BaseViewModel {
   bool _isSendingMessage = false;
   bool get isSendingMessage => _isSendingMessage;
 
+  bool _isDeletingPrivateRoom = false;
+  bool get isDeletingPrivateRoom => _isDeletingPrivateRoom;
+
   /// [festivalId] - When switching to private tab (tab==1), pass selected festival ID for chat room screen; null for DMs only.
   void setSelectedTab(int tab, {String? festivalId}) {
     _selectedTab = tab;
@@ -114,6 +117,15 @@ class ChatViewModel extends BaseViewModel {
   List<Map<String, dynamic>> _privateChats = [];
   StreamSubscription<List<Map<String, dynamic>>>? _privateChatsSubscription;
 
+  /// Chat rooms hidden by user (soft delete). RoomId -> when they hid it. Server-stored on user doc.
+  Map<String, DateTime> _hiddenChatRoomTimestamps = {};
+
+  /// When opening a room, if user had hidden it we only show messages after this time.
+  DateTime? _hiddenAtForCurrentRoom;
+
+  /// When we started listening to this room (for "new message" unhide: only unhide if a message arrived after this).
+  DateTime? _roomOpenedAt;
+
   /// Cache for other user's photo/name to avoid repeated Firestore reads (WhatsApp-style list).
   final Map<String, Map<String, dynamic>> _otherUserCache = {};
 
@@ -134,11 +146,16 @@ class ChatViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  /// Chats filtered by search query (by name / otherUserName / lastMessage).
+  /// Chats that are not hidden (visible in list).
+  List<Map<String, dynamic>> get visiblePrivateChats =>
+      _privateChats.where((chat) => !_hiddenChatRoomTimestamps.containsKey(chat['chatRoomId'] as String?)).toList();
+
+  /// Chats filtered by search query (by name / otherUserName / lastMessage). Excludes hidden chats.
   List<Map<String, dynamic>> get filteredPrivateChats {
-    if (_chatSearchQuery.isEmpty) return _privateChats;
+    final visible = visiblePrivateChats;
+    if (_chatSearchQuery.isEmpty) return visible;
     final q = _chatSearchQuery;
-    return _privateChats.where((chat) {
+    return visible.where((chat) {
       final name = (chat['otherUserName'] as String? ?? chat['name'] as String? ?? '').toLowerCase();
       final lastMessage = (chat['lastMessage'] as String? ?? '').toLowerCase();
       return name.contains(q) || lastMessage.contains(q);
@@ -179,18 +196,39 @@ class ChatViewModel extends BaseViewModel {
     return chatRoomId != null && _selectedChatRoomIds.contains(chatRoomId);
   }
 
-  /// Delete all selected chat rooms. Returns the number of rooms successfully deleted.
-  Future<int> deleteSelectedChatRooms() async {
+  /// Delete or hide selected chat rooms.
+  /// [dmOnly] true = DM list: always hide (server deletes room when both users have hidden).
+  /// [dmOnly] false = festival private list: creator = delete, non-creator = hide.
+  Future<int> deleteSelectedChatRooms({bool dmOnly = false}) async {
+    if (kDebugMode) {
+      print('[ChatHide] deleteSelectedChatRooms: dmOnly=$dmOnly selected=${_selectedChatRoomIds.toList()}');
+    }
     if (_selectedChatRoomIds.isEmpty) return 0;
-    int deleted = 0;
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return 0;
+    int total = 0;
     for (final id in List<String>.from(_selectedChatRoomIds)) {
-      final success = await deletePrivateChatRoom(id);
-      if (success) deleted++;
+      final chat = _privateChats.cast<Map<String, dynamic>?>().firstWhere(
+            (c) => c?['chatRoomId'] == id,
+            orElse: () => null,
+          );
+      final isCreator = chat != null && ((chat['createdBy'] as String?) == currentUser.uid);
+      final action = dmOnly ? 'hide' : (isCreator ? 'delete' : 'hide');
+      if (kDebugMode) {
+        print('[ChatHide] deleteSelectedChatRooms: room=$id isCreator=$isCreator action=$action');
+      }
+      final success = dmOnly
+          ? await addHiddenChatRoom(id)
+          : (isCreator ? await deletePrivateChatRoom(id) : await addHiddenChatRoom(id));
+      if (success) total++;
       _selectedChatRoomIds.remove(id);
     }
     _isSelectionMode = false;
     notifyListeners();
-    return deleted;
+    if (kDebugMode) {
+      print('[ChatHide] deleteSelectedChatRooms: done total=$total');
+    }
+    return total;
   }
 
   /// True when user is in a private room (creator or joined) — can open room detail
@@ -260,6 +298,8 @@ class ChatViewModel extends BaseViewModel {
       return false;
     }
 
+    _isDeletingPrivateRoom = true;
+    notifyListeners();
     try {
       final success = await _firestoreService.deletePrivateChatRoom(
         chatRoomId: chatRoomId,
@@ -269,8 +309,6 @@ class ChatViewModel extends BaseViewModel {
       if (success) {
         // Remove from local list
         _privateChats.removeWhere((chat) => chat['chatRoomId'] == chatRoomId);
-        notifyListeners();
-        
         if (kDebugMode) {
           print('✅ Chat room deleted successfully: $chatRoomId');
         }
@@ -280,6 +318,94 @@ class ChatViewModel extends BaseViewModel {
     } catch (e, stackTrace) {
       if (kDebugMode) {
         print('❌ Error deleting chat room: $e');
+      }
+      final appException = ExceptionMapper.mapToAppException(e, stackTrace);
+      throw appException;
+    } finally {
+      _isDeletingPrivateRoom = false;
+      notifyListeners();
+    }
+  }
+
+  /// Load hidden chat rooms from server (for chat list filter). Call when opening chat list.
+  Future<void> loadHiddenChatRooms() async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return;
+    if (kDebugMode) {
+      print('[ChatHide] loadHiddenChatRooms: loading for uid=${currentUser.uid}');
+    }
+    try {
+      final map = await _firestoreService.getHiddenChatRooms(currentUser.uid);
+      _hiddenChatRoomTimestamps = map;
+      notifyListeners();
+      if (kDebugMode) {
+        print('[ChatHide] loadHiddenChatRooms: loaded ${map.length} hidden rooms: ${map.keys.toList()}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ChatHide] loadHiddenChatRooms: error $e');
+      }
+    }
+  }
+
+  /// Unhide a chat (remove from hidden list). Call when user sends or receives a message in that room.
+  Future<void> removeHiddenChatRoom(String chatRoomId) async {
+    final currentUser = _authService.currentUser;
+    if (kDebugMode) {
+      print('[ChatHide] removeHiddenChatRoom: roomId=$chatRoomId hasLocal=${_hiddenChatRoomTimestamps.containsKey(chatRoomId)}');
+    }
+    if (currentUser == null || !_hiddenChatRoomTimestamps.containsKey(chatRoomId)) {
+      if (kDebugMode) {
+        print('[ChatHide] removeHiddenChatRoom: skip (no user or not in local hidden list)');
+      }
+      return;
+    }
+    try {
+      await _firestoreService.removeHiddenChatRoom(
+        userId: currentUser.uid,
+        chatRoomId: chatRoomId,
+      );
+      _hiddenChatRoomTimestamps.remove(chatRoomId);
+      if (_chatRoomId == chatRoomId) _hiddenAtForCurrentRoom = null;
+      notifyListeners();
+      if (kDebugMode) {
+        print('[ChatHide] removeHiddenChatRoom: unhid $chatRoomId, cleared _hiddenAtForCurrentRoom=${_chatRoomId == chatRoomId}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ChatHide] removeHiddenChatRoom: error $e');
+      }
+    }
+  }
+
+  /// Hide a chat from list (soft delete). User stays in room; when opened, only messages after hide time are shown.
+  Future<bool> addHiddenChatRoom(String chatRoomId) async {
+    final currentUser = _authService.currentUser;
+    if (kDebugMode) {
+      print('[ChatHide] addHiddenChatRoom: roomId=$chatRoomId');
+    }
+    if (currentUser == null) {
+      if (kDebugMode) {
+        print('[ChatHide] addHiddenChatRoom: skip (not authenticated)');
+      }
+      return false;
+    }
+    try {
+      await _firestoreService.addHiddenChatRoom(
+        userId: currentUser.uid,
+        chatRoomId: chatRoomId,
+      );
+      final now = DateTime.now();
+      _hiddenChatRoomTimestamps[chatRoomId] = now;
+      _selectedChatRoomIds.remove(chatRoomId);
+      notifyListeners();
+      if (kDebugMode) {
+        print('[ChatHide] addHiddenChatRoom: hid $chatRoomId at $now');
+      }
+      return true;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ Error hiding chat room: $e');
       }
       final appException = ExceptionMapper.mapToAppException(e, stackTrace);
       throw appException;
@@ -322,6 +448,7 @@ class ChatViewModel extends BaseViewModel {
             // Convert to UI format
             final baseList = chatRoomsData.map((roomData) {
               final lastMessageTime = roomData['lastMessageTime'] as Timestamp?;
+              final lastMessageTimeUtc = lastMessageTime?.toDate();
               String timestamp = '';
               if (lastMessageTime != null) {
                 final dateTime = lastMessageTime.toDate();
@@ -337,6 +464,7 @@ class ChatViewModel extends BaseViewModel {
                 'chatRoomId': roomData['chatRoomId'] as String?,
                 'lastMessage': roomData['lastMessage'] as String? ?? '',
                 'timestamp': timestamp,
+                'lastMessageTimeUtc': lastMessageTimeUtc,
                 'unreadCount': 0,
                 'isActive': true,
                 'members': roomData['members'] as List<dynamic>? ?? [],
@@ -381,6 +509,22 @@ class ChatViewModel extends BaseViewModel {
             }
 
             if (isDisposed) return;
+            // When a hidden room gets a new message, show it in the list again (local only, no server call).
+            const showInListAfterNewMessageBuffer = Duration(seconds: 1);
+            final toShowInList = <String>[];
+            for (final r in enriched) {
+              final id = r['chatRoomId'] as String?;
+              if (id == null || id.isEmpty) continue;
+              final hiddenAt = _hiddenChatRoomTimestamps[id];
+              if (hiddenAt == null) continue;
+              final lastMsg = r['lastMessageTimeUtc'] as DateTime?;
+              if (lastMsg != null && lastMsg.isAfter(hiddenAt.add(showInListAfterNewMessageBuffer))) {
+                toShowInList.add(id);
+              }
+            }
+            for (final id in toShowInList) {
+              _hiddenChatRoomTimestamps.remove(id);
+            }
             _privateChats = enriched;
             final roomIds = enriched
                 .map((r) => r['chatRoomId'] as String?)
@@ -464,7 +608,8 @@ class ChatViewModel extends BaseViewModel {
   TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
 
-  /// Initialize chat room with chatRoomId from navigation
+  /// Initialize chat room with chatRoomId from navigation.
+  /// Opens the chat screen immediately, then loads user/room data and messages in the background.
   Future<void> initializeChatRoom(String? chatRoomId) async {
     if (chatRoomId == null || chatRoomId.isEmpty) {
       if (kDebugMode) {
@@ -473,30 +618,76 @@ class ChatViewModel extends BaseViewModel {
       return;
     }
 
-    // Clear any existing messages first to prevent showing old/dummy messages
+    if (kDebugMode) {
+      print('[ChatHide] initializeChatRoom: roomId=$chatRoomId, clearing messages & hidden state');
+    }
+    // Clear any existing messages and cancel previous subscription
     _messages.clear();
-    setBusy(true);
-    notifyListeners();
-
-    // Cancel any existing subscription before starting a new one
     _messagesSubscription?.cancel();
     _messagesSubscription = null;
+    _hiddenAtForCurrentRoom = null; // Resolve fresh in _initializeChatRoomAsync
 
     _chatRoomId = chatRoomId;
     locator<CurrentChatRoomService>().setCurrentChatRoom(chatRoomId);
     locator<ChatBadgeService>().clearBadge(chatRoomId);
 
-    // Load current user info
-    await _loadCurrentUserInfo();
-    
-    // Load chat room data
-    await _loadChatRoomData();
-    
-    // Start listening to messages
-    _startMessagesListener();
-    
+    // Show chat screen immediately with placeholder; room name will update when loaded
+    _currentChatRoom = {'name': 'Loading...'};
     _isInChatRoom = true;
     notifyListeners();
+
+    // Load user info, room data, and messages in the background
+    _initializeChatRoomAsync();
+  }
+
+  /// Runs after chat screen is visible; loads user, room, and subscribes to messages.
+  Future<void> _initializeChatRoomAsync() async {
+    if (_chatRoomId == null || isDisposed) return;
+
+    setBusy(true);
+    notifyListeners();
+
+    await _loadCurrentUserInfo();
+    if (isDisposed || _chatRoomId == null) return;
+
+    await _loadChatRoomData();
+    if (isDisposed || _chatRoomId == null) return;
+
+    // If user had hidden this chat, only show messages after hide time (no old messages).
+    final currentUser = _authService.currentUser;
+    final roomId = _chatRoomId;
+    if (currentUser != null && roomId != null) {
+      if (kDebugMode) {
+        print('[ChatHide] _initializeChatRoomAsync: loading hidden state for room=$roomId (source=server)');
+      }
+      final hiddenMap = await _firestoreService.getHiddenChatRooms(
+        currentUser.uid,
+        source: Source.server,
+      );
+      if (kDebugMode) {
+        print('[ChatHide] _initializeChatRoomAsync: server hiddenMap size=${hiddenMap.length}, hasRoom=${hiddenMap.containsKey(roomId)}, localHasRoom=${_hiddenChatRoomTimestamps.containsKey(roomId)}');
+      }
+      if (hiddenMap.containsKey(roomId)) {
+        _hiddenAtForCurrentRoom = hiddenMap[roomId];
+        if (kDebugMode) {
+          print('[ChatHide] _initializeChatRoomAsync: using SERVER hiddenAt=${_hiddenAtForCurrentRoom}');
+        }
+      } else if (_hiddenChatRoomTimestamps.containsKey(roomId)) {
+        _hiddenAtForCurrentRoom = _hiddenChatRoomTimestamps[roomId];
+        if (kDebugMode) {
+          print('[ChatHide] _initializeChatRoomAsync: using LOCAL hiddenAt=${_hiddenAtForCurrentRoom}');
+        }
+      } else if (kDebugMode) {
+        print('[ChatHide] _initializeChatRoomAsync: room NOT hidden -> will show all messages');
+      }
+    }
+
+    _roomOpenedAt = DateTime.now();
+    if (kDebugMode) {
+      print('[ChatHide] _initializeChatRoomAsync: _roomOpenedAt=$_roomOpenedAt, starting message listener');
+    }
+    _startMessagesListener();
+    // setBusy(false) is called when the messages stream emits (in the listener)
   }
 
   /// Load current user information
@@ -606,7 +797,32 @@ class ChatViewModel extends BaseViewModel {
               }
             }
 
-            _messages = newMessages;
+            // If user had hidden this chat, show only messages after hide time (no old messages).
+            final list = _hiddenAtForCurrentRoom == null
+                ? newMessages
+                : newMessages
+                    .where((m) => m.createdAt.isAfter(_hiddenAtForCurrentRoom!))
+                    .toList();
+            _messages = list;
+            if (kDebugMode) {
+              print('[ChatHide] messageListener: room=$_chatRoomId rawCount=${newMessages.length} hiddenAt=$_hiddenAtForCurrentRoom filteredCount=${list.length}');
+            }
+            // Unhide only when a message arrives AFTER we opened the room (real-time), not on initial load
+            if (_hiddenAtForCurrentRoom != null &&
+                _chatRoomId != null &&
+                _roomOpenedAt != null) {
+              final hasNewMessageSinceOpen =
+                  list.any((m) => m.createdAt.isAfter(_roomOpenedAt!));
+              if (kDebugMode) {
+                print('[ChatHide] messageListener: roomOpenedAt=$_roomOpenedAt hasNewMessageSinceOpen=$hasNewMessageSinceOpen');
+              }
+              if (hasNewMessageSinceOpen) {
+                if (kDebugMode) {
+                  print('[ChatHide] messageListener: unhiding room $_chatRoomId (new message after open)');
+                }
+                unawaited(removeHiddenChatRoom(_chatRoomId!));
+              }
+            }
             if (!isDisposed) setBusy(false);
             notifyListeners();
 
@@ -647,7 +863,11 @@ class ChatViewModel extends BaseViewModel {
     _isInChatRoom = false;
     _currentChatRoom = null;
     _chatRoomId = null;
-    if (kDebugMode) print('[NOTIF] ChatViewModel.exitChatRoom: clearing current chat room');
+    _hiddenAtForCurrentRoom = null;
+    _roomOpenedAt = null;
+    if (kDebugMode) {
+      print('[ChatHide] exitChatRoom: cleared _hiddenAtForCurrentRoom and _roomOpenedAt');
+    }
     locator<CurrentChatRoomService>().clearCurrentChatRoom();
     messageController.clear();
     _messages.clear();
@@ -750,6 +970,14 @@ class ChatViewModel extends BaseViewModel {
 
       if (kDebugMode) {
         print('✅ Message sent successfully');
+      }
+
+      // If this room was hidden, unhide it so it reappears in the chat list
+      if (_chatRoomId != null && _hiddenChatRoomTimestamps.containsKey(_chatRoomId)) {
+        if (kDebugMode) {
+          print('[ChatHide] sendMessage: room was hidden, unhiding $_chatRoomId');
+        }
+        unawaited(removeHiddenChatRoom(_chatRoomId!));
       }
 
       // Notify other room members (fire-and-forget; don't block UI)

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:festival_rumour/core/services/storage_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -5618,6 +5619,189 @@ class FirestoreService {
     }
   }
 
+  /// Hide a chat from the user's list (soft delete). Stores roomId -> timestamp on user doc.
+  /// User stays in the room; when they open it again, only messages after this time are shown.
+  /// For DMs only: if both users have hidden the chat, the room is deleted from the server.
+  Future<void> addHiddenChatRoom({
+    required String userId,
+    required String chatRoomId,
+  }) async {
+    try {
+      if (kDebugMode) {
+        print('[ChatHide] Firestore.addHiddenChatRoom: userId=$userId chatRoomId=$chatRoomId');
+      }
+      final userRef = _firestore.collection('users').doc(userId);
+      await userRef.update({
+        'hiddenChatRooms.$chatRoomId': FieldValue.serverTimestamp(),
+      });
+      if (kDebugMode) {
+        print('[ChatHide] Firestore.addHiddenChatRoom: wrote hiddenChatRooms.$chatRoomId');
+      }
+
+      // DM only: if both users have hidden this chat, delete the room from server
+      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+      final roomDoc = await chatRoomRef.get();
+      if (!roomDoc.exists) {
+        if (kDebugMode) print('[ChatHide] Firestore.addHiddenChatRoom: room not found, skip DM check');
+        return;
+      }
+
+      final data = roomDoc.data() as Map<String, dynamic>? ?? {};
+      final festivalId = data['festivalId'];
+      final members = data['members'] as List<dynamic>? ?? [];
+      final memberIds = members.map((e) => e.toString()).where((id) => id.isNotEmpty).toList();
+
+      final isDm = (festivalId == null || festivalId.toString().isEmpty) && memberIds.length == 2;
+      if (kDebugMode) {
+        print('[ChatHide] Firestore.addHiddenChatRoom: isDm=$isDm festivalId=$festivalId memberCount=${memberIds.length}');
+      }
+      if (!isDm) return;
+
+      for (final memberId in memberIds) {
+        final memberDoc = await _firestore.collection('users').doc(memberId).get();
+        if (!memberDoc.exists) {
+          if (kDebugMode) print('[ChatHide] Firestore.addHiddenChatRoom: member $memberId doc missing');
+          return;
+        }
+        final memberData = memberDoc.data() as Map<String, dynamic>? ?? {};
+        final hidden = memberData['hiddenChatRooms'] as Map<String, dynamic>? ?? {};
+        if (!hidden.containsKey(chatRoomId)) {
+          if (kDebugMode) print('[ChatHide] Firestore.addHiddenChatRoom: member $memberId has not hidden, skip delete');
+          return;
+        }
+      }
+
+      if (kDebugMode) {
+        print('[ChatHide] Firestore.addHiddenChatRoom: both hidden -> deleting room $chatRoomId');
+      }
+      await _deletePrivateChatRoomAndCleanup(chatRoomId: chatRoomId, memberIds: memberIds);
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.addHiddenChatRoom',
+      );
+      rethrow;
+    }
+  }
+
+  /// Deletes a private chat room and its messages, and removes hiddenChatRooms[chatRoomId] from all members.
+  Future<void> _deletePrivateChatRoomAndCleanup({
+    required String chatRoomId,
+    required List<String> memberIds,
+  }) async {
+    final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+    final messagesRef = chatRoomRef.collection('messages');
+    final messagesSnapshot = await messagesRef.get();
+
+    const batchSize = 500;
+    final batches = <WriteBatch>[];
+    WriteBatch currentBatch = _firestore.batch();
+    int operationCount = 0;
+
+    for (var messageDoc in messagesSnapshot.docs) {
+      if (operationCount >= batchSize) {
+        batches.add(currentBatch);
+        currentBatch = _firestore.batch();
+        operationCount = 0;
+      }
+      currentBatch.delete(messageDoc.reference);
+      operationCount++;
+    }
+
+    if (operationCount > 0) batches.add(currentBatch);
+    for (var batch in batches) await batch.commit();
+
+    await chatRoomRef.delete();
+
+    for (final memberId in memberIds) {
+      try {
+        await _firestore.collection('users').doc(memberId).update({
+          'hiddenChatRooms.$chatRoomId': FieldValue.delete(),
+        });
+      } catch (_) {}
+    }
+
+    if (kDebugMode) {
+      print('[ChatHide] Firestore._deletePrivateChatRoomAndCleanup: deleted room $chatRoomId messages=${messagesSnapshot.docs.length} cleaned ${memberIds.length} user docs');
+    }
+  }
+
+  /// Remove a chat room from the user's hidden list (unhide). Call when user sends or receives a message in that room.
+  Future<void> removeHiddenChatRoom({
+    required String userId,
+    required String chatRoomId,
+  }) async {
+    try {
+      if (kDebugMode) {
+        print('[ChatHide] Firestore.removeHiddenChatRoom: userId=$userId chatRoomId=$chatRoomId');
+      }
+      final userRef = _firestore.collection('users').doc(userId);
+      await userRef.update({
+        'hiddenChatRooms.$chatRoomId': FieldValue.delete(),
+      });
+      if (kDebugMode) {
+        print('[ChatHide] Firestore.removeHiddenChatRoom: done');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.removeHiddenChatRoom',
+      );
+      rethrow;
+    }
+  }
+
+  /// Get the user's hidden chat rooms: map of chatRoomId -> hiddenAt (DateTime).
+  /// Used to filter the chat list and to filter messages when opening a room.
+  /// [source] When opening a chat room, pass [Source.server] so previous hide is not missed due to cache.
+  Future<Map<String, DateTime>> getHiddenChatRooms(
+    String userId, {
+    Source source = Source.serverAndCache,
+  }) async {
+    try {
+      if (kDebugMode) {
+        print('[ChatHide] Firestore.getHiddenChatRooms: userId=$userId source=$source');
+      }
+      final doc = await _firestore
+          .collection('users')
+          .doc(userId)
+          .get(GetOptions(source: source));
+      if (!doc.exists) {
+        if (kDebugMode) print('[ChatHide] Firestore.getHiddenChatRooms: doc not found');
+        return {};
+      }
+      final data = doc.data() as Map<String, dynamic>?;
+      final raw = data?['hiddenChatRooms'] as Map<String, dynamic>?;
+      if (raw == null || raw.isEmpty) {
+        if (kDebugMode) print('[ChatHide] Firestore.getHiddenChatRooms: no hiddenChatRooms');
+        return {};
+      }
+      final result = <String, DateTime>{};
+      for (final entry in raw.entries) {
+        final ts = entry.value;
+        if (ts is Timestamp) {
+          result[entry.key as String] = ts.toDate();
+        }
+      }
+      if (kDebugMode) {
+        print('[ChatHide] Firestore.getHiddenChatRooms: returning ${result.length} rooms ${result.keys.toList()}');
+      }
+      return result;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.getHiddenChatRooms',
+      );
+      return {};
+    }
+  }
+
   /// Delete a private chat room and all its resources
   ///
   /// [chatRoomId] - The chat room document ID to delete
@@ -5740,69 +5924,105 @@ class FirestoreService {
       final createdRoomsStream = createdRoomsQuery.snapshots();
       final memberRoomsStream = memberRoomsQuery.snapshots();
 
-      // Combine both streams
-      return createdRoomsStream
-          .asyncMap((createdSnapshot) async {
-            final memberSnapshot = await memberRoomsQuery.get();
+      // Combine both streams so list updates when EITHER created OR member rooms change
+      // (e.g. when someone sends you a new DM you're only a member of)
+      QuerySnapshot<Map<String, dynamic>>? latestCreated;
+      QuerySnapshot<Map<String, dynamic>>? latestMember;
 
-            final allRooms = <String, Map<String, dynamic>>{};
+      List<Map<String, dynamic>> mergeSnapshots(
+        QuerySnapshot<Map<String, dynamic>>? createdSnapshot,
+        QuerySnapshot<Map<String, dynamic>>? memberSnapshot,
+      ) {
+        if (createdSnapshot == null || memberSnapshot == null) {
+          return [];
+        }
+        final allRooms = <String, Map<String, dynamic>>{};
 
-            for (var doc in createdSnapshot.docs) {
-              final data = doc.data() as Map<String, dynamic>;
-              if (festivalId == null) {
-                // 1:1 DMs: include only rooms with no festival (null or missing)
-                final rid = data['festivalId'];
-                if (rid != null && rid.toString().isNotEmpty) continue;
-              }
-              data['chatRoomId'] = doc.id;
-              allRooms[doc.id] = data;
-            }
+        for (var doc in createdSnapshot.docs) {
+          final data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+          if (festivalId == null) {
+            final rid = data['festivalId'];
+            if (rid != null && rid.toString().isNotEmpty) continue;
+          }
+          data['chatRoomId'] = doc.id;
+          allRooms[doc.id] = data;
+        }
 
-            for (var doc in memberSnapshot.docs) {
-              final data = doc.data() as Map<String, dynamic>;
-              if (festivalId == null) {
-                final rid = data['festivalId'];
-                if (rid != null && rid.toString().isNotEmpty) continue;
-              }
-              data['chatRoomId'] = doc.id;
-              allRooms[doc.id] = data;
-            }
+        for (var doc in memberSnapshot.docs) {
+          final data = Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
+          if (festivalId == null) {
+            final rid = data['festivalId'];
+            if (rid != null && rid.toString().isNotEmpty) continue;
+          }
+          data['chatRoomId'] = doc.id;
+          allRooms[doc.id] = data;
+        }
 
-            final roomsList = allRooms.values.toList();
+        final roomsList = allRooms.values.toList();
+        roomsList.sort((a, b) {
+          final aTime = a['updatedAt'] ?? a['createdAt'];
+          final bTime = b['updatedAt'] ?? b['createdAt'];
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return (bTime as Timestamp).compareTo(aTime as Timestamp);
+        });
 
-            // Sort by updatedAt or createdAt (newest first)
-            roomsList.sort((a, b) {
-              final aTime = a['updatedAt'] ?? a['createdAt'];
-              final bTime = b['updatedAt'] ?? b['createdAt'];
-              if (aTime == null && bTime == null) return 0;
-              if (aTime == null) return 1;
-              if (bTime == null) return -1;
-              return (bTime as Timestamp).compareTo(aTime as Timestamp);
-            });
+        if (kDebugMode) {
+          print(
+            '✅ Found ${roomsList.length} private chat rooms for user: $userId',
+          );
+        }
+        return roomsList;
+      }
 
-            if (kDebugMode) {
-              print(
-                '✅ Found ${roomsList.length} private chat rooms for user: $userId',
-              );
-            }
+      final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
+      StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subCreated;
+      StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subMember;
 
-            return roomsList;
-          })
-          .handleError((error, stackTrace) {
-            if (kDebugMode) {
-              print('Error in private chat rooms stream: $error');
-            }
-            final exception = ExceptionMapper.mapToAppException(
-              error,
-              stackTrace,
-            );
-            _errorHandler.handleError(
-              exception,
-              stackTrace,
-              'FirestoreService.getPrivateChatRoomsForUser',
-            );
-            return <Map<String, dynamic>>[];
-          });
+      void onEither() {
+        if (latestCreated != null && latestMember != null) {
+          controller.add(mergeSnapshots(latestCreated, latestMember));
+        }
+      }
+
+      subCreated = createdRoomsStream.listen(
+        (snap) {
+          latestCreated = snap;
+          onEither();
+        },
+        onError: (error, stackTrace) {
+          if (kDebugMode) print('Error in private chat rooms stream: $error');
+          _errorHandler.handleError(
+            ExceptionMapper.mapToAppException(error, stackTrace),
+            stackTrace,
+            'FirestoreService.getPrivateChatRoomsForUser',
+          );
+          controller.add(<Map<String, dynamic>>[]);
+        },
+      );
+      subMember = memberRoomsStream.listen(
+        (snap) {
+          latestMember = snap;
+          onEither();
+        },
+        onError: (error, stackTrace) {
+          if (kDebugMode) print('Error in private chat rooms stream: $error');
+          _errorHandler.handleError(
+            ExceptionMapper.mapToAppException(error, stackTrace),
+            stackTrace,
+            'FirestoreService.getPrivateChatRoomsForUser',
+          );
+          controller.add(<Map<String, dynamic>>[]);
+        },
+      );
+
+      controller.onCancel = () {
+        subCreated?.cancel();
+        subMember?.cancel();
+      };
+
+      return controller.stream;
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(

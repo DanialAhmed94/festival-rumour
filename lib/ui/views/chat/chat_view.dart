@@ -27,7 +27,10 @@ class ChatView extends BaseView<ChatViewModel> {
   void onViewModelReady(ChatViewModel viewModel) {
     super.onViewModelReady(viewModel);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      viewModel.loadPrivateChatRooms();
+      // Do not load private chat rooms here: this screen (Chat Room from Discover)
+      // should only show festival-scoped private groups when user taps Private.
+      // Loading with no args would load DMs and cause a blink of DMs before
+      // loadPrivateChatRooms(festivalId) runs on tab tap.
       locator<ChatBadgeService>().loadFromStorage();
     });
   }
@@ -66,6 +69,18 @@ class ChatView extends BaseView<ChatViewModel> {
               _buildChatRoomView(context, viewModel)
             else
               _buildChatListView(context, viewModel),
+            // State-driven loading overlay (no dialog pop needed)
+            if (viewModel.isDeletingPrivateRoom)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black26,
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
         floatingActionButton:
@@ -414,13 +429,6 @@ class ChatView extends BaseView<ChatViewModel> {
           viewModel.enterChatRoom(chat);
         }
       },
-      onLongPress:
-          isCreatedByUser
-              ? () {
-                // Show delete confirmation dialog for groups created by user
-                _showDeleteGroupDialog(context, viewModel, chat);
-              }
-              : null,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppDimensions.radiusL),
@@ -762,7 +770,25 @@ class ChatView extends BaseView<ChatViewModel> {
 
   Widget _buildChatContent(BuildContext context, ChatViewModel viewModel) {
     if (viewModel.messages.isEmpty) {
-      // Beautiful empty state - show centered message
+      // Show loading while messages are being fetched
+      if (viewModel.busy) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: AppColors.black),
+              const SizedBox(height: AppDimensions.paddingL),
+              ResponsiveTextWidget(
+                'Loading messages...',
+                textType: TextType.body,
+                color: AppColors.black,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+      }
+      // Beautiful empty state when not loading and no messages
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(AppDimensions.paddingXL),
@@ -1160,81 +1186,68 @@ class ChatView extends BaseView<ChatViewModel> {
               onPressed: () async {
                 Navigator.pop(dialogContext);
 
-                // Show loading indicator
-                if (context.mounted) {
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (BuildContext loadingContext) {
-                      return const Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.accent,
-                        ),
-                      );
-                    },
-                  );
-                }
-
                 final success = await viewModel.deletePrivateChatRoom(
                   chatRoomId,
                 );
+                // Overlay hides automatically when isDeletingPrivateRoom becomes false
 
                 if (context.mounted) {
-                  Navigator.pop(context); // Close loading dialog
-
                   if (success) {
-                    // Show toast-style snackbar with light green color
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.check_circle,
-                              color: AppColors.black,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Group deleted successfully',
-                              style: TextStyle(
+                    await locator<ChatBadgeService>().clearBadge(chatRoomId);
+                  }
+                  if (context.mounted) {
+                    if (success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.check_circle,
                                 color: AppColors.black,
-                                fontWeight: FontWeight.w500,
+                                size: 20,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Group deleted successfully',
+                                style: TextStyle(
+                                  color: AppColors.black,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                          backgroundColor: Colors.green.shade400,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                          duration: const Duration(seconds: 2),
                         ),
-                        backgroundColor: Colors.green.shade400, // Light green
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'Failed to delete group',
+                            style: TextStyle(color: AppColors.black),
+                          ),
+                          backgroundColor: Colors.red.shade200,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  } else {
-                    // Show error snackbar
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text(
-                          'Failed to delete group',
-                          style: TextStyle(color: AppColors.black),
-                        ),
-                        backgroundColor: Colors.red.shade200,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                      ),
-                    );
+                      );
+                    }
                   }
                 }
               },

@@ -52,11 +52,14 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
               child: _buildAppBar(context),
             ),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+              child: GestureDetector(
+                onTap: () => FocusScope.of(context).unfocus(),
+                behavior: HitTestBehavior.opaque,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                     // Text Input Card
                     _buildTextInputCard(context, viewModel),
                     const SizedBox(height: 16),
@@ -78,7 +81,8 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                     // Upload Post Button
                     _buildUploadButton(context, viewModel),
                     SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

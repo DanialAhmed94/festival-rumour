@@ -211,51 +211,55 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
                       fontSize: AppDimensions.textL,
                     ),
                     SizedBox(height: AppDimensions.spaceS),
-                    // Stats - Posts, Followers, Following
+                    // Stats - Posts, Followers, Following (Flexible to avoid overflow on narrow width)
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildClickableStat(
-                          context,
-                          '${vm.postCount}',
-                          AppStrings.posts,
-                          null, // No navigation
+                        Flexible(
+                          child: _buildClickableStat(
+                            context,
+                            '${vm.postCount}',
+                            AppStrings.posts,
+                            null, // No navigation
+                          ),
                         ),
                         SizedBox(width: context.getConditionalSpacing()),
-                        _buildClickableStat(
-                          context,
-                          '${vm.followersCount}',
-                          AppStrings.followers,
-                          () {
-                            // Navigate to followers list
-                            Navigator.pushNamed(
-                              context,
-                              AppRoutes.profileList,
-                              arguments: {
-                                'initialTab': 0, // 0 = Followers tab
-                                'username': vm.userDisplayName ?? 'User',
-                                'userId': userId,
-                              },
-                            );
-                          },
+                        Flexible(
+                          child: _buildClickableStat(
+                            context,
+                            '${vm.followersCount}',
+                            AppStrings.followers,
+                            () {
+                              Navigator.pushNamed(
+                                context,
+                                AppRoutes.profileList,
+                                arguments: {
+                                  'initialTab': 0,
+                                  'username': vm.userDisplayName ?? 'User',
+                                  'userId': userId,
+                                },
+                              );
+                            },
+                          ),
                         ),
                         SizedBox(width: context.getConditionalSpacing()),
-                        _buildClickableStat(
-                          context,
-                          '${vm.followingCount}',
-                          AppStrings.following,
-                          () {
-                            // Navigate to following list
-                            Navigator.pushNamed(
-                              context,
-                              AppRoutes.profileList,
-                              arguments: {
-                                'initialTab': 1, // 1 = Following tab
-                                'username': vm.userDisplayName ?? 'User',
-                                'userId': userId,
-                              },
-                            );
-                          },
+                        Flexible(
+                          child: _buildClickableStat(
+                            context,
+                            '${vm.followingCount}',
+                            AppStrings.following,
+                            () {
+                              Navigator.pushNamed(
+                                context,
+                                AppRoutes.profileList,
+                                arguments: {
+                                  'initialTab': 1,
+                                  'username': vm.userDisplayName ?? 'User',
+                                  'userId': userId,
+                                },
+                              );
+                            },
+                          ),
                         ),
                       ],
                     ),
@@ -469,6 +473,7 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ResponsiveTextWidget(
               count,
@@ -476,12 +481,16 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
               fontWeight: FontWeight.bold,
               fontSize: AppDimensions.textM,
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             ResponsiveTextWidget(
               label,
               color: AppColors.black.withOpacity(0.7),
               fontSize: AppDimensions.textS,
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

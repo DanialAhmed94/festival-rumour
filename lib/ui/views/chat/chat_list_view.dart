@@ -28,6 +28,7 @@ class ChatListView extends BaseView<ChatViewModel> {
     super.onViewModelReady(viewModel);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       viewModel.loadPrivateChatRooms();
+      viewModel.loadHiddenChatRooms();
       locator<ChatBadgeService>().loadFromStorage();
     });
   }
@@ -123,12 +124,12 @@ class ChatListView extends BaseView<ChatViewModel> {
               tooltip: 'Search users',
             ),
             IconButton(
-              onPressed: viewModel.privateChats.isEmpty
+              onPressed: viewModel.filteredPrivateChats.isEmpty
                   ? null
                   : () => viewModel.enterSelectionMode(),
               icon: Icon(
                 Icons.checklist_rtl,
-                color: viewModel.privateChats.isEmpty
+                color: viewModel.filteredPrivateChats.isEmpty
                     ? AppColors.white.withOpacity(0.54)
                     : AppColors.white,
                 size: AppDimensions.iconL,
@@ -192,7 +193,7 @@ class ChatListView extends BaseView<ChatViewModel> {
   }
 
   Widget _buildChatList(BuildContext context, ChatViewModel viewModel) {
-    if (viewModel.privateChats.isEmpty && !viewModel.busy) {
+    if (viewModel.filteredPrivateChats.isEmpty && !viewModel.busy) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(AppDimensions.paddingXL),
@@ -213,7 +214,7 @@ class ChatListView extends BaseView<ChatViewModel> {
       );
     }
 
-    if (viewModel.busy && viewModel.privateChats.isEmpty) {
+    if (viewModel.busy && viewModel.filteredPrivateChats.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -541,20 +542,6 @@ class ChatListView extends BaseView<ChatViewModel> {
     String chatName,
     bool isCreatedByUser,
   ) {
-    if (!isCreatedByUser) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'You can only delete chat rooms you created.',
-            style: TextStyle(color: Colors.white),
-          ),
-          backgroundColor: Colors.orange.shade700,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
     bool isDeleting = false;
     showDialog<void>(
       context: context,
@@ -594,7 +581,8 @@ class ChatListView extends BaseView<ChatViewModel> {
                     : () async {
                         setState(() => isDeleting = true);
                         try {
-                          final success = await viewModel.deletePrivateChatRoom(chatRoomId);
+                          // DM list: both users "delete" from their side; server removes room when both have hidden
+                          final success = await viewModel.addHiddenChatRoom(chatRoomId);
                           if (!ctx.mounted) return;
                           Navigator.pop(ctx);
                           if (!context.mounted) return;
@@ -664,7 +652,7 @@ class ChatListView extends BaseView<ChatViewModel> {
             content: ResponsiveTextWidget(
               n == 1
                   ? 'Delete this chat? This cannot be undone.'
-                  : 'Delete $n chats? This cannot be undone. Only chats you created will be deleted.',
+                  : 'Delete $n chats? This cannot be undone.',
               textType: TextType.body,
               color: AppColors.black,
             ),
@@ -684,7 +672,7 @@ class ChatListView extends BaseView<ChatViewModel> {
                     : () async {
                         setState(() => isDeleting = true);
                         try {
-                          final deleted = await viewModel.deleteSelectedChatRooms();
+                          final deleted = await viewModel.deleteSelectedChatRooms(dmOnly: true);
                           if (!ctx.mounted) return;
                           Navigator.pop(ctx);
                           if (!context.mounted) return;
@@ -698,7 +686,7 @@ class ChatListView extends BaseView<ChatViewModel> {
                           } else {
                             _showDeleteErrorSnackBar(
                               context,
-                              'No chats could be deleted. You can only delete chats you created.',
+                              'No chats could be deleted.',
                             );
                           }
                         } catch (e, st) {
