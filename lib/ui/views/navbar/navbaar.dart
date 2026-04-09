@@ -41,6 +41,15 @@ class NavBaar extends BaseView<NavBaarViewModel> {
           if (kDebugMode) print('🔙 [NavBar] onWillPop: returning true → pop back to profile list');
           return true; // pop back to profile list
         }
+        // Discover sub-screens (detail, chat, map, …): same as their onBack — close sub-view first.
+        // Otherwise this handler runs before nested WillPopScope and sends user to Festival screen.
+        if (viewModel.subNavigation != null) {
+          if (kDebugMode) {
+            print('🔙 [NavBar] onWillPop: subNavigation=${viewModel.subNavigation} → clear sub-nav');
+          }
+          viewModel.setSubNavigation(null);
+          return false;
+        }
         // Rumours (index 1): device back → switch to Discover tab
         if (viewModel.currentIndex == 1) {
           if (kDebugMode) print('🔙 [NavBar] onWillPop: on Rumours tab → goToDiscover()');

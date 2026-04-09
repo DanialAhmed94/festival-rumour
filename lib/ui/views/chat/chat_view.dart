@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
@@ -149,8 +150,11 @@ class ChatView extends BaseView<ChatViewModel> {
               AppStrings.chatRooms,
               textAlign: TextAlign.center,
               textType: TextType.title,
+              fontSize: context.getConditionalMainFont(),
               color: AppColors.white,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -730,9 +734,10 @@ class ChatView extends BaseView<ChatViewModel> {
                               child: ResponsiveTextWidget(
                                 viewModel.currentChatRoom?['name'] ??
                                     AppStrings.lunaCommunityRoom,
-                                textType: TextType.body,
+                                textType: TextType.title,
+                                fontSize: context.getConditionalMainFont(),
                                 color: AppColors.white,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -747,9 +752,10 @@ class ChatView extends BaseView<ChatViewModel> {
                   : ResponsiveTextWidget(
                       viewModel.currentChatRoom?['name'] ??
                           AppStrings.lunaCommunityRoom,
-                      textType: TextType.body,
+                      textType: TextType.title,
+                      fontSize: context.getConditionalMainFont(),
                       color: AppColors.white,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

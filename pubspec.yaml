@@ -75,6 +75,9 @@ dependencies:
   # URL Launcher
   url_launcher: ^6.2.4
 
+  # In-app PDF (inner map), same approach as organizer app
+  flutter_cached_pdfview: ^0.4.3
+
   # Link preview metadata (Open Graph, etc.)
   metadata_fetch: ^0.4.1
 

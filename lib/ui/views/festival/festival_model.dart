@@ -19,6 +19,7 @@ class FestivalModel {
   final String? price;
   final String? startingDate;
   final String? endingDate;
+  final String? innerImage;
 
   FestivalModel({
     required this.id,
@@ -37,7 +38,21 @@ class FestivalModel {
     this.price,
     this.startingDate,
     this.endingDate,
+    this.innerImage,
   });
+
+  String get innerImageUrl {
+    if (innerImage == null || innerImage!.isEmpty) return '';
+    return ApiConfig.getImageUrl(innerImage!);
+  }
+
+  bool get isInnerImagePdf {
+    if (innerImage == null || innerImage!.isEmpty) return false;
+    return innerImage!.toLowerCase().endsWith('.pdf');
+  }
+
+  bool get hasInnerImage =>
+      innerImage != null && innerImage!.isNotEmpty;
 
   /// Create FestivalModel from API response
   factory FestivalModel.fromApiJson(Map<String, dynamic> json) {
@@ -104,6 +119,7 @@ class FestivalModel {
       price: json['price']?.toString(),
       startingDate: startingDate,
       endingDate: endingDate,
+      innerImage: json['inner_image']?.toString(),
     );
   }
 
@@ -206,6 +222,7 @@ class FestivalModel {
       price: map['price']?.toString(),
       startingDate: map['startingDate']?.toString(),
       endingDate: map['endingDate']?.toString(),
+      innerImage: map['innerImage']?.toString(),
     );
   }
 
@@ -228,6 +245,7 @@ class FestivalModel {
       'price': price,
       'startingDate': startingDate,
       'endingDate': endingDate,
+      'innerImage': innerImage,
     };
   }
 
@@ -249,6 +267,7 @@ class FestivalModel {
     String? price,
     String? startingDate,
     String? endingDate,
+    String? innerImage,
   }) {
     return FestivalModel(
       id: id ?? this.id,
@@ -267,6 +286,7 @@ class FestivalModel {
       price: price ?? this.price,
       startingDate: startingDate ?? this.startingDate,
       endingDate: endingDate ?? this.endingDate,
+      innerImage: innerImage ?? this.innerImage,
     );
   }
 }

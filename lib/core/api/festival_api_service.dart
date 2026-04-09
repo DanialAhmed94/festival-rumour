@@ -181,6 +181,21 @@ class FestivalApiService {
         );
       }
 
+      if (kDebugMode) {
+        try {
+          final pretty = const JsonEncoder.withIndent('  ').convert(response);
+          const int chunkSize = 800;
+          print('FestivalApiService.getFestivalsPage($page) — raw JSON response (start):');
+          for (int i = 0; i < pretty.length; i += chunkSize) {
+            final end = (i + chunkSize < pretty.length) ? i + chunkSize : pretty.length;
+            print(pretty.substring(i, end));
+          }
+          print('FestivalApiService.getFestivalsPage($page) — raw JSON response (end)');
+        } catch (_) {
+          print('FestivalApiService.getFestivalsPage($page) — raw response: $response');
+        }
+      }
+
       final message = response['message']?.toString();
       final rawData = response['data'];
 

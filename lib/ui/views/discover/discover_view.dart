@@ -24,6 +24,8 @@ import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../core/utils/snackbar_util.dart';
 import '../../../shared/widgets/responsive_widget.dart';
 import '../../../core/providers/festival_provider.dart';
+import '../detail/inner_map_image_preview_screen.dart';
+import '../detail/inner_map_pdf_preview_screen.dart';
 import '../festival/festival_model.dart';
 import 'discover_viewmodel.dart';
 import 'widgets/mark_attended_sheet.dart';
@@ -314,8 +316,43 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
           icon: AppAssets.detailIconSvg,
           onNavigateToSub: widget.onNavigateToSub,
         ),
+        GridOption(
+          title: AppStrings.innerMap,
+          iconData: Icons.map_outlined,
+          onTap: () => _openInnerMap(context),
+        ),
       ],
     );
+  }
+
+  void _openInnerMap(BuildContext context) {
+    final festival = Provider.of<FestivalProvider>(context, listen: false).selectedFestival;
+    if (festival == null || !festival.hasInnerImage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(AppStrings.noInnerMapForFestival)),
+      );
+      return;
+    }
+    final url = festival.innerImageUrl;
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(AppStrings.noInnerMapForFestival)),
+      );
+      return;
+    }
+    if (festival.isInnerImagePdf) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => InnerMapPdfPreviewScreen(pdfUrl: url),
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => InnerMapImagePreviewScreen(imageUrl: url),
+        ),
+      );
+    }
   }
 
   /// ---------------- HELPERS ----------------

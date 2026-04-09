@@ -10,7 +10,6 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/utils/backbutton.dart';
-import '../../../core/utils/custom_navbar.dart';
 import '../../../core/router/app_router.dart';
 import 'detail_view_model.dart';
 
@@ -76,12 +75,15 @@ class DetailView extends BaseView<DetailViewModel> {
             },
           ),
           SizedBox(width: context.getConditionalSpacing()),
-          const Expanded(
+          Expanded(
             child: ResponsiveTextWidget(
               'Detail',
               textType: TextType.title,
+              fontSize: context.getConditionalMainFont(),
               color: AppColors.white,
               fontWeight: FontWeight.w700,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -148,6 +150,7 @@ class DetailView extends BaseView<DetailViewModel> {
       ),
     );
   }
+
   Widget _buildCard(
       BuildContext context,
       String title,

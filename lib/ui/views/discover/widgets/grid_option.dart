@@ -10,17 +10,24 @@ import '../../../../shared/widgets/responsive_widget.dart'; // Make sure locator
 
 class GridOption extends StatelessWidget {
   final String title;
-  final String icon; // Image path
+  /// SVG asset path (e.g. [AppAssets.locationIconSvg]). Omit when [iconData] is set.
+  final String? icon;
+  /// Optional Material icon when no SVG exists (e.g. inner map).
+  final IconData? iconData;
   final Function(String)? onNavigateToSub;
   final VoidCallback? onTap;
 
   const GridOption({
     super.key,
     required this.title,
-    required this.icon,
+    this.icon,
+    this.iconData,
     this.onNavigateToSub,
     this.onTap,
-  });
+  }) : assert(
+          icon != null || iconData != null,
+          'GridOption requires icon or iconData',
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -58,10 +65,16 @@ class GridOption extends StatelessWidget {
                       horizontal: AppDimensions.paddingL,
                       vertical: AppDimensions.paddingM,
                     ),
-                    child: SvgPicture.asset(
-                      icon,
-                      fit: BoxFit.contain,
-                    ),
+                    child: iconData != null
+                        ? Icon(
+                            iconData,
+                            size: context.isSmallScreen ? 40 : 48,
+                            color: AppColors.secondary,
+                          )
+                        : SvgPicture.asset(
+                            icon!,
+                            fit: BoxFit.contain,
+                          ),
                   ),
                 ),
               ),

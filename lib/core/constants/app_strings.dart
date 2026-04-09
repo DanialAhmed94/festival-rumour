@@ -228,8 +228,12 @@ class AppStrings {
   static const String scheduleForLater = "Schedule For Later";
   static const String time = "Time";
   static const String date = "Date";
+  /// Festival Foodie on the App Store (invite / share app flows).
+  static const String festivalFoodieAppStoreUrl =
+      'https://apps.apple.com/app/festiefoodie/id6744639737';
   static const String shareMessage =
-      "Let's enjoy the vibe together 🌙🔥 Download Festival App now\n\nhttps://festival-romour.link";
+      "Let's enjoy the vibe together 🌙🔥 Download Festival App now\n\n" +
+      festivalFoodieAppStoreUrl;
   static const String shareSubject = "Download Festival App";
   static const String shareLocation = "Share Location";
   static const String shareMyLocation = "Share My Location";
@@ -309,6 +313,9 @@ class AppStrings {
   static const String privacyPolicy = "Privacy Policy.";
 
   // Festival Related
+  static const String innerMap = 'INNER MAP';
+  static const String noInnerMapForFestival =
+      'No inner map is available for this festival.';
   static const String festivals = 'Festivals';
   static const String rumors = 'RUMORS';
   static const String featured = 'Featured';
