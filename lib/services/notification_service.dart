@@ -14,14 +14,17 @@ class NotificationServiceApi {
   /// [chatRoomId] optional; when set, included in FCM data so recipient can suppress
   /// notification if they are currently viewing that room.
   /// [chatRoomName] optional; when set, shown in the notification (e.g. in title).
+  /// [festivalId] optional; when set, included in FCM data so recipient can
+  /// distinguish private chatroom notifications from DM notifications on tap.
   static Future<bool> sendPushNotification({
     required List<String> userIds,
     required String title,
     required String message,
     String? chatRoomId,
     String? chatRoomName,
+    String? festivalId,
   }) async {
-    print('[NOTIF] API: sendPushNotification called — userIds=${userIds.length}, chatRoomId=$chatRoomId, chatRoomName=$chatRoomName, title="$title"');
+    print('[NOTIF] API: sendPushNotification called — userIds=${userIds.length}, chatRoomId=$chatRoomId, chatRoomName=$chatRoomName, festivalId=$festivalId, title="$title"');
     try {
       final user = FirebaseAuth.instance.currentUser;
 
@@ -45,6 +48,7 @@ class NotificationServiceApi {
           "message": message,
           if (chatRoomId != null && chatRoomId.isNotEmpty) "chatRoomId": chatRoomId,
           if (chatRoomName != null && chatRoomName.isNotEmpty) "chatRoomName": chatRoomName,
+          if (festivalId != null && festivalId.isNotEmpty) "festivalId": festivalId,
         }),
       );
 

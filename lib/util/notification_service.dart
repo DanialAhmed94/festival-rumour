@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'firebase_notification_service.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications =
@@ -20,10 +22,7 @@ class NotificationService {
 
     await _notifications.initialize(
       settings: initSettings,
-      onDidReceiveNotificationResponse: (response) {
-        print("response ${response}");
-        // handle tap if needed
-      },
+      onDidReceiveNotificationResponse: _onNotificationTap,
     );
 
     final androidPlugin =
@@ -80,5 +79,20 @@ class NotificationService {
       ),
       payload: payload,
     );
+  }
+
+  static void _onNotificationTap(NotificationResponse response) {
+    print('[NOTIF] Local: notification tapped, payload=${response.payload}');
+    final payload = response.payload;
+    if (payload == null || payload.isEmpty) return;
+
+    try {
+      final data = Map<String, dynamic>.from(
+        jsonDecode(payload) as Map,
+      );
+      FirebaseNotificationService.navigateFromNotificationData(data);
+    } catch (e) {
+      print('[NOTIF] Local: failed to parse payload: $e');
+    }
   }
 }

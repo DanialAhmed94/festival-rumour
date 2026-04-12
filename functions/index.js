@@ -60,8 +60,8 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 });
             }
 
-            const { userIds, title, message, chatRoomId, chatRoomName } = req.body;
-            console.log("[NOTIF] Function: request received", { userIdsCount: userIds?.length, title, messageLength: message?.length, chatRoomId, chatRoomName });
+            const { userIds, title, message, chatRoomId, chatRoomName, festivalId } = req.body;
+            console.log("[NOTIF] Function: request received", { userIdsCount: userIds?.length, title, messageLength: message?.length, chatRoomId, chatRoomName, festivalId });
 
             if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
                 return res.status(400).json({
@@ -145,6 +145,7 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                     type: "custom_message",
                     timestamp: Date.now().toString(),
                     ...(chatRoomId ? { chatRoomId: String(chatRoomId) } : {}),
+                    ...(festivalId ? { festivalId: String(festivalId) } : {}),
                 },
             };
 

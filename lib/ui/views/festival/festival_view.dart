@@ -112,6 +112,8 @@ class FestivalView extends BaseView<FestivalViewModel> {
                           SizedBox(height: AppDimensions.spaceS),
                           _buildCreatePostBar(context, viewModel),
                           SizedBox(height: AppDimensions.spaceS),
+                          _buildFestivalChatBanner(context, viewModel),
+                          SizedBox(height: AppDimensions.spaceS),
                           _buildLogosSection(context, viewModel),
                           SizedBox(height: AppDimensions.spaceS),
                           _buildFilterTabBar(context, viewModel),
@@ -977,6 +979,33 @@ class FestivalView extends BaseView<FestivalViewModel> {
     );
   }
 
+  Widget _buildFestivalChatBanner(
+    BuildContext context,
+    FestivalViewModel viewModel,
+  ) {
+    final horizontalPadding = context.isSmallScreen
+        ? AppDimensions.paddingS
+        : context.isMediumScreen
+            ? AppDimensions.paddingM
+            : AppDimensions.paddingL;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: GestureDetector(
+        onTap: () => viewModel.navigateToGlobalFeed(context),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          child: Image.asset(
+            AppAssets.festivalChatBanner,
+            width: double.infinity,
+            fit: BoxFit.fitWidth,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Tab bar for Live / Upcoming / Past (same style as chat rooms tabs).
   Widget _buildFilterTabBar(
     BuildContext context,
@@ -1082,48 +1111,48 @@ class _ScrollableLogosWidget extends StatefulWidget {
 }
 
 class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
-
-  static const double _pinkButtonSize = 88.0;
+  static const double _cardWidth = 100.0;
+  static const double _cardHeight = 120.0;
+  static const double _logoSize = 56.0;
 
   @override
   Widget build(BuildContext context) {
-    final itemSpacing = context.isSmallScreen ? 12.0 : 16.0;
+    final itemSpacing = context.isSmallScreen ? 10.0 : 14.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: _pinkButtonSize,
+          height: _cardHeight,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.symmetric(horizontal: itemSpacing),
             children: [
-              _buildFestivalChatBadge(
+              _buildLogoCard(
                 context,
-                onTap: () => widget.viewModel.navigateToGlobalFeed(context),
-              ),
-              SizedBox(width: itemSpacing),
-              _buildPinkLabelButton(
-                context,
+                logoAsset: AppAssets.crapAdviserLogo,
                 label: 'Festival Toilet',
+                logoPadding: EdgeInsets.zero,
                 onTap: () => widget.viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
               ),
               SizedBox(width: itemSpacing),
-              _buildPinkLabelButton(
+              _buildLogoCard(
                 context,
-                label: 'Festival Organizer',
+                logoAsset: AppAssets.organiserLogo,
+                label: 'Festival Organiser',
                 onTap: () => widget.viewModel.openAppStoreIOS(caAppStoreUrl),
               ),
               SizedBox(width: itemSpacing),
-              _buildPinkLabelButton(
+              _buildLogoCard(
                 context,
-                label: 'Festive Foodie',
+                logoAsset: AppAssets.festieFoodieLogo,
+                label: 'Festival Foodie',
                 onTap: () => widget.viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Center(
           child: ResponsiveTextWidget(
             'Download our App Suite',
@@ -1137,93 +1166,64 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
     );
   }
 
-  Widget _buildFestivalChatBadge(
+  Widget _buildLogoCard(
     BuildContext context, {
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: _pinkButtonSize,
-        height: _pinkButtonSize,
-        decoration: BoxDecoration(
-          color: const Color(0xFFFC2E95),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: _buildTwoLineLabel(context, 'Festival Chat'),
-        ),
-      ),
-    );
-  }
-
-  /// First word on top line, second word on bottom line (for all buttons in the row).
-  Widget _buildTwoLineLabel(BuildContext context, String label) {
-    final parts = label.split(' ');
-    final fontSize = context.isSmallScreen ? AppDimensions.textS : AppDimensions.textM;
-    if (parts.length >= 2) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            parts[0],
-            style: TextStyle(
-              color: AppColors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: fontSize,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            parts.sublist(1).join(' '),
-            style: TextStyle(
-              color: AppColors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: fontSize,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      );
-    }
-    return Text(
-      label,
-      style: TextStyle(
-        color: AppColors.white,
-        fontWeight: FontWeight.bold,
-        fontSize: fontSize,
-      ),
-      textAlign: TextAlign.center,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-
-  /// Large pink square button with text label; same style for all app suite buttons.
-  Widget _buildPinkLabelButton(
-    BuildContext context, {
+    required String logoAsset,
     required String label,
     required VoidCallback onTap,
+    EdgeInsets logoPadding = const EdgeInsets.all(4),
   }) {
+    final labelFontSize = context.isSmallScreen ? 9.0 : 11.0;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: _pinkButtonSize,
-        height: _pinkButtonSize,
+        width: _cardWidth,
+        height: _cardHeight,
         decoration: BoxDecoration(
           color: const Color(0xFFFC2E95),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
         ),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: _buildTwoLineLabel(context, label),
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: _logoSize,
+              height: _logoSize,
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: logoPadding,
+                child: Image.asset(
+                  logoAsset,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Icon(
+                    Icons.apps,
+                    color: const Color(0xFFFC2E95),
+                    size: _logoSize * 0.5,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: AppColors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: labelFontSize,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );

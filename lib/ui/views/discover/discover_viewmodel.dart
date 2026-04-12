@@ -28,8 +28,9 @@ class DiscoverViewModel extends BaseViewModel {
 
   String selected = AppStrings.live;
   bool _isFavorited = false;
-  bool _isLoadingFavorite = false; // Prevent multiple simultaneous loads
-  bool _hasLoadedFavorite = false; // Track if we've already loaded favorite status
+  bool _isLoadingFavorite = false;
+  bool _hasLoadedFavorite = false;
+  bool _isTogglingFavorite = false;
   String searchQuery = ''; // Search query
   late FocusNode searchFocusNode; // Search field focus node
   final TextEditingController searchController = TextEditingController();
@@ -40,6 +41,7 @@ class DiscoverViewModel extends BaseViewModel {
   Timer? _searchDebounce;
 
   bool get isFavorited => _isFavorited;
+  bool get isTogglingFavorite => _isTogglingFavorite;
   String get currentSearchQuery => searchQuery;
   List<FestivalModel> get filteredFestivals => _searchResults;
   bool get hasSearchResults => searchQuery.isNotEmpty && _searchResults.isNotEmpty;
@@ -161,20 +163,31 @@ class DiscoverViewModel extends BaseViewModel {
     }
   }
 
-  /// Toggle favorite status and save to Firebase
-  /// Checks internet connection and prevents duplicate additions
+  /// Toggle favorite status and save to Firebase.
+  /// Checks internet connection, prevents duplicate taps, and handles errors.
   Future<void> toggleFavorite(BuildContext context) async {
+    if (_isTogglingFavorite) return;
+
     final userId = _authService.userUid;
     if (userId == null) {
       if (kDebugMode) {
         print('⚠️ User not logged in, cannot toggle favorite');
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please log in to favorite festivals.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
       }
       return;
     }
 
     final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
     final selectedFestival = festivalProvider.selectedFestival;
-    
+
     if (selectedFestival == null) {
       if (kDebugMode) {
         print('⚠️ No festival selected, cannot toggle favorite');
@@ -182,11 +195,13 @@ class DiscoverViewModel extends BaseViewModel {
       return;
     }
 
-    // Check internet connection first
+    _isTogglingFavorite = true;
+    notifyListeners();
+
     bool hasInternet = false;
     try {
       hasInternet = await _networkService.hasInternetConnection().timeout(
-        const Duration(seconds: 3),
+        const Duration(seconds: 5),
         onTimeout: () => false,
       );
     } catch (e) {
@@ -196,12 +211,13 @@ class DiscoverViewModel extends BaseViewModel {
       hasInternet = false;
     }
 
-    // If no internet, show snackbar and return
     if (!hasInternet) {
+      _isTogglingFavorite = false;
+      notifyListeners();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No internet connection. Cannot update favorite status.'),
+            content: Text('No internet connection. Please check your network and try again.'),
             backgroundColor: Colors.red,
             duration: Duration(seconds: 3),
           ),
@@ -215,15 +231,12 @@ class DiscoverViewModel extends BaseViewModel {
 
     try {
       if (newFavoriteStatus) {
-        // Add to favorites with full festival data so profile can read from Firebase
         await _firestoreService.addFavoriteFestival(userId, selectedFestival.toMap());
       } else {
-        // Remove from favorites
         await _firestoreService.removeFavoriteFestival(userId, selectedFestival.id);
       }
 
       _isFavorited = newFavoriteStatus;
-      notifyListeners();
 
       if (kDebugMode) {
         print('✅ ${newFavoriteStatus ? "Added" : "Removed"} festival ${selectedFestival.id} ${newFavoriteStatus ? "to" : "from"} favorites');
@@ -232,10 +245,11 @@ class DiscoverViewModel extends BaseViewModel {
       if (kDebugMode) {
         print('❌ Error toggling favorite: $e');
       }
-      // Revert the UI state on error
       _isFavorited = oldFavoriteStatus;
-      notifyListeners();
       rethrow;
+    } finally {
+      _isTogglingFavorite = false;
+      notifyListeners();
     }
   }
 

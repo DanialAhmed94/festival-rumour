@@ -206,27 +206,33 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
   /// ---------------- FAVORITE BUTTON ----------------
   Widget _buildFavoriteButton(BuildContext context, DiscoverViewModel viewModel) {
     return GestureDetector(
-      onTap: () async {
-        try {
-          await widget.viewModel.toggleFavorite(context);
-          if (widget.viewModel.isFavorited) {
-            SnackbarUtil.showSuccessSnackBar(
-              context,
-              AppStrings.addedToFavorites,
-            );
-          } else {
-            SnackbarUtil.showInfoSnackBar(
-              context,
-              AppStrings.removedFromFavorites,
-            );
-          }
-        } catch (e) {
-          SnackbarUtil.showErrorSnackBar(
-            context,
-            'Failed to update favorite. Please try again.',
-          );
-        }
-      },
+      onTap: viewModel.isTogglingFavorite
+          ? null
+          : () async {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              try {
+                await widget.viewModel.toggleFavorite(context);
+                if (!context.mounted) return;
+                if (widget.viewModel.isFavorited) {
+                  SnackbarUtil.showSuccessSnackBar(
+                    context,
+                    AppStrings.addedToFavorites,
+                  );
+                } else {
+                  SnackbarUtil.showInfoSnackBar(
+                    context,
+                    AppStrings.removedFromFavorites,
+                  );
+                }
+              } catch (e) {
+                if (!context.mounted) return;
+                final message = e.toString().contains('SocketException') ||
+                        e.toString().contains('TimeoutException')
+                    ? 'Network error. Please check your connection and try again.'
+                    : 'Failed to update favorite. Please try again.';
+                SnackbarUtil.showErrorSnackBar(context, message);
+              }
+            },
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -237,11 +243,21 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
             fontWeight: FontWeight.w600,
           ),
           const SizedBox(width: 6),
-          Icon(
-            viewModel.isFavorited ? Icons.favorite : Icons.favorite_border,
-            color: viewModel.isFavorited ? AppColors.error : AppColors.white,
-            size: 28,
-          ),
+          if (viewModel.isTogglingFavorite)
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                color: AppColors.white,
+                strokeWidth: 2.5,
+              ),
+            )
+          else
+            Icon(
+              viewModel.isFavorited ? Icons.favorite : Icons.favorite_border,
+              color: viewModel.isFavorited ? AppColors.error : AppColors.white,
+              size: 28,
+            ),
         ],
       ),
     );
@@ -318,7 +334,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
         ),
         GridOption(
           title: AppStrings.innerMap,
-          iconData: Icons.map_outlined,
+          icon: AppAssets.innerMapIconSvg,
           onTap: () => _openInnerMap(context),
         ),
       ],

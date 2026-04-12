@@ -78,9 +78,11 @@ class AppAssets {
   static const String chatroomIconSvg = 'assets/svgs/CHAT ROOMS.svg';
   static const String rumoursIconSvg = 'assets/svgs/RUMORS.svg';
   static const String detailIconSvg = 'assets/svgs/DETAIL.svg';
-  static const String crapAdviserLogo = 'assets/logos/crapAdviser-logo.png';
-  static const String organiserLogo = 'assets/logos/Festival Resource Log.png';
-  static const String festieFoodieLogo = 'assets/logos/festieFoodie-logo.png';
+  static const String innerMapIconSvg = 'assets/svgs/innermapTile.svg';
+  static const String crapAdviserLogo = 'assets/logos/festivalToilet.png';
+  static const String organiserLogo = 'assets/logos/festivalOrganiserLogo.png';
+  static const String festieFoodieLogo = 'assets/logos/Festival Foodie logo design.png';
+  static const String festivalChatBanner = 'assets/images/festivalChat.png';
   static const String forwardIcon = 'assets/logos/forwardIcon.png';
 
   static const String proback = 'assets/images/proback.png';

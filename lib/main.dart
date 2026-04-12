@@ -145,6 +145,18 @@ class _AppRootState extends State<_AppRoot> {
       '_AppRoot._onSplashDone()',
       'setState done, initialRoute=$_initialRoute',
     );
+
+    // If the app was launched by tapping a notification (terminated state),
+    // process the pending deep link after the navigator is ready.
+    if (isLoggedIn && user != null) {
+      final pendingData = FirebaseNotificationService.consumePendingNotificationData();
+      if (pendingData != null) {
+        _log('_AppRoot._onSplashDone()', 'pending notification data found: $pendingData');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          FirebaseNotificationService.navigateFromNotificationData(pendingData);
+        });
+      }
+    }
   }
 
   @override

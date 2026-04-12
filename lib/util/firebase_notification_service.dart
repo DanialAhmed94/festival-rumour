@@ -1,44 +1,53 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:festival_rumour/core/di/locator.dart';
+import 'package:festival_rumour/core/router/app_router.dart';
 import 'package:festival_rumour/core/services/chat_badge_service.dart';
 import 'package:festival_rumour/core/services/current_chat_room_service.dart';
+import 'package:festival_rumour/core/services/navigation_service.dart';
 import 'package:festival_rumour/core/services/notification_storage_service.dart';
 import 'package:festival_rumour/core/services/storage_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/widgets.dart';
 import 'notification_service.dart';
 
 class FirebaseNotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
-  static Future<void> init() async {
-    // 🔔 Permission is requested on the festival screen (see requestPermissionIfNeeded).
+  /// Holds notification data from a terminated-state launch so we can navigate
+  /// after the main MaterialApp + navigator are ready.
+  static Map<String, dynamic>? _pendingNotificationData;
 
-    // 📱 Get & save FCM token when permission already granted (e.g. returning user)
+  /// Returns and clears the pending notification data (if any).
+  static Map<String, dynamic>? consumePendingNotificationData() {
+    final data = _pendingNotificationData;
+    _pendingNotificationData = null;
+    return data;
+  }
+
+  static Future<void> init() async {
     await _getAndSaveToken();
 
-    // 🔁 Always listen for refresh (this guarantees correctness)
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       print('[NOTIF] Device: FCM token refreshed');
       await StorageService().setFcmToken(newToken);
       await _updateFcmTokenInFirestore(newToken);
     });
 
-    // ✅ FOREGROUND messages
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
-    // ✅ Background tap
     FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpened);
 
-    // ✅ Terminated state
+    // Terminated-state: app was killed, user tapped notification to launch it.
+    // Navigator is not ready yet, so store the data for later consumption.
     final initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
+      print('[NOTIF] Device: terminated-state initial message, data=${initialMessage.data}');
       _addToNotificationList(initialMessage);
-      _handleMessage(initialMessage);
+      _pendingNotificationData = Map<String, dynamic>.from(initialMessage.data);
     }
 
-    // When user logs in or session restores, write token to Firestore so Cloud Function can send to this device
     FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
         final token = await StorageService().getFcmToken();
@@ -46,7 +55,6 @@ class FirebaseNotificationService {
       }
     });
 
-    // Sync stored preference with actual permission when never set (default = permission state).
     final stored = await StorageService().getNotificationsEnabled();
     if (stored == null) {
       final settings = await _messaging.getNotificationSettings();
@@ -182,5 +190,58 @@ class FirebaseNotificationService {
 
   static void _handleMessage(RemoteMessage message) {
     print('[NOTIF] Device: handleMessage / tap, data=${message.data}');
+    navigateFromNotificationData(Map<String, dynamic>.from(message.data));
+  }
+
+  /// Navigate to the correct chat screen based on FCM data payload.
+  /// Called from FCM tap handler (background) and local notification tap handler.
+  static void navigateFromNotificationData(Map<String, dynamic> data) {
+    final chatRoomId = data['chatRoomId'] as String?;
+    if (chatRoomId == null || chatRoomId.isEmpty) {
+      print('[NOTIF] Nav: no chatRoomId in data, skip navigation');
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('[NOTIF] Nav: user not logged in, skip navigation');
+      return;
+    }
+
+    final festivalId = data['festivalId'] as String?;
+    final hasFestival = festivalId != null && festivalId.isNotEmpty;
+
+    print('[NOTIF] Nav: chatRoomId=$chatRoomId, festivalId=$festivalId, hasFestival=$hasFestival');
+
+    try {
+      if (!locator.isRegistered<NavigationService>()) {
+        print('[NOTIF] Nav: NavigationService not registered, skip');
+        return;
+      }
+      final navService = locator<NavigationService>();
+      final navigator = navService.navigatorKey.currentState;
+
+      if (navigator == null) {
+        print('[NOTIF] Nav: navigator not ready, storing as pending');
+        _pendingNotificationData = data;
+        return;
+      }
+
+      if (hasFestival) {
+        print('[NOTIF] Nav: navigating to chatRoom (private chatroom)');
+        navService.navigateTo(
+          AppRoutes.chatRoom,
+          arguments: chatRoomId,
+        );
+      } else {
+        print('[NOTIF] Nav: navigating to directChat (DM)');
+        navService.navigateTo(
+          AppRoutes.directChat,
+          arguments: {'chatRoomId': chatRoomId},
+        );
+      }
+    } catch (e) {
+      print('[NOTIF] Nav: error during navigation: $e');
+    }
   }
 }

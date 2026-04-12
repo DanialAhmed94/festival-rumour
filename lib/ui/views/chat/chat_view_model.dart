@@ -842,6 +842,7 @@ class ChatViewModel extends BaseViewModel {
           'isPublic': data['isPublic'] as bool? ?? false,
           'members': data['members'] as List<dynamic>? ?? [],
           'createdBy': data['createdBy'] as String?,
+          'festivalId': data['festivalId'] as String?,
         };
         _memberJoinedAtCutoffForCurrentRoom = null;
         final uid = _currentUserId;
@@ -1374,6 +1375,7 @@ class ChatViewModel extends BaseViewModel {
               'name': fresh['name'] as String? ?? _currentChatRoom?['name'],
               'isPublic': fresh['isPublic'] as bool? ?? _currentChatRoom?['isPublic'] ?? false,
               'createdBy': fresh['createdBy'] as String? ?? _currentChatRoom?['createdBy'],
+              'festivalId': fresh['festivalId'] as String? ?? _currentChatRoom?['festivalId'],
             };
           }
           final otherMemberIds =
@@ -1436,16 +1438,17 @@ class ChatViewModel extends BaseViewModel {
         if (kDebugMode) print('[NOTIF] Trigger: could not fetch room name: $e');
       }
     }
+    final festivalId = _currentChatRoom?['festivalId'] as String?;
     if (kDebugMode) {
-      print('[NOTIF] Trigger: chatRoomName=$roomName');
+      print('[NOTIF] Trigger: chatRoomName=$roomName, festivalId=$festivalId');
     }
-    // Single request for any group size. Backend (sendNotification) must send exactly one FCM per userId in the list, not one message to the whole list per userId.
     NotificationServiceApi.sendPushNotification(
       userIds: otherMemberIds,
       title: _currentUsername ?? 'New message',
       message: content,
       chatRoomId: _chatRoomId,
       chatRoomName: roomName,
+      festivalId: festivalId,
     ).then((ok) {
       if (kDebugMode) {
         print('[NOTIF] Trigger: API call finished success=$ok');
