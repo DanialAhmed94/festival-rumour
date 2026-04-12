@@ -17,6 +17,7 @@ import '../../../core/constants/app_durations.dart';
 import 'post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 
 class HomeViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
@@ -24,6 +25,7 @@ class HomeViewModel extends BaseViewModel {
   final AuthService _authService = locator<AuthService>();
   final NetworkService _networkService = locator<NetworkService>();
   final ErrorHandlerService _errorHandler = ErrorHandlerService();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
   
   List<PostModel> posts = [];
   List<PostModel> allPosts = []; // Store all posts
@@ -420,97 +422,69 @@ class HomeViewModel extends BaseViewModel {
     }
   }
 
-  /// Enrich posts with userPhotoUrl from Firestore if missing
+  /// Enrich ALL posts with the latest userPhotoUrl from Firestore via cache.
+  /// Always overwrites the denormalized snapshot to ensure single source of truth.
   Future<void> _enrichPostsWithUserPhotos() async {
     if (isDisposed) return;
 
     try {
-      // Find posts that need userPhotoUrl enrichment
+      // Collect all posts that have a userId
       final postsToEnrich = <int, String>{}; // index -> userId
       for (int i = 0; i < allPosts.length; i++) {
         final post = allPosts[i];
-        // If post doesn't have userPhotoUrl but has userId, we need to enrich it
-        if ((post.userPhotoUrl == null || post.userPhotoUrl!.isEmpty) && 
-            post.userId != null && post.userId!.isNotEmpty) {
+        if (post.userId != null && post.userId!.isNotEmpty) {
           postsToEnrich[i] = post.userId!;
         }
       }
 
-      if (postsToEnrich.isEmpty) {
-        if (kDebugMode) {
-          print('No posts need userPhotoUrl enrichment');
-        }
-        return;
-      }
+      if (postsToEnrich.isEmpty) return;
 
-      if (kDebugMode) {
-        print('Enriching ${postsToEnrich.length} posts with userPhotoUrl');
-      }
-
-      // Fetch user data for unique user IDs in parallel
+      // Batch-fetch from cache (only hits Firestore for uncached users)
       final uniqueUserIds = postsToEnrich.values.toSet().toList();
-      final userDataMap = <String, String?>{}; // userId -> photoUrl
+      final userDataMap = await _userPhotoCacheService.batchFetch(uniqueUserIds);
 
-      // Parallelize user data fetching to reduce load time
-      final futures = uniqueUserIds.map((userId) async {
-        try {
-          final userData = await _firestoreService.getUserData(userId);
-          if (userData != null && userData['photoUrl'] != null) {
-            return MapEntry(userId, userData['photoUrl'] as String?);
-            }
-          return MapEntry<String, String?>(userId, null);
-        } catch (e) {
-          if (kDebugMode) {
-            print('Error fetching user data for userId $userId: $e');
-          }
-          return MapEntry<String, String?>(userId, null);
-        }
-      });
-
-      // Wait for all user data fetches to complete in parallel
-      final results = await Future.wait(futures);
-      for (final entry in results) {
-        userDataMap[entry.key] = entry.value;
-        if (kDebugMode && entry.value != null) {
-          print('✅ Found photoUrl for userId ${entry.key}: ${entry.value}');
-        } else if (kDebugMode) {
-          print('⚠️ No photoUrl found for userId ${entry.key}');
-        }
-      }
-
-      // Check again if disposed after async operations
       if (isDisposed) return;
 
-      // Update posts with userPhotoUrl
+      // Update posts with the latest photo URL and display name
       int enrichedCount = 0;
       for (final entry in postsToEnrich.entries) {
         final index = entry.key;
         final userId = entry.value;
         final photoUrl = userDataMap[userId];
+        final displayName = _userPhotoCacheService.getCachedDisplayName(userId);
 
-        if (photoUrl != null && photoUrl.isNotEmpty) {
-          allPosts[index] = allPosts[index].copyWith(userPhotoUrl: photoUrl);
+        bool changed = false;
+        String? newPhoto;
+        String? newName;
+
+        if (photoUrl != null && photoUrl.isNotEmpty &&
+            allPosts[index].userPhotoUrl != photoUrl) {
+          newPhoto = photoUrl;
+          changed = true;
+        }
+        if (displayName != null && displayName.isNotEmpty &&
+            allPosts[index].username != displayName) {
+          newName = displayName;
+          changed = true;
+        }
+
+        if (changed) {
+          allPosts[index] = allPosts[index].copyWith(
+            userPhotoUrl: newPhoto,
+            username: newName,
+          );
           enrichedCount++;
-          if (kDebugMode) {
-            print('✅ Enriched post at index $index with photoUrl: $photoUrl');
-          }
         }
       }
 
-      if (kDebugMode) {
-        print('Enriched $enrichedCount posts with userPhotoUrl');
-      }
-
-      // Notify listeners to update UI
       if (enrichedCount > 0) {
-        _applyFilter(); // Reapply filter to update displayed posts
+        _applyFilter();
         notifyListeners();
       }
     } catch (e) {
       if (kDebugMode) {
         print('Error enriching posts with userPhotoUrl: $e');
       }
-      // Don't throw - enrichment is optional
     }
   }
 

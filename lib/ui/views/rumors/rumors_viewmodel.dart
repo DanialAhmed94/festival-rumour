@@ -19,6 +19,7 @@ import '../../../core/constants/app_durations.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../homeview/post_model.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 
 /// ViewModel for festival-specific rumors screen
 /// Reuses HomeViewModel logic but uses festival-specific Firestore collection
@@ -28,6 +29,7 @@ class RumorsViewModel extends BaseViewModel {
   final AuthService _authService = locator<AuthService>();
   final NetworkService _networkService = locator<NetworkService>();
   final ErrorHandlerService _errorHandler = ErrorHandlerService();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
   
   List<PostModel> posts = [];
   List<PostModel> allPosts = []; // Store all posts
@@ -38,6 +40,8 @@ class RumorsViewModel extends BaseViewModel {
   final TextEditingController searchController = TextEditingController();
   
   StreamSubscription<List<Map<String, dynamic>>>? _postsSubscription;
+  StreamSubscription<List<Map<String, dynamic>>>? _sharedPostsSubscription;
+  Timer? _sharedPostsRefreshTimer;
   
   // Pagination state
   dynamic _lastDocument; // Last document for pagination
@@ -70,9 +74,12 @@ class RumorsViewModel extends BaseViewModel {
 
   @override
   void onDispose() {
-    // Cancel the real-time listener when view is disposed
     _postsSubscription?.cancel();
     _postsSubscription = null;
+    _sharedPostsSubscription?.cancel();
+    _sharedPostsSubscription = null;
+    _sharedPostsRefreshTimer?.cancel();
+    _sharedPostsRefreshTimer = null;
     
     // Clear references to prevent memory leaks
     posts.clear();
@@ -189,7 +196,6 @@ class RumorsViewModel extends BaseViewModel {
       setLoading(true);
       
       try {
-        // Load initial batch of posts
         final result = await _firestoreService.getPostsPaginated(
           limit: _initialLimit,
           collectionName: _festivalCollectionName,
@@ -199,15 +205,19 @@ class RumorsViewModel extends BaseViewModel {
         _lastDocument = result['lastDocument'];
         _hasMorePosts = result['hasMore'] as bool? ?? false;
 
-        // Convert to PostModel; exclude posts with null/empty userId
         allPosts.clear();
+        final loadedIds = <String>{};
         for (var postData in postsData) {
           try {
-            final post = PostModel.fromFirestore(
+            var post = PostModel.fromFirestore(
               _createDocumentSnapshot(postData),
             );
             if (post.userId != null && post.userId!.isNotEmpty) {
+              if (post.sourceCollection == null) {
+                post = post.copyWith(sourceCollection: _festivalCollectionName);
+              }
               allPosts.add(post);
+              if (post.postId != null) loadedIds.add(post.postId!);
             }
           } catch (e, stackTrace) {
             if (kDebugMode) {
@@ -216,6 +226,46 @@ class RumorsViewModel extends BaseViewModel {
             }
           }
         }
+
+        if (kDebugMode) {
+          print('📥 [RumorsVM] Fetching shared posts for $_festivalCollectionName...');
+        }
+        final sharedPosts = await _firestoreService
+            .getPostsSharedToFestival(_festivalCollectionName!);
+        if (kDebugMode) {
+          print('📥 [RumorsVM] Got ${sharedPosts.length} shared posts from global feed');
+          for (final sp in sharedPosts) {
+            print('   id=${sp['postId']}, comments=${sp['comments']}, likes=${sp['likes']}, sharedToFestivals=${sp['sharedToFestivals']}, sourceCollection=${sp['sourceCollection']}');
+          }
+        }
+        for (var postData in sharedPosts) {
+          try {
+            var post = PostModel.fromFirestore(
+              _createDocumentSnapshot(postData),
+            );
+            if (post.userId != null &&
+                post.userId!.isNotEmpty &&
+                post.postId != null &&
+                !loadedIds.contains(post.postId)) {
+              if (post.sourceCollection == null) {
+                post = post.copyWith(sourceCollection: FirestoreService.defaultPostsCollection);
+              }
+              allPosts.add(post);
+              loadedIds.add(post.postId!);
+              if (kDebugMode) {
+                print('📥 [RumorsVM] Added shared post: ${post.postId}, source=${post.sourceCollection}');
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) print('Error parsing shared post: $e');
+          }
+        }
+
+        allPosts.sort((a, b) {
+          final aTime = a.createdAt ?? DateTime(0);
+          final bTime = b.createdAt ?? DateTime(0);
+          return bTime.compareTo(aTime);
+        });
 
         // Initialize newest post timestamp from loaded posts
         if (allPosts.isNotEmpty) {
@@ -500,6 +550,153 @@ class RumorsViewModel extends BaseViewModel {
             _errorHandler.handleError(exception, stackTrace, 'RumorsViewModel._startPostsListener');
           },
         );
+
+    _sharedPostsSubscription?.cancel();
+    if (kDebugMode) {
+      print('🔄 [RumorsVM] Starting shared posts stream for: $_festivalCollectionName');
+    }
+    _sharedPostsSubscription = _firestoreService
+        .getSharedPostsStream(_festivalCollectionName!)
+        .listen(
+          (sharedData) {
+            if (isDisposed) return;
+            if (kDebugMode) {
+              print('🔄 [RumorsVM] Shared stream fired with ${sharedData.length} posts');
+            }
+            bool changed = false;
+
+            final streamMap = <String, PostModel>{};
+            for (var postData in sharedData) {
+              try {
+                var post = PostModel.fromFirestore(
+                  _createDocumentSnapshot(postData),
+                );
+                if (post.postId != null &&
+                    post.userId != null &&
+                    post.userId!.isNotEmpty) {
+                  if (post.sourceCollection == null) {
+                    post = post.copyWith(sourceCollection: FirestoreService.defaultPostsCollection);
+                  }
+                  streamMap[post.postId!] = post;
+                }
+              } catch (e) {
+                if (kDebugMode) {
+                  print('⚠️ [RumorsVM] Error parsing shared post: $e');
+                }
+              }
+            }
+
+            if (kDebugMode) {
+              print('🔄 [RumorsVM] Parsed ${streamMap.length} valid shared posts from stream');
+              print('🔄 [RumorsVM] Current allPosts count: ${allPosts.length}');
+              for (final entry in streamMap.entries) {
+                final p = entry.value;
+                print('   streamPost: id=${p.postId}, comments=${p.comments}, likes=${p.likes}, source=${p.sourceCollection}');
+              }
+            }
+
+            for (int i = 0; i < allPosts.length; i++) {
+              final existing = allPosts[i];
+              if (existing.postId != null && streamMap.containsKey(existing.postId)) {
+                final updated = streamMap[existing.postId]!;
+                if (kDebugMode) {
+                  print('🔍 [RumorsVM] Comparing postId=${existing.postId}: '
+                      'comments ${existing.comments}->${updated.comments}, '
+                      'likes ${existing.likes}->${updated.likes}');
+                }
+                if (existing.comments != updated.comments ||
+                    existing.likes != updated.likes ||
+                    existing.reactionCounts != updated.reactionCounts ||
+                    existing.content != updated.content) {
+                  allPosts[i] = updated.copyWith(
+                    userReaction: existing.userReaction,
+                  );
+                  changed = true;
+                  if (kDebugMode) {
+                    print('✅ [RumorsVM] Updated shared post ${existing.postId}');
+                  }
+                }
+                streamMap.remove(existing.postId);
+              }
+            }
+
+            if (streamMap.isNotEmpty && kDebugMode) {
+              print('➕ [RumorsVM] Adding ${streamMap.length} new shared posts');
+            }
+            for (final post in streamMap.values) {
+              allPosts.add(post);
+              changed = true;
+            }
+
+            if (kDebugMode) {
+              print('🔄 [RumorsVM] Changed=$changed');
+            }
+            if (changed) {
+              allPosts.sort((a, b) {
+                final aTime = a.createdAt ?? DateTime(0);
+                final bTime = b.createdAt ?? DateTime(0);
+                return bTime.compareTo(aTime);
+              });
+              _applyFilter();
+              notifyListeners();
+            }
+          },
+          onError: (error) {
+            if (kDebugMode) {
+              print('❌ [RumorsVM] Shared posts stream error: $error');
+            }
+          },
+        );
+
+    // Periodic refresh to catch count changes on shared posts (the ref stream
+    // only fires when refs are added/removed, not when the source post updates).
+    _sharedPostsRefreshTimer?.cancel();
+    _sharedPostsRefreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _refreshSharedPostCounts(),
+    );
+  }
+
+  /// Re-fetch shared posts to pick up count changes (comments, likes, reactions).
+  Future<void> _refreshSharedPostCounts() async {
+    if (isDisposed || _festivalCollectionName == null) return;
+
+    try {
+      final freshPosts = await _firestoreService
+          .getPostsSharedToFestival(_festivalCollectionName!);
+      if (isDisposed) return;
+
+      bool changed = false;
+      final freshMap = <String, Map<String, dynamic>>{};
+      for (final data in freshPosts) {
+        final id = data['postId'] as String?;
+        if (id != null) freshMap[id] = data;
+      }
+
+      for (int i = 0; i < allPosts.length; i++) {
+        final existing = allPosts[i];
+        if (existing.postId == null || !freshMap.containsKey(existing.postId)) continue;
+        final freshData = freshMap[existing.postId]!;
+        final freshComments = (freshData['comments'] as int?) ?? 0;
+        final freshLikes = (freshData['likes'] as int?) ?? 0;
+        if (existing.comments != freshComments || existing.likes != freshLikes) {
+          var updated = PostModel.fromFirestore(
+            _createDocumentSnapshot(freshData),
+          );
+          if (updated.sourceCollection == null) {
+            final src = freshData['sourceCollection'] as String? ?? FirestoreService.defaultPostsCollection;
+            updated = updated.copyWith(sourceCollection: src);
+          }
+          allPosts[i] = updated.copyWith(userReaction: existing.userReaction);
+          changed = true;
+        }
+      }
+
+      if (changed && !isDisposed) {
+        _applyFilter();
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 
   /// Load user reactions for specific posts
@@ -510,19 +707,22 @@ class RumorsViewModel extends BaseViewModel {
     if (currentUser == null) return;
 
     try {
-      final postIds = postsToLoad
-          .where((post) => post.postId != null)
-          .map((post) => post.postId!)
-          .toList();
+      final byCollection = <String, List<String>>{};
+      for (final post in postsToLoad) {
+        if (post.postId == null) continue;
+        final col = post.sourceCollection ?? _festivalCollectionName ?? FirestoreService.defaultPostsCollection;
+        (byCollection[col] ??= []).add(post.postId!);
+      }
 
-      if (postIds.isEmpty) return;
-
-      // Get user reactions for these posts
-      final userReactions = await _firestoreService.getUserReactions(
-        postIds,
-        currentUser.uid,
-        collectionName: _festivalCollectionName,
-      );
+      final userReactions = <String, String>{};
+      for (final entry in byCollection.entries) {
+        final reactions = await _firestoreService.getUserReactions(
+          entry.value,
+          currentUser.uid,
+          collectionName: entry.key,
+        );
+        userReactions.addAll(reactions);
+      }
 
       // Check again if disposed after async operation
       if (isDisposed) return;
@@ -544,82 +744,63 @@ class RumorsViewModel extends BaseViewModel {
     }
   }
 
-  /// Enrich posts with userPhotoUrl from Firestore if missing
+  /// Enrich ALL posts with the latest userPhotoUrl from Firestore via cache.
+  /// Always overwrites the denormalized snapshot to ensure single source of truth.
   Future<void> _enrichPostsWithUserPhotos() async {
     if (isDisposed) return;
 
     try {
-      // Find posts that need userPhotoUrl enrichment
+      // Collect all posts that have a userId
       final postsToEnrich = <int, String>{}; // index -> userId
       for (int i = 0; i < allPosts.length; i++) {
         final post = allPosts[i];
-        // If post doesn't have userPhotoUrl but has userId, we need to enrich it
-        if ((post.userPhotoUrl == null || post.userPhotoUrl!.isEmpty) && 
-            post.userId != null && post.userId!.isNotEmpty) {
+        if (post.userId != null && post.userId!.isNotEmpty) {
           postsToEnrich[i] = post.userId!;
         }
       }
 
-      if (postsToEnrich.isEmpty) {
-        if (kDebugMode) {
-          print('No posts need userPhotoUrl enrichment');
-        }
-        return;
-      }
+      if (postsToEnrich.isEmpty) return;
 
-      if (kDebugMode) {
-        print('Enriching ${postsToEnrich.length} posts with userPhotoUrl');
-      }
-
-      // Fetch user data for unique user IDs in parallel
+      // Batch-fetch from cache (only hits Firestore for uncached users)
       final uniqueUserIds = postsToEnrich.values.toSet().toList();
-      final userDataMap = <String, String?>{}; // userId -> photoUrl
+      final userDataMap = await _userPhotoCacheService.batchFetch(uniqueUserIds);
 
-      // Parallelize user data fetching to reduce load time
-      final futures = uniqueUserIds.map((userId) async {
-        try {
-          final userData = await _firestoreService.getUserData(userId);
-          if (userData != null && userData['photoUrl'] != null) {
-            return MapEntry(userId, userData['photoUrl'] as String?);
-          }
-          return MapEntry<String, String?>(userId, null);
-        } catch (e) {
-          if (kDebugMode) {
-            print('Error fetching user data for userId $userId: $e');
-          }
-          return MapEntry<String, String?>(userId, null);
-        }
-      });
-
-      // Wait for all user data fetches to complete in parallel
-      final results = await Future.wait(futures);
-      for (final entry in results) {
-        userDataMap[entry.key] = entry.value;
-      }
-
-      // Check again if disposed after async operations
       if (isDisposed) return;
 
-      // Update posts with userPhotoUrl
+      // Update posts with the latest photo URL and display name
       int enrichedCount = 0;
       for (final entry in postsToEnrich.entries) {
         final index = entry.key;
         final userId = entry.value;
         final photoUrl = userDataMap[userId];
+        final displayName = _userPhotoCacheService.getCachedDisplayName(userId);
 
-        if (photoUrl != null && photoUrl.isNotEmpty) {
-          allPosts[index] = allPosts[index].copyWith(userPhotoUrl: photoUrl);
+        bool changed = false;
+        String? newPhoto;
+        String? newName;
+
+        if (photoUrl != null && photoUrl.isNotEmpty &&
+            allPosts[index].userPhotoUrl != photoUrl) {
+          newPhoto = photoUrl;
+          changed = true;
+        }
+        if (displayName != null && displayName.isNotEmpty &&
+            allPosts[index].username != displayName) {
+          newName = displayName;
+          changed = true;
+        }
+
+        if (changed) {
+          allPosts[index] = allPosts[index].copyWith(
+            userPhotoUrl: newPhoto,
+            username: newName,
+          );
           enrichedCount++;
         }
       }
 
-      if (kDebugMode) {
-        print('Enriched $enrichedCount posts with userPhotoUrl');
-      }
-
-      // Notify listeners to update UI
       if (enrichedCount > 0) {
-        _applyFilter(); // Reapply filter to update displayed posts
+        _applyFilter();
         notifyListeners();
       }
     } catch (e) {
@@ -638,41 +819,41 @@ class RumorsViewModel extends BaseViewModel {
     if (currentUser == null) return;
 
     try {
-      final postIds = allPosts
-          .where((post) => post.postId != null)
-          .map((post) => post.postId!)
-          .toList();
+      final byCollection = <String, List<String>>{};
+      for (final post in allPosts) {
+        if (post.postId == null) continue;
+        final col = post.sourceCollection ?? _festivalCollectionName ?? FirestoreService.defaultPostsCollection;
+        (byCollection[col] ??= []).add(post.postId!);
+      }
 
-      if (postIds.isEmpty) return;
+      final allReactions = <String, String>{};
+      for (final entry in byCollection.entries) {
+        final reactions = await _firestoreService.getUserReactions(
+          entry.value,
+          currentUser.uid,
+          collectionName: entry.key,
+        );
+        allReactions.addAll(reactions);
+      }
 
-      // Get user reactions for all posts
-      final userReactions = await _firestoreService.getUserReactions(
-        postIds,
-        currentUser.uid,
-        collectionName: _festivalCollectionName,
-      );
-
-      // Check again if disposed after async operation
       if (isDisposed) return;
 
-      // Update posts with user reactions
       for (int i = 0; i < allPosts.length; i++) {
         final post = allPosts[i];
-        if (post.postId != null && userReactions.containsKey(post.postId)) {
+        if (post.postId != null && allReactions.containsKey(post.postId)) {
           allPosts[i] = post.copyWith(
-            userReaction: userReactions[post.postId],
+            userReaction: allReactions[post.postId],
           );
         }
       }
 
       if (kDebugMode) {
-        print('Loaded ${userReactions.length} user reactions');
+        print('Loaded ${allReactions.length} user reactions');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       if (kDebugMode) {
         print('Error loading user reactions: $e');
       }
-      // Don't throw - reactions are not critical
     }
   }
 
@@ -698,10 +879,13 @@ class RumorsViewModel extends BaseViewModel {
         // Convert to PostModel and add to existing list; exclude posts with null/empty userId
         for (var postData in postsData) {
           try {
-            final post = PostModel.fromFirestore(
+            var post = PostModel.fromFirestore(
               _createDocumentSnapshot(postData),
             );
             if (post.userId != null && post.userId!.isNotEmpty) {
+              if (post.sourceCollection == null) {
+                post = post.copyWith(sourceCollection: _festivalCollectionName);
+              }
               allPosts.add(post);
             }
           } catch (e) {
@@ -872,7 +1056,7 @@ class RumorsViewModel extends BaseViewModel {
         currentUser.uid,
         emotion,
         previousEmotion: previousEmotion,
-        collectionName: _festivalCollectionName,
+        collectionName: post.sourceCollection ?? _festivalCollectionName,
       );
 
       if (kDebugMode) {
@@ -941,7 +1125,7 @@ class RumorsViewModel extends BaseViewModel {
         post.postId!,
         currentUser.uid,
         emotionToRemove,
-        collectionName: _festivalCollectionName,
+        collectionName: post.sourceCollection ?? _festivalCollectionName,
       );
 
       if (kDebugMode) {
@@ -1092,11 +1276,10 @@ class RumorsViewModel extends BaseViewModel {
     }
 
     try {
-      // Delete from Firestore with reduced timeout (this will also delete media from Storage)
       await _firestoreService.deletePost(
         postId: postId,
         userId: currentUser.uid,
-        collectionName: _festivalCollectionName, // Use festival collection
+        collectionName: post.sourceCollection ?? _festivalCollectionName,
       ).timeout(
         const Duration(seconds: 15),
         onTimeout: () {
@@ -1125,7 +1308,6 @@ class RumorsViewModel extends BaseViewModel {
         }
       }
 
-      // Remove post from local lists
       posts.removeAt(postIndex);
       final allPostsIndex = allPosts.indexWhere((p) => p.postId == postId);
       if (allPostsIndex >= 0) {
@@ -1226,8 +1408,16 @@ class RumorsViewModel extends BaseViewModel {
     }
   }
 
-  /// Helper method to create a DocumentSnapshot-like object from Map
-  /// This is needed because PostModel.fromFirestore expects a DocumentSnapshot
+  Future<void> navigateToEditPost(BuildContext context, PostModel post) async {
+    final result = await _navigationService.navigateTo<bool>(
+      AppRoutes.editPost,
+      arguments: post,
+    );
+    if (result == true) {
+      refreshPostsAfterComment();
+    }
+  }
+
   dynamic _createDocumentSnapshot(Map<String, dynamic> data) {
     final postId = data['postId'] as String? ?? '';
     return _MockDocumentSnapshot(postId, data);

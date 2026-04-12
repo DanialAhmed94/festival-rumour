@@ -539,11 +539,11 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                     final badgeService = locator<ChatBadgeService>();
                     final listService = locator<CurrentChatListService>();
                     final roomIds = listService.roomIds;
-                    // If chat list not loaded yet (user never opened it), show badge for any unread.
-                    // Once list is loaded, only show badge for unread in that list.
-                    final hasUnreadChats = roomIds.isEmpty
-                        ? badgeService.hasUnread
-                        : badgeService.hasUnreadInRooms(roomIds);
+                    // Only show badge when the DM room list is known.
+                    // When empty the user hasn't opened chats yet and
+                    // hasUnread would include public/stale rooms.
+                    final hasUnreadChats = roomIds.isNotEmpty &&
+                        badgeService.hasUnreadInRooms(roomIds);
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
@@ -795,7 +795,6 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                     }
 
                     if (fullPost != null && context.mounted) {
-                      // Navigate to posts view with only the tapped post
                       if (widget.onNavigateToSub != null) {
                         if (kDebugMode) {
                           print('🚀 Using onNavigateToSub callback');
@@ -807,17 +806,26 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                           print('🚀 Navigating to PostsView with single post');
                           print('   Collection: $collectionName');
                         }
-                        Navigator.pushNamed(
+                        final result = await Navigator.pushNamed(
                           context,
                           AppRoutes.posts,
                           arguments: {
-                            'posts': [fullPost], // Single post in a list
+                            'posts': [fullPost],
                             'collectionName': collectionName,
                           },
                         );
+                        if (context.mounted && result is Map<String, dynamic>) {
+                          final deletedIds = result['deletedPostIds'] as List<String>?;
+                          final wasEdited = result['wasEdited'] as bool? ?? false;
+                          if (deletedIds != null && deletedIds.isNotEmpty) {
+                            viewModel.removeDeletedPosts(deletedIds);
+                          }
+                          if (wasEdited) {
+                            viewModel.refreshPostsOnly(context);
+                          }
+                        }
                       }
                     } else if (context.mounted) {
-                      // Show error if post not found
                       if (kDebugMode) {
                         print('❌ Post not found or failed to load');
                       }
@@ -1020,26 +1028,34 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                     }
 
                     if (fullPost != null && context.mounted) {
-                      // Navigate to posts view with only the tapped post
                       if (widget.onNavigateToSub != null) {
                         widget.onNavigateToSub!('posts');
                       } else {
                         final collectionName = postInfo['collectionName'] as String?;
                         if (kDebugMode) {
-                          print('🚀 Navigating to PostsView with single post');
+                          print('🚀 Navigating to PostsView with single video post');
                           print('   Collection: $collectionName');
                         }
-                        Navigator.pushNamed(
+                        final result = await Navigator.pushNamed(
                           context,
                           AppRoutes.posts,
                           arguments: {
-                            'posts': [fullPost], // Single post in a list
+                            'posts': [fullPost],
                             'collectionName': collectionName,
                           },
                         );
+                        if (context.mounted && result is Map<String, dynamic>) {
+                          final deletedIds = result['deletedPostIds'] as List<String>?;
+                          final wasEdited = result['wasEdited'] as bool? ?? false;
+                          if (deletedIds != null && deletedIds.isNotEmpty) {
+                            viewModel.removeDeletedPosts(deletedIds);
+                          }
+                          if (wasEdited) {
+                            viewModel.refreshPostsOnly(context);
+                          }
+                        }
                       }
                     } else if (context.mounted) {
-                      // Show error if post not found
                       if (kDebugMode) {
                         print('❌ Post not found or failed to load');
                       }
@@ -1054,7 +1070,6 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Video thumbnail placeholder
                       Container(
                         color: AppColors.black.withOpacity(0.5),
                         child: Center(

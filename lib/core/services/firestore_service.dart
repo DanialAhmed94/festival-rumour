@@ -10,6 +10,23 @@ import '../exceptions/exception_mapper.dart';
 import 'error_handler_service.dart';
 import 'network_service.dart';
 
+/// One page of older chat messages (loaded before the current live tail).
+class ChatOlderMessagesPage {
+  const ChatOlderMessagesPage({
+    required this.messagesChronological,
+    required this.oldestDocument,
+    required this.hasMore,
+  });
+
+  /// Oldest → newest within this page.
+  final List<Map<String, dynamic>> messagesChronological;
+
+  /// Last document of the Firestore query (`orderBy createdAt` descending); pass to the next page.
+  final QueryDocumentSnapshot<Map<String, dynamic>>? oldestDocument;
+
+  final bool hasMore;
+}
+
 /// Service for interacting with Cloud Firestore
 class FirestoreService {
   static final FirestoreService _instance = FirestoreService._internal();
@@ -22,6 +39,12 @@ class FirestoreService {
 
   /// Default collection name for global posts
   static const String defaultPostsCollection = 'festivalrumorglobalfeed';
+
+  /// Messages loaded per page for chat (initial live tail + each “load older” request).
+  static const int chatMessagesPageSize = 40;
+
+  /// Firestore `users.appIdentifier` for this app (user search, signup, phone match, leaderboard, etc.).
+  static const String appUserIdentifier = 'festivalrumor';
 
   // Cache for user profile data (images/videos)
   // Key: "userId_images" or "userId_videos", Value: {data, timestamp}
@@ -111,7 +134,7 @@ class FirestoreService {
       final userData = <String, dynamic>{
         'userId': userId,
         'email': email,
-        'appIdentifier': 'festivalrumor',
+        'appIdentifier': appUserIdentifier,
         'postCount': 0,
         'leaderboardScore': 0.0,
         'createdAt': FieldValue.serverTimestamp(),
@@ -481,9 +504,41 @@ class FirestoreService {
     }
   }
 
-  /// Search users by display name
-  /// Returns a list of user data matching the search query
-  /// Limits results to 20 for performance
+  /// Normalizes a phone string the same way as [getUsersByPhoneNumbers].
+  static String _normalizePhoneForSearch(String phone) {
+    return phone
+        .replaceAll(RegExp(r'[\s\-\(\)\+]'), '')
+        .replaceAll(RegExp(r'^00'), '')
+        .replaceAll(RegExp(r'^0'), '');
+  }
+
+  /// True when [storedPhone] on the user doc matches digits the user typed in search.
+  static bool _storedPhoneMatchesQueryDigits(
+    String? storedPhone,
+    String queryDigits,
+  ) {
+    if (queryDigits.isEmpty || storedPhone == null || storedPhone.isEmpty) {
+      return false;
+    }
+    final stored = _normalizePhoneForSearch(storedPhone);
+    if (stored.isEmpty) return false;
+    if (stored.contains(queryDigits) || queryDigits.contains(stored)) {
+      return true;
+    }
+    String last10(String d) =>
+        d.length >= 10 ? d.substring(d.length - 10) : d;
+    final s10 = last10(stored);
+    final q10 = last10(queryDigits);
+    if (s10.length >= 7 && q10.length >= 7) {
+      if (s10 == q10) return true;
+      if (s10.endsWith(q10) || q10.endsWith(s10)) return true;
+    }
+    return false;
+  }
+
+  /// Search users by display name, email, or phone number.
+  /// Only includes documents where `appIdentifier` is [appUserIdentifier].
+  /// Limits results to [limit] for performance.
   Future<List<Map<String, dynamic>>> searchUsersByName(
     String searchQuery, {
     int limit = 20,
@@ -493,16 +548,17 @@ class FirestoreService {
         return [];
       }
 
-      final query = searchQuery.trim().toLowerCase();
+      final trimmed = searchQuery.trim();
+      final queryLower = trimmed.toLowerCase();
+      final queryDigits = trimmed.replaceAll(RegExp(r'\D'), '');
 
-      // Get all users with appIdentifier = 'festivalrumor'
-      // Note: Firestore doesn't support case-insensitive search natively,
-      // so we fetch and filter in memory for accurate results
+      // Firestore doesn't support case-insensitive text search natively,
+      // so we fetch app users and filter in memory.
       final querySnapshot =
           await _firestore
               .collection('users')
-              .where('appIdentifier', isEqualTo: 'festivalrumor')
-              .limit(100) // Fetch more to filter, but limit for performance
+              .where('appIdentifier', isEqualTo: appUserIdentifier)
+              .limit(100)
               .get();
 
       final results = <Map<String, dynamic>>[];
@@ -511,10 +567,17 @@ class FirestoreService {
         final data = doc.data();
         final displayName = data['displayName'] as String? ?? '';
         final email = data['email'] as String? ?? '';
+        final phoneNumber = data['phoneNumber'] as String?;
 
-        // Case-insensitive search in displayName or email
-        if (displayName.toLowerCase().contains(query) ||
-            email.toLowerCase().contains(query)) {
+        final nameOrEmailMatch =
+            displayName.toLowerCase().contains(queryLower) ||
+            email.toLowerCase().contains(queryLower);
+        final phoneMatch = _storedPhoneMatchesQueryDigits(
+          phoneNumber,
+          queryDigits,
+        );
+
+        if (nameOrEmailMatch || phoneMatch) {
           results.add({
             'userId': doc.id,
             'displayName': displayName,
@@ -523,7 +586,6 @@ class FirestoreService {
             'bio': data['bio'] as String?,
           });
 
-          // Limit results
           if (results.length >= limit) {
             break;
           }
@@ -531,7 +593,9 @@ class FirestoreService {
       }
 
       if (kDebugMode) {
-        print('✅ Found ${results.length} users matching "$searchQuery"');
+        print(
+          '✅ Found ${results.length} users (appIdentifier=$appUserIdentifier) matching "$searchQuery"',
+        );
       }
 
       return results;
@@ -590,7 +654,7 @@ class FirestoreService {
 
       if (doc.exists) {
         final data = doc.data();
-        return data?['appIdentifier'] == 'festivalrumor';
+        return data?['appIdentifier'] == appUserIdentifier;
       }
 
       return false;
@@ -632,6 +696,83 @@ class FirestoreService {
     }
   }
 
+  static const String sharedPostsCollection = 'shared_posts';
+
+  /// Share a post to a festival.
+  /// Creates a reference in the centralized [sharedPostsCollection] index
+  /// and tags the original post with the festival name.
+  Future<void> sharePostToFestival({
+    required String postId,
+    required String postCollection,
+    required String festivalCollectionName,
+  }) async {
+    try {
+      final originalRef = _firestore.collection(postCollection).doc(postId);
+      final originalDoc = await originalRef.get();
+      if (!originalDoc.exists) {
+        throw Exception('Original post not found');
+      }
+
+      final existing = await _firestore
+          .collection(sharedPostsCollection)
+          .where('postId', isEqualTo: postId)
+          .where('sourceCollection', isEqualTo: postCollection)
+          .where('targetFestival', isEqualTo: festivalCollectionName)
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) {
+        throw Exception('Post is already shared to this festival');
+      }
+
+      await _firestore.collection(sharedPostsCollection).add({
+        'postId': postId,
+        'sourceCollection': postCollection,
+        'targetFestival': festivalCollectionName,
+        'userId': originalDoc.data()?['userId'],
+        'sharedAt': FieldValue.serverTimestamp(),
+      });
+
+      await originalRef.update({
+        'sharedToFestivals': FieldValue.arrayUnion([festivalCollectionName]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (kDebugMode) {
+        print('📤 Post $postId ($postCollection) shared to "$festivalCollectionName"');
+      }
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(exception, stackTrace, 'FirestoreService.sharePostToFestival');
+      rethrow;
+    }
+  }
+
+  /// Delete all shared_posts references for a given post.
+  Future<void> _deleteSharedPostRefs(String postId, String sourceCollection) async {
+    try {
+      final refs = await _firestore
+          .collection(sharedPostsCollection)
+          .where('postId', isEqualTo: postId)
+          .where('sourceCollection', isEqualTo: sourceCollection)
+          .get();
+      if (refs.docs.isEmpty) return;
+
+      final batch = _firestore.batch();
+      for (final doc in refs.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      if (kDebugMode) {
+        print('🗑️ Deleted ${refs.docs.length} shared_posts refs for $postId');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Error deleting shared_posts refs: $e');
+      }
+    }
+  }
+
   /// Save post to Firestore
   ///
   /// [postData] - Map containing post data (username, content, imagePath, etc.)
@@ -646,7 +787,6 @@ class FirestoreService {
     bool skipUserPostCountIncrement = false,
   }) async {
     try {
-      // Convert DateTime to Timestamp if present
       final dataToSave = Map<String, dynamic>.from(postData);
       if (dataToSave['createdAt'] is DateTime) {
         dataToSave['createdAt'] = Timestamp.fromDate(
@@ -656,8 +796,8 @@ class FirestoreService {
         dataToSave['createdAt'] = FieldValue.serverTimestamp();
       }
 
-      // Use provided collection name or default
       final targetCollection = collectionName ?? defaultPostsCollection;
+      dataToSave['sourceCollection'] = targetCollection;
 
       // Add to collection (will be created if it doesn't exist)
       final docRef = await _firestore
@@ -3158,6 +3298,106 @@ class FirestoreService {
     }
   }
 
+  /// Get posts shared to a festival by resolving refs from the shared_posts index.
+  /// Works for posts from ANY source collection (global feed or other festivals).
+  Future<List<Map<String, dynamic>>> getPostsSharedToFestival(
+      String festivalCollectionName) async {
+    try {
+      final refsSnapshot = await _firestore
+          .collection(sharedPostsCollection)
+          .where('targetFestival', isEqualTo: festivalCollectionName)
+          .get();
+
+      if (refsSnapshot.docs.isEmpty) {
+        if (kDebugMode) print('📥 [SharedPosts] No refs found for "$festivalCollectionName"');
+        return [];
+      }
+
+      final posts = <Map<String, dynamic>>[];
+      for (final refDoc in refsSnapshot.docs) {
+        final refData = refDoc.data();
+        final postId = refData['postId'] as String?;
+        final sourceCol = refData['sourceCollection'] as String?;
+        if (postId == null || sourceCol == null) continue;
+
+        try {
+          final postDoc = await _firestore.collection(sourceCol).doc(postId).get();
+          if (postDoc.exists) {
+            final data = postDoc.data() ?? {};
+            data['postId'] = postDoc.id;
+            if (data['sourceCollection'] == null) {
+              data['sourceCollection'] = sourceCol;
+            }
+            posts.add(data);
+          }
+        } catch (e) {
+          if (kDebugMode) print('⚠️ Failed to resolve shared post $postId from $sourceCol: $e');
+        }
+      }
+
+      posts.sort((a, b) {
+        final aTime = a['createdAt'];
+        final bTime = b['createdAt'];
+        if (aTime is Timestamp && bTime is Timestamp) {
+          return bTime.compareTo(aTime);
+        }
+        return 0;
+      });
+
+      if (kDebugMode) {
+        print('📥 [SharedPosts] Resolved ${posts.length} shared posts for "$festivalCollectionName"');
+      }
+      return posts;
+    } catch (e) {
+      if (kDebugMode) print('❌ [SharedPosts] Error: $e');
+      return [];
+    }
+  }
+
+  /// Stream that fires when the set of shared posts for a festival changes.
+  /// On each event, resolves the actual post documents from their source collections.
+  Stream<List<Map<String, dynamic>>> getSharedPostsStream(
+      String festivalCollectionName) {
+    if (kDebugMode) {
+      print('🔄 [SharedStream] Setting up ref stream for "$festivalCollectionName"');
+    }
+    return _firestore
+        .collection(sharedPostsCollection)
+        .where('targetFestival', isEqualTo: festivalCollectionName)
+        .snapshots()
+        .asyncMap((refsSnapshot) async {
+      final posts = <Map<String, dynamic>>[];
+      for (final refDoc in refsSnapshot.docs) {
+        final refData = refDoc.data();
+        final postId = refData['postId'] as String?;
+        final sourceCol = refData['sourceCollection'] as String?;
+        if (postId == null || sourceCol == null) continue;
+
+        try {
+          final postDoc = await _firestore.collection(sourceCol).doc(postId).get();
+          if (postDoc.exists) {
+            final data = postDoc.data() ?? {};
+            data['postId'] = postDoc.id;
+            if (data['sourceCollection'] == null) {
+              data['sourceCollection'] = sourceCol;
+            }
+            posts.add(data);
+          }
+        } catch (e) {
+          if (kDebugMode) print('⚠️ [SharedStream] Failed to resolve $postId: $e');
+        }
+      }
+
+      if (kDebugMode) {
+        print('🔄 [SharedStream] Resolved ${posts.length} posts for "$festivalCollectionName"');
+        for (final p in posts) {
+          print('   id=${p['postId']}, comments=${p['comments']}, likes=${p['likes']}, source=${p['sourceCollection']}');
+        }
+      }
+      return posts;
+    });
+  }
+
   /// Get real-time stream of posts from collection
   ///
   /// This method returns a Stream that automatically updates whenever
@@ -4083,7 +4323,7 @@ class FirestoreService {
     }
   }
 
-  /// Get all user IDs from users collection where appIdentifier is 'festivalrumor'
+  /// Get all user IDs from users collection where `appIdentifier` is [appUserIdentifier].
   ///
   /// Returns a list of user IDs (document IDs from users collection)
   Future<List<String>> getAllFestivalRumorUserIds() async {
@@ -4091,13 +4331,15 @@ class FirestoreService {
       final querySnapshot =
           await _firestore
               .collection('users')
-              .where('appIdentifier', isEqualTo: 'festivalrumor')
+              .where('appIdentifier', isEqualTo: appUserIdentifier)
               .get();
 
       final userIds = querySnapshot.docs.map((doc) => doc.id).toList();
 
       if (kDebugMode) {
-        print('Found ${userIds.length} users with appIdentifier=festivalrumor');
+        print(
+          'Found ${userIds.length} users with appIdentifier=$appUserIdentifier',
+        );
       }
 
       return userIds;
@@ -4705,7 +4947,7 @@ class FirestoreService {
     try {
       final snapshot = await _firestore
           .collection('users')
-          .where('appIdentifier', isEqualTo: 'festivalrumor')
+          .where('appIdentifier', isEqualTo: appUserIdentifier)
           .orderBy('leaderboardScore', descending: true)
           .limit(limit)
           .get();
@@ -4786,29 +5028,25 @@ class FirestoreService {
     }
   }
 
-  /// Get real-time stream of messages for a chat room
+  /// Live tail: the [limit] newest messages, updating in real time (newest-first query).
   ///
-  /// [chatRoomId] - The chat room document ID
-  /// [limit] - Maximum number of messages to load (default: 50)
-  /// Returns a Stream of message data maps
-  ///
-  /// Note: The caller is responsible for canceling the stream subscription
-  Stream<List<Map<String, dynamic>>> getChatMessagesStream(
+  /// Map snapshots in the UI to chronological order (oldest → newest). Use
+  /// [docs.last] as the cursor for [fetchOlderChatMessagesPage].
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchRecentChatMessages(
     String chatRoomId, {
-    int limit = 50,
+    int limit = chatMessagesPageSize,
   }) {
     try {
       return _firestore
           .collection('chatRooms')
           .doc(chatRoomId)
           .collection('messages')
-          .orderBy('createdAt', descending: false) // Oldest first
+          .orderBy('createdAt', descending: true)
           .limit(limit)
           .snapshots()
           .handleError((error, stackTrace) {
-            // Log error but don't stop the stream
             if (kDebugMode) {
-              print('Error in chat messages stream: $error');
+              print('Error in watchRecentChatMessages: $error');
             }
             final exception = ExceptionMapper.mapToAppException(
               error,
@@ -4817,96 +5055,70 @@ class FirestoreService {
             _errorHandler.handleError(
               exception,
               stackTrace,
-              'FirestoreService.getChatMessagesStream',
+              'FirestoreService.watchRecentChatMessages',
             );
-          })
-          .map((querySnapshot) {
-            final messages = <Map<String, dynamic>>[];
-            for (var doc in querySnapshot.docs) {
-              final data = doc.data() as Map<String, dynamic>;
-              data['messageId'] = doc.id; // Add document ID to data
-              messages.add(data);
-            }
-
-            if (kDebugMode) {
-              print(
-                'Real-time update: ${messages.length} messages for chat room: $chatRoomId',
-              );
-            }
-
-            return messages;
           });
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(
         exception,
         stackTrace,
-        'FirestoreService.getChatMessagesStream',
+        'FirestoreService.watchRecentChatMessages',
       );
-      // Return empty stream on error
-      return Stream.value(<Map<String, dynamic>>[]);
+      return Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
     }
   }
 
-  /// Get paginated messages for a chat room (for loading older messages)
-  ///
-  /// [chatRoomId] - The chat room document ID
-  /// [limit] - Number of messages to load
-  /// [lastMessage] - Last message timestamp for pagination (optional)
-  /// Returns a map with 'messages' list and 'lastMessage' timestamp
-  Future<Map<String, dynamic>> getChatMessagesPaginated({
+  /// Load the next older page (messages strictly before [startAfterDocument] in time).
+  Future<ChatOlderMessagesPage> fetchOlderChatMessagesPage({
     required String chatRoomId,
-    int limit = 20,
-    Timestamp? lastMessage,
+    required DocumentSnapshot<Map<String, dynamic>> startAfterDocument,
+    int limit = chatMessagesPageSize,
   }) async {
     try {
-      Query query = _firestore
-          .collection('chatRooms')
-          .doc(chatRoomId)
-          .collection('messages')
-          .orderBy('createdAt', descending: true)
-          .limit(limit);
+      final querySnapshot =
+          await _firestore
+              .collection('chatRooms')
+              .doc(chatRoomId)
+              .collection('messages')
+              .orderBy('createdAt', descending: true)
+              .startAfterDocument(startAfterDocument)
+              .limit(limit)
+              .get();
 
-      // If lastMessage is provided, start after it for pagination
-      if (lastMessage != null) {
-        query = query.startAfter([lastMessage]);
-      }
-
-      final querySnapshot = await query.get();
-
-      final messages = <Map<String, dynamic>>[];
-      Timestamp? newLastMessage;
-
-      for (var doc in querySnapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
+      final raw = <Map<String, dynamic>>[];
+      for (final doc in querySnapshot.docs) {
+        final d = doc.data();
+        if (d == null) continue;
+        final data = Map<String, dynamic>.from(d);
         data['messageId'] = doc.id;
-        messages.add(data);
-
-        // Track the oldest message timestamp for next pagination
-        final createdAt = data['createdAt'] as Timestamp?;
-        if (createdAt != null) {
-          if (newLastMessage == null ||
-              createdAt.compareTo(newLastMessage) < 0) {
-            newLastMessage = createdAt;
-          }
-        }
+        raw.add(data);
       }
 
-      // Reverse to show oldest first (chronological order)
-      // Use reversed.toList() to create a new reversed list
-      final reversedMessages = messages.reversed.toList();
+      raw.sort((a, b) {
+        final ta = (a['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+        final tb = (b['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+        return ta.compareTo(tb);
+      });
 
-      return {
-        'messages': reversedMessages,
-        'lastMessage': newLastMessage,
-        'hasMore': querySnapshot.docs.length == limit,
-      };
+      if (kDebugMode) {
+        print(
+          'fetchOlderChatMessagesPage: room=$chatRoomId count=${raw.length} hasMore=${querySnapshot.docs.length >= limit}',
+        );
+      }
+
+      return ChatOlderMessagesPage(
+        messagesChronological: raw,
+        oldestDocument:
+            querySnapshot.docs.isEmpty ? null : querySnapshot.docs.last,
+        hasMore: querySnapshot.docs.length >= limit,
+      );
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(
         exception,
         stackTrace,
-        'FirestoreService.getChatMessagesPaginated',
+        'FirestoreService.fetchOlderChatMessagesPage',
       );
       rethrow;
     }
@@ -5098,7 +5310,7 @@ class FirestoreService {
                 await _firestore
                     .collection('users')
                     .where('phoneNumber', whereIn: batch)
-                    .where('appIdentifier', isEqualTo: 'festivalrumor')
+                    .where('appIdentifier', isEqualTo: appUserIdentifier)
                     .get();
 
             for (var doc in querySnapshot.docs) {
@@ -5164,7 +5376,7 @@ class FirestoreService {
             do {
               Query query = _firestore
                   .collection('users')
-                  .where('appIdentifier', isEqualTo: 'festivalrumor')
+                  .where('appIdentifier', isEqualTo: appUserIdentifier)
                   .where('phoneNumber', isNotEqualTo: null)
                   .limit(pageSize);
 
@@ -5382,11 +5594,17 @@ class FirestoreService {
       // Ensure creator is in members list
       final allMembers = <String>{...memberIds, creatorId}.toList();
 
+      final memberJoinedAt = <String, dynamic>{};
+      for (final id in allMembers) {
+        memberJoinedAt[id] = FieldValue.serverTimestamp();
+      }
+
       final chatRoomData = <String, dynamic>{
         'name': chatRoomName,
         'isPublic': false,
         'createdBy': creatorId,
         'members': allMembers,
+        'memberJoinedAt': memberJoinedAt,
         'createdAt': FieldValue.serverTimestamp(),
         'lastMessage': null,
         'lastMessageTime': null,
@@ -5491,10 +5709,14 @@ class FirestoreService {
         return false;
       }
 
-      await chatRoomRef.update({
+      final updates = <String, dynamic>{
         'members': FieldValue.arrayUnion(newMemberIds),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      };
+      for (final id in newMemberIds) {
+        updates['memberJoinedAt.$id'] = FieldValue.serverTimestamp();
+      }
+      await chatRoomRef.update(updates);
 
       if (kDebugMode) {
         print(
@@ -5560,6 +5782,7 @@ class FirestoreService {
       await chatRoomRef.update({
         'members': FieldValue.arrayRemove([memberIdToRemove]),
         'updatedAt': FieldValue.serverTimestamp(),
+        'memberJoinedAt.$memberIdToRemove': FieldValue.delete(),
       });
 
       if (kDebugMode) {
@@ -5602,6 +5825,7 @@ class FirestoreService {
       await chatRoomRef.update({
         'members': FieldValue.arrayRemove([userId]),
         'updatedAt': FieldValue.serverTimestamp(),
+        'memberJoinedAt.$userId': FieldValue.delete(),
       });
 
       if (kDebugMode) {
@@ -6097,6 +6321,9 @@ class FirestoreService {
           }
         }
       }
+
+      // Delete shared_posts index refs so festival feeds stop showing this post
+      await _deleteSharedPostRefs(postId, targetCollection);
 
       // Delete media files from Firebase Storage
       if (mediaPaths.isNotEmpty) {

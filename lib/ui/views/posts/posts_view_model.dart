@@ -7,6 +7,8 @@ import '../../../core/di/locator.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/network_service.dart';
+import '../../../core/services/navigation_service.dart';
+import '../../../core/router/app_router.dart';
 import '../homeview/post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -28,14 +30,23 @@ class PostsViewModel extends BaseViewModel {
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
   final NetworkService _networkService = locator<NetworkService>();
+  final NavigationService _navigationService = locator<NavigationService>();
   
-  // Real posts data from Firestore
   List<PostModel> _posts = [];
   String? _collectionName;
   StreamSubscription<List<Map<String, dynamic>>>? _postsSubscription;
 
+  final List<String> _deletedPostIds = [];
+  bool _wasEdited = false;
+
   List<PostModel> get posts => _posts;
   String? get collectionName => _collectionName;
+  bool get hasChanges => _deletedPostIds.isNotEmpty || _wasEdited;
+
+  Map<String, dynamic> get changeResult => {
+    'deletedPostIds': List<String>.from(_deletedPostIds),
+    'wasEdited': _wasEdited,
+  };
 
   /// Initialize with posts data from arguments
   /// [postsData] - List of post data maps from Firestore
@@ -558,15 +569,14 @@ class PostsViewModel extends BaseViewModel {
         }
       }
 
-      // Remove post from local list
+      _deletedPostIds.add(postId);
+
       _posts.removeAt(postIndex);
       notifyListeners();
 
-      // Close loading dialog
       if (context.mounted) {
         Navigator.of(context).pop();
         
-        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Post deleted successfully'),
@@ -575,9 +585,8 @@ class PostsViewModel extends BaseViewModel {
           ),
         );
 
-        // Navigate back if no posts left
         if (_posts.isEmpty && context.mounted) {
-          Navigator.of(context).pop();
+          Navigator.of(context).pop(changeResult);
         }
       }
 
@@ -660,15 +669,22 @@ class PostsViewModel extends BaseViewModel {
     }
   }
 
+  Future<void> navigateToEditPost(BuildContext context, PostModel post) async {
+    final result = await _navigationService.navigateTo<bool>(
+      AppRoutes.editPost,
+      arguments: post,
+    );
+    if (result == true) {
+      _wasEdited = true;
+      notifyListeners();
+    }
+  }
+
   @override
   void onDispose() {
-    // Cancel the real-time listener when view is disposed
     _postsSubscription?.cancel();
     _postsSubscription = null;
-    
-    // Clear references to prevent memory leaks
     _posts.clear();
-    
     super.onDispose();
   }
 

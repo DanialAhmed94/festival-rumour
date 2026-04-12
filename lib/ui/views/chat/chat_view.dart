@@ -853,17 +853,43 @@ class ChatView extends BaseView<ChatViewModel> {
       );
     }
 
-    // Messages list
+    // Messages list (optional top row while loading older pages)
+    final loadingOlder = viewModel.isLoadingOlderMessages;
+    final count = viewModel.messages.length;
     return ListView.builder(
       controller: viewModel.scrollController,
+      cacheExtent: 320,
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingM,
         vertical: AppDimensions.paddingS,
       ),
-      itemCount: viewModel.messages.length,
+      itemCount: count + (loadingOlder ? 1 : 0),
       itemBuilder: (context, index) {
-        final message = viewModel.messages[index];
-        return _buildMessageBubble(context, viewModel, message);
+        if (loadingOlder && index == 0) {
+          return const RepaintBoundary(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: AppDimensions.paddingM),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.black54,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        final messageIndex = loadingOlder ? index - 1 : index;
+        final message = viewModel.messages[messageIndex];
+        return RepaintBoundary(
+          key: ValueKey<String>(
+            message.messageId ?? 'idx_$messageIndex',
+          ),
+          child: _buildMessageBubble(context, viewModel, message),
+        );
       },
     );
   }
@@ -889,30 +915,7 @@ class ChatView extends BaseView<ChatViewModel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isCurrentUser) ...[
-              // User avatar (only for other users)
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.primary.withOpacity(0.3),
-                backgroundImage:
-                    message.userPhotoUrl != null &&
-                            message.userPhotoUrl!.isNotEmpty
-                        ? NetworkImage(message.userPhotoUrl!)
-                        : null,
-                child:
-                    message.userPhotoUrl == null ||
-                            message.userPhotoUrl!.isEmpty
-                        ? Text(
-                          message.username.isNotEmpty
-                              ? message.username[0].toUpperCase()
-                              : 'U',
-                          style: const TextStyle(
-                            color: AppColors.black,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        )
-                        : null,
-              ),
+              _buildMessageAvatar(viewModel, message),
               const SizedBox(width: AppDimensions.spaceS),
             ],
 
@@ -936,7 +939,7 @@ class ChatView extends BaseView<ChatViewModel> {
                           bottom: AppDimensions.spaceXS,
                         ),
                         child: ResponsiveTextWidget(
-                          message.username,
+                          viewModel.getUserDisplayName(message.userId) ?? message.username,
                           textType: TextType.caption,
                           fontSize: 12,
                           color: Colors.black,
@@ -983,34 +986,36 @@ class ChatView extends BaseView<ChatViewModel> {
 
             if (isCurrentUser) ...[
               const SizedBox(width: AppDimensions.spaceS),
-              // User avatar (only for current user)
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.primary.withOpacity(0.3),
-                backgroundImage:
-                    message.userPhotoUrl != null &&
-                            message.userPhotoUrl!.isNotEmpty
-                        ? NetworkImage(message.userPhotoUrl!)
-                        : null,
-                child:
-                    message.userPhotoUrl == null ||
-                            message.userPhotoUrl!.isEmpty
-                        ? Text(
-                          message.username.isNotEmpty
-                              ? message.username[0].toUpperCase()
-                              : 'U',
-                          style: const TextStyle(
-                            color: AppColors.black,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        )
-                        : null,
-              ),
+              _buildMessageAvatar(viewModel, message),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  /// Build a message avatar resolving the photo from the cache (single source of truth).
+  Widget _buildMessageAvatar(ChatViewModel viewModel, ChatMessageModel message) {
+    final photoUrl = viewModel.getUserPhotoUrl(message.userId) ?? message.userPhotoUrl;
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: AppColors.primary.withOpacity(0.3),
+      backgroundImage: photoUrl != null && photoUrl.isNotEmpty
+          ? NetworkImage(photoUrl)
+          : null,
+      child: photoUrl == null || photoUrl.isEmpty
+          ? Text(
+              () {
+                final name = viewModel.getUserDisplayName(message.userId) ?? message.username;
+                return name.isNotEmpty ? name[0].toUpperCase() : 'U';
+              }(),
+              style: const TextStyle(
+                color: AppColors.black,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          : null,
     );
   }
 

@@ -247,6 +247,22 @@ class FestivalView extends BaseView<FestivalViewModel> {
                   
                   SizedBox(width: context.getConditionalSpacing()),
 
+                  IconButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, AppRoutes.allJobs);
+                    },
+                    icon: SvgPicture.asset(
+                      AppAssets.jobicon,
+                      width: AppDimensions.iconXL,
+                      height: AppDimensions.iconXL,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: AppDimensions.searchBarClearButtonWidth,
+                      minHeight: AppDimensions.searchBarClearButtonWidth,
+                    ),
+                  ),
+
                   /// Settings icon - navigates to settings screen
                   IconButton(
                     onPressed: () => viewModel.navigateToSettings(context),

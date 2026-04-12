@@ -369,7 +369,7 @@ class CommentView extends BaseView<CommentViewModel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Profile picture
-          _buildCommentProfileAvatar(comment),
+          _buildCommentProfileAvatar(comment, viewModel),
           const SizedBox(width: AppDimensions.spaceM),
           // Comment content
           Expanded(
@@ -379,7 +379,7 @@ class CommentView extends BaseView<CommentViewModel> {
                 Row(
                   children: [
                     ResponsiveTextWidget(
-                      comment.username,
+                      viewModel.getUserDisplayName(comment.userId) ?? comment.username,
                       textType: TextType.body,
                       color: AppColors.black,
                       fontWeight: FontWeight.bold,
@@ -628,38 +628,41 @@ class CommentView extends BaseView<CommentViewModel> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Smaller avatar for replies
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: AppColors.screenBackground,
-                  child: ClipOval(
-                    child: reply.userPhotoUrl != null && reply.userPhotoUrl!.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: reply.userPhotoUrl!,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            placeholder: (context, url) => const Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.5,
-                                color: AppColors.accent,
+                // Smaller avatar for replies - resolve from cache
+                Builder(builder: (context) {
+                  final replyPhotoUrl = viewModel.getUserPhotoUrl(reply.userId) ?? reply.userPhotoUrl;
+                  return CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.screenBackground,
+                    child: ClipOval(
+                      child: replyPhotoUrl != null && replyPhotoUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: replyPhotoUrl,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              placeholder: (context, url) => const Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: AppColors.accent,
+                                ),
                               ),
-                            ),
-                            errorWidget: (context, url, error) => Image.asset(
+                              errorWidget: (context, url, error) => Image.asset(
+                                AppAssets.profile,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                              ),
+                            )
+                          : Image.asset(
                               AppAssets.profile,
                               fit: BoxFit.cover,
                               width: double.infinity,
                               height: double.infinity,
                             ),
-                          )
-                        : Image.asset(
-                            AppAssets.profile,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                          ),
-                  ),
-                ),
+                    ),
+                  );
+                }),
                 const SizedBox(width: AppDimensions.spaceS),
                 // Reply content
                 Expanded(
@@ -669,7 +672,7 @@ class CommentView extends BaseView<CommentViewModel> {
                       Row(
                         children: [
                           ResponsiveTextWidget(
-                            reply.username,
+                            viewModel.getUserDisplayName(reply.userId) ?? reply.username,
                             textType: TextType.caption,
                             color: AppColors.black,
                             fontWeight: FontWeight.bold,
@@ -699,16 +702,18 @@ class CommentView extends BaseView<CommentViewModel> {
     );
   }
 
-  /// Build profile avatar for comment with network image and asset fallback
-  /// Uses CachedNetworkImage for better performance and caching
-  Widget _buildCommentProfileAvatar(CommentModel comment) {
+  /// Build profile avatar for comment with network image and asset fallback.
+  /// Resolves photo URL from the UserPhotoCacheService (single source of truth)
+  /// instead of the denormalized snapshot stored on the comment document.
+  Widget _buildCommentProfileAvatar(CommentModel comment, CommentViewModel viewModel) {
+    final photoUrl = viewModel.getUserPhotoUrl(comment.userId) ?? comment.userPhotoUrl;
     return CircleAvatar(
       radius: 20,
       backgroundColor: AppColors.screenBackground,
       child: ClipOval(
-        child: comment.userPhotoUrl != null && comment.userPhotoUrl!.isNotEmpty
+        child: photoUrl != null && photoUrl.isNotEmpty
             ? CachedNetworkImage(
-                imageUrl: comment.userPhotoUrl!,
+                imageUrl: photoUrl,
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: double.infinity,
@@ -719,7 +724,6 @@ class CommentView extends BaseView<CommentViewModel> {
                   ),
                 ),
                 errorWidget: (context, url, error) {
-                  // Fallback to asset image if network image fails
                   return Image.asset(
                     AppAssets.profile,
                     fit: BoxFit.cover,

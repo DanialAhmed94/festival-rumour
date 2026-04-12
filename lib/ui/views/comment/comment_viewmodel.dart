@@ -13,12 +13,14 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_durations.dart';
 import '../homeview/post_model.dart';
 import 'comment_model.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 
 class CommentViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
   final ErrorHandlerService _errorHandler = ErrorHandlerService();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
   TextEditingController commentController = TextEditingController();
   final ScrollController scrollController = ScrollController();
   bool _showEmojiGrid = false;
@@ -136,10 +138,38 @@ class CommentViewModel extends BaseViewModel {
   
   String? get collectionName => _collectionName;
 
-  /// Initialize with post data and optional collection name
+  /// Get the live profile photo URL for a user from the cache (single source of truth).
+  String? getUserPhotoUrl(String? userId) {
+    if (userId == null || userId.isEmpty) return null;
+    return _userPhotoCacheService.getCachedPhotoUrl(userId);
+  }
+
+  /// Get the live display name for a user from the cache.
+  String? getUserDisplayName(String? userId) {
+    if (userId == null || userId.isEmpty) return null;
+    return _userPhotoCacheService.getCachedDisplayName(userId);
+  }
+
+  /// Pre-fetch profile photos for all users in the current comment list.
+  Future<void> _prefetchUserPhotos() async {
+    final userIds = comments
+        .map((c) => c.userId)
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (userIds.isEmpty) return;
+    await _userPhotoCacheService.batchFetch(userIds);
+    if (!isDisposed) notifyListeners();
+  }
+
   void initialize(PostModel? post, {String? collectionName}) {
     _post = post;
     _collectionName = collectionName;
+    if (kDebugMode) {
+      print('💬 [CommentVM] initialize: postId=${post?.postId}, '
+          'collectionName=$collectionName, '
+          'post.sourceCollection=${post?.sourceCollection}');
+    }
     if (post != null && post.postId != null) {
       loadInitialComments();
     }
@@ -192,6 +222,9 @@ class CommentViewModel extends BaseViewModel {
 
       // Start real-time listener for loaded comments
       _startCommentsListener();
+
+      // Pre-fetch profile photos for all comment authors
+      unawaited(_prefetchUserPhotos());
       
       // Reset scroll state and scroll to bottom after initial load
       _userScrolledUp = false;
@@ -319,6 +352,7 @@ class CommentViewModel extends BaseViewModel {
             // Only notify listeners if data actually changed
             if (hasChanges) {
               _updateLoadedCommentIds(); // Update cached IDs
+              unawaited(_prefetchUserPhotos());
             notifyListeners();
             
               // Smart scroll: only scroll if user is near bottom (on first page)
@@ -632,49 +666,15 @@ class CommentViewModel extends BaseViewModel {
     if (commentText.isEmpty) return;
 
     await handleAsync(() async {
-              // Get user info - prioritize Firestore over Firebase Auth
-              // because Firestore has the uploaded profile image
-              String username = _authService.userDisplayName ?? 
+              // Get user info from profile cache (single source of truth)
+              String? cachedName = await _userPhotoCacheService.getDisplayName(currentUser.uid);
+              String username = cachedName ??
+                               _authService.userDisplayName ?? 
                                currentUser.email?.split('@')[0] ?? 
                                'Unknown User';
               
-              String? userPhotoUrl;
-              
-              // Try to get from Firestore user data (where we save the uploaded image)
-              try {
-                final userData = await _firestoreService.getUserData(currentUser.uid);
-                if (userData != null) {
-                  if (userData['displayName'] != null) {
-                    username = userData['displayName'] as String;
-                  }
-                  if (userData['photoUrl'] != null && (userData['photoUrl'] as String).isNotEmpty) {
-                    userPhotoUrl = userData['photoUrl'] as String?;
-                    if (kDebugMode) {
-                      print('✅ Got userPhotoUrl from Firestore for comment: $userPhotoUrl');
-                    }
-                  } else {
-                    if (kDebugMode) {
-                      print('⚠️ Firestore userData exists but photoUrl is null or empty for comment');
-                    }
-                  }
-                }
-              } catch (e) {
-                if (kDebugMode) {
-                  print('Could not fetch user data from Firestore: $e');
-                }
-              }
-              
-              // Fallback to Firebase Auth photoURL if not in Firestore
-              if (userPhotoUrl == null || userPhotoUrl.isEmpty) {
-                userPhotoUrl = _authService.userPhotoUrl;
-                if (kDebugMode) {
-                  print('📸 Got userPhotoUrl from Firebase Auth for comment: $userPhotoUrl');
-                }
-              }
-              
-              if (kDebugMode) {
-                print('🎯 Final userPhotoUrl for comment: $userPhotoUrl');
-              }
+              String? userPhotoUrl = await _userPhotoCacheService.getPhotoUrl(currentUser.uid);
+              userPhotoUrl ??= _authService.userPhotoUrl;
 
       // Optimistically add comment to UI immediately (before Firestore save)
       // This provides instant feedback to the user
@@ -703,7 +703,9 @@ class CommentViewModel extends BaseViewModel {
         print('✨ Optimistically added comment to UI and scrolled to bottom');
       }
 
-      // Save comment to Firestore
+      if (kDebugMode) {
+        print('💬 [CommentVM] Saving comment to Firestore: postId=${_post!.postId!}, collectionName=$_collectionName');
+      }
       await _firestoreService.saveComment(
         postId: _post!.postId!,
         userId: currentUser.uid,
@@ -796,6 +798,18 @@ class CommentViewModel extends BaseViewModel {
       
       if (kDebugMode) {
         print('📥 Loaded ${processedReplies.length} replies immediately for comment: $commentId');
+      }
+
+      // Pre-fetch profile photos for reply authors
+      final replyUserIds = processedReplies
+          .map((r) => r.userId)
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      if (replyUserIds.isNotEmpty) {
+        unawaited(_userPhotoCacheService.batchFetch(replyUserIds).then((_) {
+          if (!isDisposed) notifyListeners();
+        }));
       }
       
       notifyListeners();
@@ -971,32 +985,15 @@ class CommentViewModel extends BaseViewModel {
     if (currentUser == null) return;
     
     await handleAsync(() async {
-      // Get user info
-      String username = _authService.userDisplayName ?? 
+      // Get user info from profile cache (single source of truth)
+      String? cachedName = await _userPhotoCacheService.getDisplayName(currentUser.uid);
+      String username = cachedName ??
+                       _authService.userDisplayName ?? 
                        currentUser.email?.split('@')[0] ?? 
                        'Unknown User';
       
-      String? userPhotoUrl;
-      
-      try {
-        final userData = await _firestoreService.getUserData(currentUser.uid);
-        if (userData != null) {
-          if (userData['displayName'] != null) {
-            username = userData['displayName'] as String;
-          }
-          if (userData['photoUrl'] != null && (userData['photoUrl'] as String).isNotEmpty) {
-            userPhotoUrl = userData['photoUrl'] as String?;
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('Could not fetch user data from Firestore: $e');
-        }
-      }
-      
-      if (userPhotoUrl == null || userPhotoUrl.isEmpty) {
-        userPhotoUrl = _authService.userPhotoUrl;
-      }
+      String? userPhotoUrl = await _userPhotoCacheService.getPhotoUrl(currentUser.uid);
+      userPhotoUrl ??= _authService.userPhotoUrl;
       
       // Optimistically add reply to UI
       final now = DateTime.now();

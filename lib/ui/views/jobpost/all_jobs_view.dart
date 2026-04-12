@@ -44,7 +44,7 @@ class AllJobsView extends BaseView<AllJobsViewModel> {
                 Expanded(
                   child: ResponsiveTextWidget(
                     'Browse Jobs',
-                    textType: TextType.title,
+                    fontSize: context.getConditionalMainFont(),
                     fontWeight: FontWeight.bold,
                     color: AppColors.white,
                     maxLines: 1,

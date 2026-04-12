@@ -12,6 +12,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../exceptions/app_exception.dart';
 import '../exceptions/exception_mapper.dart';
 import 'error_handler_service.dart';
+import 'firestore_service.dart';
 
 /// Auth result class for handling authentication responses
 class AuthResult {
@@ -367,44 +368,25 @@ class AuthService {
   }
 
   /// Check if email is already registered
-  /// Returns true if email is available
-  /// Throws AppException (mapped by ExceptionMapper) if email is already taken or there's an error
+  /// Returns true if email is available.
+  /// Throws AppException (mapped by ExceptionMapper) if email is already taken or there's an error.
   ///
-  /// Note: This method attempts to create a temporary user to check availability.
-  /// If the email is available, the temporary user is immediately deleted.
-  /// If the email is already taken, it throws an exception that will be handled by the global error handler.
+  /// Uses Firestore query instead of the removed `fetchSignInMethodsForEmail`
+  /// (deprecated and removed in firebase_auth 5.x+).
   Future<bool> checkEmailAvailability(String email) async {
-    // Try to create a temporary user with a random password to check if email exists
-    // We'll delete the user immediately if creation succeeds
-    final tempPassword = 'TempCheck${DateTime.now().millisecondsSinceEpoch}';
-
     try {
-      final userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: tempPassword,
-      );
-
-      // If we get here, email is available - delete the temporary user
-      if (userCredential.user != null) {
-        await userCredential.user!.delete();
+      final exists = await FirestoreService().checkUserExistsByEmail(email);
+      if (exists) {
+        throw FirebaseAuthException(
+          code: 'email-already-in-use',
+          message: 'This email is already registered. Please log in instead.',
+        );
       }
-
-      // Email is available
       return true;
     } on FirebaseAuthException catch (e) {
-      // If email is already in use, map it to AuthException using ExceptionMapper
-      if (e.code == 'email-already-in-use') {
-        // Use ExceptionMapper to get the proper exception type
-        final exception = ExceptionMapper.mapToAppException(e);
-        throw exception;
-      }
-
-      // For other Firebase errors, let ExceptionMapper handle them
       final exception = ExceptionMapper.mapToAppException(e);
       throw exception;
     } catch (e, stackTrace) {
-      // Let ExceptionMapper handle all other exceptions (network, timeout, etc.)
-      // This will be caught by handleAsync in the ViewModel and handled centrally
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       throw exception;
     }

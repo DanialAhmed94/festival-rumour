@@ -19,11 +19,13 @@ import '../../../core/exceptions/app_exception.dart';
 import '../../../core/exceptions/exception_mapper.dart';
 import '../../../services/notification_service.dart';
 import 'chat_message_model.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 
 class ChatViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
 
   /// Don't use post-image URLs as profile photos (they often 404). Return null for those.
   static String? _sanitizeProfilePhotoUrl(String? url) {
@@ -35,11 +37,66 @@ class ChatViewModel extends BaseViewModel {
     return url.trim();
   }
 
+  /// Get the live profile photo URL for a user from the cache (single source of truth).
+  String? getUserPhotoUrl(String? userId) {
+    if (userId == null || userId.isEmpty) return null;
+    return _userPhotoCacheService.getCachedPhotoUrl(userId);
+  }
+
+  /// Get the live display name for a user from the cache.
+  String? getUserDisplayName(String? userId) {
+    if (userId == null || userId.isEmpty) return null;
+    return _userPhotoCacheService.getCachedDisplayName(userId);
+  }
+
+  /// Pre-fetch profile photos for all unique users in the visible messages list.
+  Future<void> _prefetchMessageUserPhotos() async {
+    final userIds = _visibleChatMessages
+        .map((m) => m.userId)
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (userIds.isEmpty) return;
+    await _userPhotoCacheService.batchFetch(userIds);
+    if (!isDisposed) notifyListeners();
+  }
+
   int _selectedTab = 0; // 0 = Public, 1 = Private
   bool _isInChatRoom = false;
   Map<String, dynamic>? _currentChatRoom;
   String? _chatRoomId; // Chat room ID from navigation
-  StreamSubscription<List<Map<String, dynamic>>>? _messagesSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _messagesSubscription;
+
+  static const int _chatPageSize = FirestoreService.chatMessagesPageSize;
+
+  /// Older-than-live-tail pages (oldest → newest).
+  final List<ChatMessageModel> _olderPagedMessages = [];
+
+  /// Live tail from Firestore (newest [chatMessagesPageSize] messages), chronological.
+  List<ChatMessageModel> _liveTailMessagesChronological = [];
+
+  final Map<String, ChatMessageModel> _liveTailById = {};
+  Set<String> _previousLiveTailMessageIds = {};
+
+  DocumentSnapshot<Map<String, dynamic>>? _liveTailOldestSnapshot;
+  QueryDocumentSnapshot<Map<String, dynamic>>? _olderPaginationCursor;
+
+  bool _hasMoreOlderMessages = true;
+  bool _isLoadingOlderMessages = false;
+  DateTime? _lastOlderLoadAttempt;
+  bool _stickToBottom = true;
+  bool _scrollPaginationListenerAttached = false;
+
+  /// Throttles scroll handling so we do not run pagination / stick-to-bottom logic every frame.
+  Timer? _scrollHandlingThrottle;
+
+  /// O(1) membership for messages already in [_olderPagedMessages].
+  final Set<String> _olderMessageIds = {};
+
+  /// Rebuilt when [_messages] or [_deletedMessageIds] changes — avoids O(n²) from filtering in [messages] getter on each ListView item.
+  List<ChatMessageModel> _visibleChatMessages = [];
+
+  /// Merged older + tail before visibility cutoff (hidden / memberJoined).
   List<ChatMessageModel> _messages = [];
   String? _currentUsername;
   String? _currentUserPhotoUrl;
@@ -49,13 +106,15 @@ class ChatViewModel extends BaseViewModel {
   int get selectedTab => _selectedTab;
   bool get isInChatRoom => _isInChatRoom;
   Map<String, dynamic>? get currentChatRoom => _currentChatRoom;
-  List<ChatMessageModel> get messages => _messages
-      .where((message) => !_deletedMessageIds.contains(message.messageId))
-      .toList(); // Filter out deleted messages
+  List<ChatMessageModel> get messages => _visibleChatMessages;
   String? get chatRoomId => _chatRoomId;
 
   bool _isSendingMessage = false;
   bool get isSendingMessage => _isSendingMessage;
+
+  bool get isLoadingOlderMessages => _isLoadingOlderMessages;
+
+  bool get hasMoreOlderChatMessages => _hasMoreOlderMessages;
 
   bool _isDeletingPrivateRoom = false;
   bool get isDeletingPrivateRoom => _isDeletingPrivateRoom;
@@ -122,6 +181,17 @@ class ChatViewModel extends BaseViewModel {
 
   /// When opening a room, if user had hidden it we only show messages after this time.
   DateTime? _hiddenAtForCurrentRoom;
+
+  /// Latest time the current user (re)joined this room; older messages are hidden until they leave again.
+  DateTime? _memberJoinedAtCutoffForCurrentRoom;
+
+  DateTime? _effectiveMessageVisibilityCutoff() {
+    final h = _hiddenAtForCurrentRoom;
+    final j = _memberJoinedAtCutoffForCurrentRoom;
+    if (h == null) return j;
+    if (j == null) return h;
+    return h.isAfter(j) ? h : j;
+  }
 
   /// When we started listening to this room (for "new message" unhide: only unhide if a message arrived after this).
   DateTime? _roomOpenedAt;
@@ -398,6 +468,9 @@ class ChatViewModel extends BaseViewModel {
       final now = DateTime.now();
       _hiddenChatRoomTimestamps[chatRoomId] = now;
       _selectedChatRoomIds.remove(chatRoomId);
+      try {
+        locator<ChatBadgeService>().clearBadge(chatRoomId);
+      } catch (_) {}
       notifyListeners();
       if (kDebugMode) {
         print('[ChatHide] addHiddenChatRoom: hid $chatRoomId at $now');
@@ -524,9 +597,21 @@ class ChatViewModel extends BaseViewModel {
             }
             for (final id in toShowInList) {
               _hiddenChatRoomTimestamps.remove(id);
+              // Also remove from Firestore so the stale hidden entry doesn't
+              // cause the "both users hidden → hard-delete room" logic to
+              // trigger when the other user hides the same DM later.
+              if (currentUserId.isNotEmpty) {
+                unawaited(
+                  _firestoreService.removeHiddenChatRoom(
+                    userId: currentUserId,
+                    chatRoomId: id,
+                  ),
+                );
+              }
             }
             _privateChats = enriched;
             final roomIds = enriched
+                .where((r) => !_hiddenChatRoomTimestamps.containsKey(r['chatRoomId'] as String?))
                 .map((r) => r['chatRoomId'] as String?)
                 .where((id) => id != null && id.isNotEmpty)
                 .cast<String>()
@@ -622,10 +707,26 @@ class ChatViewModel extends BaseViewModel {
       print('[ChatHide] initializeChatRoom: roomId=$chatRoomId, clearing messages & hidden state');
     }
     // Clear any existing messages and cancel previous subscription
+    _scrollHandlingThrottle?.cancel();
+    _scrollHandlingThrottle = null;
+    _detachScrollPaginationListener();
     _messages.clear();
+    _visibleChatMessages = [];
+    _olderPagedMessages.clear();
+    _olderMessageIds.clear();
+    _liveTailMessagesChronological = [];
+    _liveTailById.clear();
+    _previousLiveTailMessageIds.clear();
+    _liveTailOldestSnapshot = null;
+    _olderPaginationCursor = null;
+    _hasMoreOlderMessages = true;
+    _isLoadingOlderMessages = false;
+    _lastOlderLoadAttempt = null;
+    _stickToBottom = true;
     _messagesSubscription?.cancel();
     _messagesSubscription = null;
     _hiddenAtForCurrentRoom = null; // Resolve fresh in _initializeChatRoomAsync
+    _memberJoinedAtCutoffForCurrentRoom = null;
 
     _chatRoomId = chatRoomId;
     locator<CurrentChatRoomService>().setCurrentChatRoom(chatRoomId);
@@ -698,21 +799,16 @@ class ChatViewModel extends BaseViewModel {
     _currentUserId = currentUser.uid;
 
     try {
-      // Get user data from Firestore
-      final userData = await _firestoreService.getUserData(currentUser.uid);
-      if (userData != null) {
-        _currentUsername = userData['displayName'] as String? ?? 
-                          userData['username'] as String? ?? 
-                          currentUser.displayName ?? 
-                          'User';
-        _currentUserPhotoUrl = _sanitizeProfilePhotoUrl(
-          userData['photoUrl'] as String? ?? currentUser.photoURL,
-        );
-      } else {
-        // Fallback to Firebase Auth data
-        _currentUsername = currentUser.displayName ?? 'User';
-        _currentUserPhotoUrl = _sanitizeProfilePhotoUrl(currentUser.photoURL);
-      }
+      // Get user data from the profile cache (Firestore-backed single source of truth)
+      final cachedName = await _userPhotoCacheService.getDisplayName(currentUser.uid);
+      final cachedPhoto = await _userPhotoCacheService.getPhotoUrl(currentUser.uid);
+
+      _currentUsername = cachedName ??
+                        currentUser.displayName ??
+                        'User';
+      _currentUserPhotoUrl = _sanitizeProfilePhotoUrl(
+        cachedPhoto ?? currentUser.photoURL,
+      );
     } catch (e) {
       if (kDebugMode) {
         print('Error loading user info: $e');
@@ -747,6 +843,17 @@ class ChatViewModel extends BaseViewModel {
           'members': data['members'] as List<dynamic>? ?? [],
           'createdBy': data['createdBy'] as String?,
         };
+        _memberJoinedAtCutoffForCurrentRoom = null;
+        final uid = _currentUserId;
+        if (uid != null) {
+          final mj = data['memberJoinedAt'];
+          if (mj is Map) {
+            final raw = mj[uid];
+            if (raw is Timestamp) {
+              _memberJoinedAtCutoffForCurrentRoom = raw.toDate();
+            }
+          }
+        }
         notifyListeners();
       }
     } catch (e) {
@@ -756,87 +863,336 @@ class ChatViewModel extends BaseViewModel {
     }
   }
 
-  /// Start listening to real-time messages
+  ChatMessageModel? _mapRawToChatMessage(
+    Map<String, dynamic> messageData, {
+    String? messageIdOverride,
+  }) {
+    try {
+      final lat = messageData['lat'];
+      final lng = messageData['lng'];
+      return ChatMessageModel(
+        messageId: messageIdOverride ?? messageData['messageId'] as String?,
+        userId: messageData['userId'] as String? ?? '',
+        username: messageData['username'] as String? ?? 'Unknown',
+        content: messageData['content'] as String? ?? '',
+        createdAt:
+            (messageData['createdAt'] as Timestamp?)?.toDate() ??
+            DateTime.now(),
+        userPhotoUrl: _sanitizeProfilePhotoUrl(
+          messageData['userPhotoUrl'] as String?,
+        ),
+        chatRoomId:
+            messageData['chatRoomId'] as String? ?? _chatRoomId ?? '',
+        type: messageData['type'] as String?,
+        lat: lat is num ? lat.toDouble() : null,
+        lng: lng is num ? lng.toDouble() : null,
+        festivalName: messageData['festivalName'] as String?,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error parsing message: $e');
+      }
+      return null;
+    }
+  }
+
+  ChatMessageModel? _mapDocToChatMessage(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final raw = doc.data();
+    if (raw == null) return null;
+    return _mapRawToChatMessage(raw, messageIdOverride: doc.id);
+  }
+
+  void _attachScrollPaginationListener() {
+    if (_scrollPaginationListenerAttached) return;
+    scrollController.addListener(_onChatScrollPagination);
+    _scrollPaginationListenerAttached = true;
+  }
+
+  void _detachScrollPaginationListener() {
+    if (!_scrollPaginationListenerAttached) return;
+    _scrollHandlingThrottle?.cancel();
+    _scrollHandlingThrottle = null;
+    scrollController.removeListener(_onChatScrollPagination);
+    _scrollPaginationListenerAttached = false;
+  }
+
+  void _onChatScrollPagination() {
+    _scrollHandlingThrottle?.cancel();
+    _scrollHandlingThrottle = Timer(const Duration(milliseconds: 100), () {
+      if (isDisposed) return;
+      _evaluateChatScrollMetrics();
+    });
+  }
+
+  void _evaluateChatScrollMetrics() {
+    if (!scrollController.hasClients || _chatRoomId == null) return;
+    final pos = scrollController.position;
+    const topThreshold = 100.0;
+    final cursor = _olderPaginationCursor ?? _liveTailOldestSnapshot;
+    if (pos.pixels <= topThreshold &&
+        _hasMoreOlderMessages &&
+        !_isLoadingOlderMessages &&
+        cursor != null) {
+      final now = DateTime.now();
+      if (_lastOlderLoadAttempt != null &&
+          now.difference(_lastOlderLoadAttempt!) <
+              const Duration(milliseconds: 500)) {
+        return;
+      }
+      _lastOlderLoadAttempt = now;
+      unawaited(loadOlderChatMessages());
+    }
+
+    const bottomSnap = 80.0;
+    _stickToBottom = pos.pixels >= pos.maxScrollExtent - bottomSnap;
+  }
+
+  /// Loads the next 40 older messages when the user scrolls near the top.
+  Future<void> loadOlderChatMessages() async {
+    if (_isLoadingOlderMessages ||
+        !_hasMoreOlderMessages ||
+        _chatRoomId == null) {
+      return;
+    }
+    final cursor = _olderPaginationCursor ?? _liveTailOldestSnapshot;
+    if (cursor == null) return;
+
+    _isLoadingOlderMessages = true;
+    notifyListeners();
+
+    final prevMax =
+        scrollController.hasClients
+            ? scrollController.position.maxScrollExtent
+            : 0.0;
+    final prevPixels =
+        scrollController.hasClients ? scrollController.position.pixels : 0.0;
+
+    try {
+      final page = await _firestoreService.fetchOlderChatMessagesPage(
+        chatRoomId: _chatRoomId!,
+        startAfterDocument: cursor,
+        limit: _chatPageSize,
+      );
+      if (isDisposed) return;
+
+      if (page.messagesChronological.isEmpty) {
+        _hasMoreOlderMessages = false;
+      } else {
+        final batchAsc = <ChatMessageModel>[];
+        for (final raw in page.messagesChronological) {
+          final m = _mapRawToChatMessage(raw);
+          if (m == null || m.messageId == null) continue;
+          final id = m.messageId!;
+          if (_olderMessageIds.contains(id) || _liveTailById.containsKey(id)) {
+            continue;
+          }
+          batchAsc.add(m);
+        }
+        _mergeOlderAscendingBatch(batchAsc);
+        _olderPaginationCursor = page.oldestDocument;
+        _hasMoreOlderMessages = page.hasMore;
+      }
+
+      _rebuildMergedMessagesAndApplyCutoff();
+
+      if (kDebugMode) {
+        print(
+          '[ChatPaging] older page loaded: +${page.messagesChronological.length} hasMore=$_hasMoreOlderMessages',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('loadOlderChatMessages: $e');
+      }
+    } finally {
+      _isLoadingOlderMessages = false;
+      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (isDisposed || !scrollController.hasClients) return;
+        final newMax = scrollController.position.maxScrollExtent;
+        scrollController.jumpTo(prevPixels + (newMax - prevMax));
+      });
+    }
+  }
+
+  void _rebuildMergedMessagesAndApplyCutoff() {
+    final cutoff = _effectiveMessageVisibilityCutoff();
+    if (cutoff == null) {
+      _messages = [
+        ..._olderPagedMessages,
+        ..._liveTailMessagesChronological,
+      ];
+    } else {
+      _messages = [
+        for (final m in _olderPagedMessages)
+          if (m.createdAt.isAfter(cutoff)) m,
+        for (final m in _liveTailMessagesChronological)
+          if (m.createdAt.isAfter(cutoff)) m,
+      ];
+    }
+    _rebuildVisibleChatMessages();
+    if (kDebugMode) {
+      print(
+        '[ChatPaging] merged: older=${_olderPagedMessages.length} tail=${_liveTailMessagesChronological.length} visible=${_messages.length} cutoff=$cutoff',
+      );
+    }
+  }
+
+  void _rebuildVisibleChatMessages() {
+    if (_deletedMessageIds.isEmpty) {
+      _visibleChatMessages = _messages;
+    } else {
+      _visibleChatMessages = [
+        for (final m in _messages)
+          if (m.messageId == null ||
+              !_deletedMessageIds.contains(m.messageId))
+            m,
+      ];
+    }
+  }
+
+  /// Merges [batchAsc] (oldest → newest) into [_olderPagedMessages] in O(n + m) without full re-sort.
+  void _mergeOlderAscendingBatch(List<ChatMessageModel> batchAsc) {
+    final newOnes = <ChatMessageModel>[];
+    for (final m in batchAsc) {
+      final id = m.messageId;
+      if (id == null) continue;
+      if (_olderMessageIds.contains(id) || _liveTailById.containsKey(id)) {
+        continue;
+      }
+      newOnes.add(m);
+      _olderMessageIds.add(id);
+    }
+    if (newOnes.isEmpty) return;
+
+    if (_olderPagedMessages.isEmpty) {
+      _olderPagedMessages.addAll(newOnes);
+      return;
+    }
+
+    final merged = <ChatMessageModel>[];
+    var i = 0;
+    var j = 0;
+    while (i < _olderPagedMessages.length && j < newOnes.length) {
+      final c = _olderPagedMessages[i].createdAt.compareTo(
+        newOnes[j].createdAt,
+      );
+      if (c <= 0) {
+        merged.add(_olderPagedMessages[i++]);
+      } else {
+        merged.add(newOnes[j++]);
+      }
+    }
+    while (i < _olderPagedMessages.length) {
+      merged.add(_olderPagedMessages[i++]);
+    }
+    while (j < newOnes.length) {
+      merged.add(newOnes[j++]);
+    }
+    _olderPagedMessages
+      ..clear()
+      ..addAll(merged);
+  }
+
+  void _onRecentMessagesSnapshot(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) {
+    if (isDisposed) return;
+
+    final docs = snapshot.docs;
+    final newTailChronological = <ChatMessageModel>[];
+    final newIds = <String>{};
+
+    for (final doc in docs.reversed) {
+      final m = _mapDocToChatMessage(doc);
+      if (m == null) continue;
+      if (m.messageId != null) newIds.add(m.messageId!);
+      newTailChronological.add(m);
+    }
+
+    List<ChatMessageModel>? droppedSorted;
+    if (_previousLiveTailMessageIds.isNotEmpty) {
+      final droppedIds = _previousLiveTailMessageIds.difference(newIds);
+      if (droppedIds.isNotEmpty) {
+        final droppedBatch = <ChatMessageModel>[];
+        for (final id in droppedIds) {
+          final old = _liveTailById[id];
+          if (old == null) continue;
+          if (_olderMessageIds.contains(id) || newIds.contains(id)) continue;
+          droppedBatch.add(old);
+        }
+        if (droppedBatch.isNotEmpty) {
+          droppedBatch.sort(
+            (a, b) => a.createdAt.compareTo(b.createdAt),
+          );
+          droppedSorted = droppedBatch;
+        }
+      }
+    }
+
+    _liveTailById
+      ..clear()
+      ..addEntries([
+        for (final m in newTailChronological)
+          if (m.messageId != null) MapEntry(m.messageId!, m),
+      ]);
+
+    if (droppedSorted != null && droppedSorted.isNotEmpty) {
+      _mergeOlderAscendingBatch(droppedSorted);
+    }
+    _previousLiveTailMessageIds = newIds;
+    _liveTailMessagesChronological = newTailChronological;
+    _liveTailOldestSnapshot = docs.isNotEmpty ? docs.last : null;
+
+    if (_olderPaginationCursor == null) {
+      _hasMoreOlderMessages = docs.length >= _chatPageSize;
+    }
+
+    _rebuildMergedMessagesAndApplyCutoff();
+
+    if (_hiddenAtForCurrentRoom != null &&
+        _chatRoomId != null &&
+        _roomOpenedAt != null) {
+      final hasNewMessageSinceOpen =
+          _messages.any((m) => m.createdAt.isAfter(_roomOpenedAt!));
+      if (hasNewMessageSinceOpen) {
+        unawaited(removeHiddenChatRoom(_chatRoomId!));
+      }
+    }
+
+    if (!isDisposed) setBusy(false);
+    notifyListeners();
+
+    // Pre-fetch profile photos for message authors
+    unawaited(_prefetchMessageUserPhotos());
+
+    if (_stickToBottom) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (isDisposed || !scrollController.hasClients) return;
+        scrollController.animateTo(
+          scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      });
+    }
+  }
+
+  /// Live tail (newest [FirestoreService.chatMessagesPageSize] messages) + scroll to load older pages.
   void _startMessagesListener() {
     if (_chatRoomId == null || isDisposed) return;
 
-    // Cancel existing subscription
     _messagesSubscription?.cancel();
     _messagesSubscription = null;
 
+    _attachScrollPaginationListener();
+
     _messagesSubscription = _firestoreService
-        .getChatMessagesStream(_chatRoomId!, limit: 100)
+        .watchRecentChatMessages(_chatRoomId!, limit: _chatPageSize)
         .listen(
-          (messagesData) {
-            if (isDisposed) return;
-
-            // Convert to ChatMessageModel
-            final newMessages = <ChatMessageModel>[];
-            for (var messageData in messagesData) {
-              try {
-                final lat = messageData['lat'];
-                final lng = messageData['lng'];
-                final message = ChatMessageModel(
-                  messageId: messageData['messageId'] as String?,
-                  userId: messageData['userId'] as String? ?? '',
-                  username: messageData['username'] as String? ?? 'Unknown',
-                  content: messageData['content'] as String? ?? '',
-                  createdAt: (messageData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-                  userPhotoUrl: _sanitizeProfilePhotoUrl(messageData['userPhotoUrl'] as String?),
-                  chatRoomId: messageData['chatRoomId'] as String? ?? _chatRoomId ?? '',
-                  type: messageData['type'] as String?,
-                  lat: lat is num ? lat.toDouble() : null,
-                  lng: lng is num ? lng.toDouble() : null,
-                  festivalName: messageData['festivalName'] as String?,
-                );
-                newMessages.add(message);
-              } catch (e) {
-                if (kDebugMode) {
-                  print('Error parsing message: $e');
-                }
-              }
-            }
-
-            // If user had hidden this chat, show only messages after hide time (no old messages).
-            final list = _hiddenAtForCurrentRoom == null
-                ? newMessages
-                : newMessages
-                    .where((m) => m.createdAt.isAfter(_hiddenAtForCurrentRoom!))
-                    .toList();
-            _messages = list;
-            if (kDebugMode) {
-              print('[ChatHide] messageListener: room=$_chatRoomId rawCount=${newMessages.length} hiddenAt=$_hiddenAtForCurrentRoom filteredCount=${list.length}');
-            }
-            // Unhide only when a message arrives AFTER we opened the room (real-time), not on initial load
-            if (_hiddenAtForCurrentRoom != null &&
-                _chatRoomId != null &&
-                _roomOpenedAt != null) {
-              final hasNewMessageSinceOpen =
-                  list.any((m) => m.createdAt.isAfter(_roomOpenedAt!));
-              if (kDebugMode) {
-                print('[ChatHide] messageListener: roomOpenedAt=$_roomOpenedAt hasNewMessageSinceOpen=$hasNewMessageSinceOpen');
-              }
-              if (hasNewMessageSinceOpen) {
-                if (kDebugMode) {
-                  print('[ChatHide] messageListener: unhiding room $_chatRoomId (new message after open)');
-                }
-                unawaited(removeHiddenChatRoom(_chatRoomId!));
-              }
-            }
-            if (!isDisposed) setBusy(false);
-            notifyListeners();
-
-            // Auto-scroll to bottom after a short delay to allow UI to update
-            Future.delayed(const Duration(milliseconds: 100), () {
-              if (!isDisposed && scrollController.hasClients) {
-                scrollController.animateTo(
-                  scrollController.position.maxScrollExtent,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut,
-                );
-              }
-            });
-          },
+          _onRecentMessagesSnapshot,
           onError: (error, stackTrace) {
             if (kDebugMode) {
               print('Error in messages stream: $error');
@@ -864,24 +1220,46 @@ class ChatViewModel extends BaseViewModel {
     _currentChatRoom = null;
     _chatRoomId = null;
     _hiddenAtForCurrentRoom = null;
+    _memberJoinedAtCutoffForCurrentRoom = null;
     _roomOpenedAt = null;
     if (kDebugMode) {
       print('[ChatHide] exitChatRoom: cleared _hiddenAtForCurrentRoom and _roomOpenedAt');
     }
     locator<CurrentChatRoomService>().clearCurrentChatRoom();
     messageController.clear();
+    _scrollHandlingThrottle?.cancel();
+    _scrollHandlingThrottle = null;
+    _detachScrollPaginationListener();
     _messages.clear();
+    _visibleChatMessages = [];
+    _olderPagedMessages.clear();
+    _olderMessageIds.clear();
+    _liveTailMessagesChronological = [];
+    _liveTailById.clear();
+    _previousLiveTailMessageIds.clear();
+    _liveTailOldestSnapshot = null;
+    _olderPaginationCursor = null;
     _deletedMessageIds.clear(); // Clear deleted messages when exiting
     _messagesSubscription?.cancel();
     _messagesSubscription = null;
     notifyListeners();
   }
 
+  void _removeMessageFromLocalCaches(String messageId) {
+    _olderPagedMessages.removeWhere((m) => m.messageId == messageId);
+    _olderMessageIds.remove(messageId);
+    _liveTailMessagesChronological.removeWhere((m) => m.messageId == messageId);
+    _liveTailById.remove(messageId);
+    _previousLiveTailMessageIds.remove(messageId);
+    _rebuildMergedMessagesAndApplyCutoff();
+  }
+
   /// Delete message for me (only removes from user's view)
   void deleteMessageForMe(String messageId) {
     _deletedMessageIds.add(messageId);
+    _rebuildVisibleChatMessages();
     notifyListeners();
-    
+
     if (kDebugMode) {
       print('✅ Message deleted for me: $messageId');
     }
@@ -921,11 +1299,10 @@ class ChatViewModel extends BaseViewModel {
       );
 
       if (success) {
-        // Also remove from local list and deleted set
-        _messages.removeWhere((msg) => msg.messageId == messageId);
+        _removeMessageFromLocalCaches(messageId);
         _deletedMessageIds.remove(messageId);
         notifyListeners();
-        
+
         if (kDebugMode) {
           print('✅ Message deleted for everyone: $messageId');
         }
@@ -971,6 +1348,7 @@ class ChatViewModel extends BaseViewModel {
       if (kDebugMode) {
         print('✅ Message sent successfully');
       }
+      _stickToBottom = true;
 
       // If this room was hidden, unhide it so it reappears in the chat list
       if (_chatRoomId != null && _hiddenChatRoomTimestamps.containsKey(_chatRoomId)) {
@@ -980,27 +1358,49 @@ class ChatViewModel extends BaseViewModel {
         unawaited(removeHiddenChatRoom(_chatRoomId!));
       }
 
-      // Notify other room members (fire-and-forget; don't block UI)
-      final members = _currentChatRoom?['members'] as List<dynamic>?;
-      if (members == null || members.isEmpty || _currentUserId == null) {
+      // Notify current room members only (read fresh from Firestore so leavers are not notified).
+      if (_currentUserId == null || _chatRoomId == null) {
         if (kDebugMode) {
-          print('[NOTIF] Trigger: skipped — no members or currentUser (members=${members?.length ?? 0}, currentUserId=$_currentUserId)');
+          print('[NOTIF] Trigger: skipped — no chatRoomId or currentUser');
         }
       } else {
-        final otherMemberIds = members
-            .map((e) => e.toString())
-            .where((id) => id != _currentUserId)
-            .toList();
-        if (otherMemberIds.isEmpty) {
-          if (kDebugMode) print('[NOTIF] Trigger: skipped — no other members in room');
-        } else {
-          if (kDebugMode) {
-            print('[NOTIF] Trigger: sending push to ${otherMemberIds.length} other member(s), chatRoomId=$_chatRoomId');
+        try {
+          final fresh = await _firestoreService.getChatRoomDocument(_chatRoomId!);
+          final serverMembers = fresh?['members'] as List<dynamic>? ?? [];
+          if (fresh != null) {
+            _currentChatRoom = {
+              ...?_currentChatRoom,
+              'members': serverMembers,
+              'name': fresh['name'] as String? ?? _currentChatRoom?['name'],
+              'isPublic': fresh['isPublic'] as bool? ?? _currentChatRoom?['isPublic'] ?? false,
+              'createdBy': fresh['createdBy'] as String? ?? _currentChatRoom?['createdBy'],
+            };
           }
-          _sendPushNotificationToMembers(
-            otherMemberIds: otherMemberIds,
-            content: content,
-          );
+          final otherMemberIds =
+              serverMembers
+                  .map((e) => e.toString())
+                  .where((id) => id != _currentUserId)
+                  .toList();
+          if (otherMemberIds.isEmpty) {
+            if (kDebugMode) {
+              print('[NOTIF] Trigger: skipped — no other members (server list)');
+            }
+          } else {
+            if (kDebugMode) {
+              print(
+                '[NOTIF] Trigger: sending push to ${otherMemberIds.length} member(s) from server list, chatRoomId=$_chatRoomId',
+              );
+            }
+            _sendPushNotificationToMembers(
+              otherMemberIds: otherMemberIds,
+              content: content,
+            );
+          }
+          notifyListeners();
+        } catch (e) {
+          if (kDebugMode) {
+            print('[NOTIF] Trigger: failed to load server members, skip push: $e');
+          }
         }
       }
       _isSendingMessage = false;
@@ -1083,6 +1483,9 @@ class ChatViewModel extends BaseViewModel {
 
   @override
   void onDispose() {
+    _scrollHandlingThrottle?.cancel();
+    _scrollHandlingThrottle = null;
+    _detachScrollPaginationListener();
     _messagesSubscription?.cancel();
     _messagesSubscription = null;
     _privateChatsSubscription?.cancel();

@@ -10,6 +10,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/signup_data_service.dart';
 import '../../../core/viewmodels/base_view_model.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 import '../../../shared/extensions/context_extensions.dart';
 
 class WelcomeViewModel extends BaseViewModel {
@@ -76,42 +77,25 @@ class WelcomeViewModel extends BaseViewModel {
       print("🔵 Google Logged In → UID = $uid");
 
       // ---------------------------------------------------------
-      // ⭐ 4️⃣ UPDATE FirebaseAuth current user data for Google
-      // ---------------------------------------------------------
-
-      // Update name from Google
-      if (displayName != null && displayName.isNotEmpty) {
-        await user.updateDisplayName(displayName);
-      }
-
-      // Update photo from Google
-      if (photoURL != null && photoURL.isNotEmpty) {
-        await user.updatePhotoURL(photoURL);
-      }
-
-      // Refresh FirebaseAuth currentUser
-      await user.reload();
-      user = _authService.currentUser;
-
-      print("🔥 Updated FirebaseAuth user:");
-      print("Name: ${user?.displayName}");
-      print("Photo: ${user?.photoURL}");
-
-      // ---------------------------------------------------------
-      // ⭐ 5️⃣ If new user → go to signup flow
+      // ⭐ 4️⃣ NEW user → update Auth with Google data & start signup
       // ---------------------------------------------------------
       if (!exists) {
         print("🆕 New Google user → starting signup flow");
 
-        // First-time Google user
+        if (displayName != null && displayName.isNotEmpty) {
+          await user.updateDisplayName(displayName);
+        }
+        if (photoURL != null && photoURL.isNotEmpty) {
+          await user.updatePhotoURL(photoURL);
+        }
+        await user.reload();
+
         _signupDataService.setGoogleCredential(
           credential: credential,
           email: userEmail,
           displayName: displayName,
           photoURL: photoURL,
         );
-
-        // ⭐ FIX: Store data for signup creation screen
         _signupDataService.setEmail(userEmail);
         _signupDataService.setDisplayName(displayName ?? "");
         _signupDataService.setProfileImage(photoURL);
@@ -122,13 +106,34 @@ class WelcomeViewModel extends BaseViewModel {
       }
 
       // ---------------------------------------------------------
-      // ⭐ 6️⃣ Existing user → login normally
+      // ⭐ 5️⃣ Existing user → use Firestore photo (single source of truth),
+      //        DON'T overwrite Auth photoURL with the Google provider photo
       // ---------------------------------------------------------
+      String? firestorePhotoUrl;
+      String? firestoreDisplayName;
+      try {
+        final userData = await _firestoreService.getUserData(uid);
+        if (userData != null) {
+          firestorePhotoUrl = userData['photoUrl'] as String?;
+          firestoreDisplayName = userData['displayName'] as String?;
+        }
+      } catch (_) {}
+
+      final photoForStorage = firestorePhotoUrl ?? user.photoURL;
+      final nameForStorage = firestoreDisplayName ?? user.displayName;
+
+      // Update the profile cache so every screen sees correct data immediately
+      locator<UserPhotoCacheService>().setUserProfile(
+        uid,
+        photoUrl: photoForStorage,
+        displayName: nameForStorage,
+      );
+
       await _storageService.setLoggedIn(
         true,
         userId: uid,
-        displayName: user?.displayName,
-        photoUrl: user?.photoURL,
+        displayName: nameForStorage,
+        photoUrl: photoForStorage,
       );
       await updateFcmTokenForUser();
 
@@ -194,44 +199,61 @@ class WelcomeViewModel extends BaseViewModel {
       final uid = user.uid;
       print("🍎 Apple User UID: $uid");
 
-      // 3️⃣ ALWAYS update FirebaseAuth currentUser
-      if (displayName != null && displayName.isNotEmpty) {
-        await user.updateDisplayName(displayName);
-      }
-      if (photoURL != null) {
-        await user.updatePhotoURL(photoURL);
-      }
-      await user.reload(); // refresh currentUser
-
-      print("🔥 FirebaseAuth updated user:");
-      print("Name: ${user.displayName}");
-      print("Photo: ${user.photoURL}");
-
-      // 4️⃣ Check if the UID exists in Firestore (ONLY THIS!)
+      // 3️⃣ Check if the UID exists in Firestore
       final exists = await _firestoreService.checkUserExistsByUid(uid);
 
       if (exists) {
-        // Returning user → direct login
+        // Returning user → use Firestore photo (single source of truth),
+        // DON'T overwrite Auth photoURL with the Apple provider photo
+        String? firestorePhotoUrl;
+        String? firestoreDisplayName;
+        try {
+          final userData = await _firestoreService.getUserData(uid);
+          if (userData != null) {
+            firestorePhotoUrl = userData['photoUrl'] as String?;
+            firestoreDisplayName = userData['displayName'] as String?;
+          }
+        } catch (_) {}
+
+        final photoForStorage = firestorePhotoUrl ?? user.photoURL;
+        final nameForStorage = firestoreDisplayName ?? user.displayName;
+
+        locator<UserPhotoCacheService>().setUserProfile(
+          uid,
+          photoUrl: photoForStorage,
+          displayName: nameForStorage,
+        );
+
         await _storageService.setLoggedIn(
           true,
           userId: uid,
-          displayName: user.displayName,
-          photoUrl: user.photoURL,
+          displayName: nameForStorage,
+          photoUrl: photoForStorage,
         );
         await updateFcmTokenForUser();
 
         print("✅ Existing Apple user → navigating to festivals");
         _navigationService.navigateTo(AppRoutes.festivals);
       } else {
-        // NEW user → start signup flow
+        // NEW user → update Auth with Apple data & start signup
         print("🆕 New Apple user → starting signup");
+
+        if (displayName != null && displayName.isNotEmpty) {
+          await user.updateDisplayName(displayName);
+        }
+        if (photoURL != null) {
+          await user.updatePhotoURL(photoURL);
+        }
+        await user.reload();
 
         _signupDataService.setAppleCredential(
           credential: credential,
-          email: user.email ?? '', // may be null → it's OK
+          email: user.email ?? '',
           displayName: displayName,
           photoURL: photoURL,
         );
+
+        _signupDataService.setProfileImage(photoURL);
 
         _navigationService.navigateTo(AppRoutes.photoUpload);
       }

@@ -74,16 +74,23 @@ class PostsView extends BaseView<PostsViewModel> {
       }
     });
 
-    return Scaffold(
-      backgroundColor: AppColors.screenBackground,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              color: const Color(0xFFFC2E95),
-              child: _buildAppBar(context),
-            ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final vm = Provider.of<PostsViewModel>(context, listen: false);
+        Navigator.of(context).pop(vm.hasChanges ? vm.changeResult : null);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.screenBackground,
+        body: SafeArea(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFC2E95),
+                child: _buildAppBar(context),
+              ),
             Expanded(
                   child: Consumer<PostsViewModel>(
                     builder: (context, vm, child) {
@@ -119,8 +126,10 @@ class PostsView extends BaseView<PostsViewModel> {
                                     vm.notifyListeners();
                                   },
                                   onDeletePost: (postId) {
-                                    // Handle post deletion
                                     vm.deletePost(postId, context);
+                                  },
+                                  onEditPost: (postModel) {
+                                    vm.navigateToEditPost(context, postModel);
                                   },
                                 );
                               },
@@ -131,6 +140,7 @@ class PostsView extends BaseView<PostsViewModel> {
               ],
             ),
           ),
+        ),
     );
   }
 
@@ -155,7 +165,8 @@ class PostsView extends BaseView<PostsViewModel> {
               if (onBack != null) {
                 onBack!();
               } else {
-                Navigator.pop(context);
+                final vm = Provider.of<PostsViewModel>(context, listen: false);
+                Navigator.pop(context, vm.hasChanges ? vm.changeResult : null);
               }
             },
           ),

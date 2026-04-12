@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:metadata_fetch/metadata_fetch.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
@@ -11,8 +13,6 @@ import '../../../core/constants/app_strings.dart';
 import '../homeview/post_model.dart';
 import '../festival/festival_model.dart';
 
-/// ViewModel for editing a global feed post and optionally adding it to a festival.
-/// Uses FestivalProvider list when available; falls back to API when provider list is empty.
 class EditPostViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
@@ -21,20 +21,39 @@ class EditPostViewModel extends BaseViewModel {
 
   TextEditingController? contentController;
   TextEditingController? postUrlController;
+  TextEditingController? searchController;
 
   PostModel? _post;
-  String? _collectionName; // null = global feed (festivalrumorglobalfeed)
+  String? _collectionName;
+
+  // Festival list state
   List<FestivalModel> _festivals = [];
   FestivalModel? _selectedFestival;
   bool _festivalsLoading = false;
+  bool _festivalsLoadingMore = false;
+  String? _festivalsError;
+  int _currentPage = 0;
+  bool _hasMoreFestivals = true;
+  bool get hasMoreFestivals => _hasMoreFestivals;
 
-  /// Callback to update FestivalProvider when we load festivals from API (so list is cached).
+  // Search state
+  String _searchQuery = '';
+  Timer? _searchDebounce;
+  bool _isSearching = false;
+  List<FestivalModel> _searchResults = [];
+
+  bool get isSearchMode => _searchQuery.isNotEmpty;
+
   void Function(List<FestivalModel>)? onFestivalsLoaded;
 
   PostModel? get post => _post;
-  List<FestivalModel> get festivals => _festivals;
+  List<FestivalModel> get festivals => isSearchMode ? _searchResults : _festivals;
   FestivalModel? get selectedFestival => _selectedFestival;
   bool get festivalsLoading => _festivalsLoading;
+  bool get festivalsLoadingMore => _festivalsLoadingMore;
+  bool get isSearching => _isSearching;
+  String? get festivalsError => _festivalsError;
+
   String? _successMessage;
   String? get successMessage => _successMessage;
 
@@ -44,70 +63,195 @@ class EditPostViewModel extends BaseViewModel {
   }
 
   bool get canSave =>
-      (contentController?.text.trim().isNotEmpty ?? false) ||
-      (postUrlController?.text.trim().isNotEmpty ?? false) ||
+      ((contentController?.text.trim().isNotEmpty ?? false) ||
+          (postUrlController?.text.trim().isNotEmpty ?? false)) &&
       _selectedFestival != null;
 
-  /// Initialize with the post to edit. [collectionName] null = global feed.
-  /// [festivals] from FestivalProvider.allFestivals; if null or empty, loads from API and notifies.
   void initialize(PostModel post,
       {String? collectionName, List<FestivalModel>? festivals}) {
     _post = post;
     _collectionName = collectionName;
     contentController?.dispose();
     postUrlController?.dispose();
+    searchController?.dispose();
     contentController = TextEditingController(text: post.content);
     postUrlController = TextEditingController(text: post.postUrl ?? '');
+    searchController = TextEditingController();
+
     if (festivals != null && festivals.isNotEmpty) {
       _festivals = List.from(festivals);
       _festivalsLoading = false;
-      notifyListeners();
-      return;
+      _currentPage = 1;
+      _hasMoreFestivals = false;
     }
-    _loadFestivalsFromApi();
-    notifyListeners();
+    _scheduleNotify();
+    if (_festivals.isEmpty) {
+      _loadFestivalsPage(1);
+    }
   }
 
-  Future<void> _loadFestivalsFromApi() async {
-    if (_festivalsLoading) return;
-    _festivalsLoading = true;
+  void _scheduleNotify() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!isDisposed) notifyListeners();
+    });
+  }
+
+  // --- Pagination ---
+
+  Future<void> _loadFestivalsPage(int page) async {
+    if (page == 1) {
+      _festivalsLoading = true;
+      _festivalsError = null;
+    } else {
+      _festivalsLoadingMore = true;
+    }
     notifyListeners();
+
     try {
-      final response = await _festivalApiService.getFestivals();
-      if (response.success && response.data != null && response.data!.isNotEmpty) {
-        _festivals = response.data!
+      final response = await _festivalApiService.getFestivalsPage(page);
+      if (isDisposed) return;
+
+      if (response.success && response.data != null) {
+        final result = response.data!;
+        final newFestivals = result.list
             .map((json) => FestivalModel.fromApiJson(json))
             .where((f) => f.title.isNotEmpty)
             .toList();
-        onFestivalsLoaded?.call(_festivals);
-        if (kDebugMode) {
-          print('EditPost: loaded ${_festivals.length} festivals from API');
+
+        if (page == 1) {
+          _festivals = newFestivals;
+          onFestivalsLoaded?.call(_festivals);
+        } else {
+          final existingIds = _festivals.map((f) => f.id).toSet();
+          final unique = newFestivals.where((f) => !existingIds.contains(f.id));
+          _festivals.addAll(unique);
         }
+        _currentPage = result.currentPage;
+        _hasMoreFestivals = result.hasMore;
+        _festivalsError = null;
+
+        if (kDebugMode) {
+          print('EditPost: loaded page $page — ${newFestivals.length} festivals (total ${_festivals.length}), currentPage=$_currentPage, lastPage=${result.lastPage}, hasMore=$_hasMoreFestivals');
+        }
+      } else {
+        _festivalsError = response.message ?? 'Failed to load festivals';
       }
     } catch (e) {
-      if (kDebugMode) print('EditPost: failed to load festivals: $e');
+      if (isDisposed) return;
+      _festivalsError = _userFriendlyError(e);
+      if (kDebugMode) print('EditPost: failed to load festivals page $page: $e');
     } finally {
-      _festivalsLoading = false;
-      notifyListeners();
+      if (!isDisposed) {
+        _festivalsLoading = false;
+        _festivalsLoadingMore = false;
+        notifyListeners();
+      }
     }
   }
 
-  @override
-  void dispose() {
-    contentController?.dispose();
-    postUrlController?.dispose();
-    super.dispose();
+  void loadMoreFestivals() {
+    if (_festivalsLoadingMore || _festivalsLoading || !hasMoreFestivals || isSearchMode) return;
+    _loadFestivalsPage(_currentPage + 1);
   }
+
+  Future<void> retryLoadFestivals() async {
+    _festivals.clear();
+    _currentPage = 0;
+    _hasMoreFestivals = true;
+    await _loadFestivalsPage(1);
+  }
+
+  // --- Search ---
+
+  void onSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    final trimmed = query.trim();
+
+    if (trimmed.isEmpty) {
+      _searchQuery = '';
+      _searchResults.clear();
+      _isSearching = false;
+      notifyListeners();
+      return;
+    }
+
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(trimmed);
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    _searchQuery = query;
+    _isSearching = true;
+    _festivalsError = null;
+    notifyListeners();
+
+    try {
+      final response = await _festivalApiService.getFestivals(search: query);
+      if (isDisposed) return;
+
+      if (_searchQuery != query) return;
+
+      if (response.success && response.data != null) {
+        _searchResults = response.data!
+            .map((json) => FestivalModel.fromApiJson(json))
+            .where((f) => f.title.isNotEmpty)
+            .toList();
+        _festivalsError = null;
+      } else {
+        _searchResults.clear();
+        _festivalsError = response.message ?? 'Search failed. Please try again.';
+      }
+    } catch (e) {
+      if (isDisposed) return;
+      _searchResults.clear();
+      _festivalsError = _userFriendlyError(e);
+      if (kDebugMode) print('EditPost: search failed for "$query": $e');
+    } finally {
+      if (!isDisposed) {
+        _isSearching = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void clearSearch() {
+    searchController?.clear();
+    _searchDebounce?.cancel();
+    _searchQuery = '';
+    _searchResults.clear();
+    _isSearching = false;
+    _festivalsError = null;
+    notifyListeners();
+  }
+
+  // --- Selection ---
 
   void selectFestival(FestivalModel? festival) {
     _selectedFestival = festival;
     notifyListeners();
   }
 
-  /// Save: update post in global feed; if a festival is selected, add post to that festival's rumour collection.
+  /// Validate and return error message, or null if valid.
+  String? validate() {
+    if (_selectedFestival == null) {
+      return 'Please select a festival before saving.';
+    }
+    return null;
+  }
+
+  // --- Save ---
+
   Future<void> save() async {
     final p = _post;
     if (p == null || p.postId == null) return;
+
+    final validationError = validate();
+    if (validationError != null) {
+      _festivalsError = validationError;
+      notifyListeners();
+      return;
+    }
 
     String content = contentController?.text.trim() ?? '';
     String postUrl = postUrlController?.text.trim() ?? '';
@@ -124,9 +268,8 @@ class EditPostViewModel extends BaseViewModel {
       }
 
       final targetCollection =
-          _collectionName ?? FirestoreService.defaultPostsCollection;
+          p.sourceCollection ?? _collectionName ?? FirestoreService.defaultPostsCollection;
 
-      // Fetch link preview when URL is present
       String? linkPreviewImageUrl;
       String? linkPreviewTitle;
       if (postUrlOrNull != null && postUrlOrNull.isNotEmpty) {
@@ -155,7 +298,6 @@ class EditPostViewModel extends BaseViewModel {
         }
       }
 
-      // 1) Update post in global feed (or current collection)
       final updates = <String, dynamic>{
         'content': content.isNotEmpty
             ? content
@@ -172,44 +314,58 @@ class EditPostViewModel extends BaseViewModel {
         collectionName: targetCollection,
       );
 
-      // 2) If user selected a festival, add this post to that festival's rumour collection
       if (_selectedFestival != null) {
         final festivalCollectionName =
             FirestoreService.getFestivalCollectionName(
           _selectedFestival!.id,
           _selectedFestival!.title,
         );
-        final postData = {
-          'username': p.username,
-          'content': updates['content'] as String,
-          'imagePath': p.imagePath,
-          'likes': 0,
-          'comments': 0,
-          'status': AppStrings.live,
-          'isVideo': p.isVideo,
-          'mediaPaths': p.mediaPaths,
-          'isVideoList': p.isVideoList,
-          'createdAt': DateTime.now(),
-          'userPhotoUrl': p.userPhotoUrl,
-          'userId': p.userId,
-          'postUrl': postUrlOrNull,
-          if (linkPreviewImageUrl != null) 'linkPreviewImageUrl': linkPreviewImageUrl,
-          if (linkPreviewTitle != null) 'linkPreviewTitle': linkPreviewTitle,
-        };
-        await _firestoreService.savePost(
-          postData,
-          collectionName: festivalCollectionName,
-          mediaCount: 1,
-          skipUserPostCountIncrement: true,
+        await _firestoreService.sharePostToFestival(
+          postId: p.postId!,
+          postCollection: targetCollection,
+          festivalCollectionName: festivalCollectionName,
         );
         if (kDebugMode) {
           print(
-              'EditPost: added post to festival ${_selectedFestival!.title} ($festivalCollectionName)');
+              'EditPost: shared post to festival ${_selectedFestival!.title} ($festivalCollectionName)');
         }
       }
 
       _successMessage = AppStrings.dataUpdated;
       notifyListeners();
     }, errorMessage: 'Failed to save changes. Please try again.');
+  }
+
+  // --- Helpers ---
+
+  String _userFriendlyError(Object e) {
+    final msg = e.toString().toLowerCase();
+    if (msg.contains('socketexception') ||
+        msg.contains('network') ||
+        msg.contains('connection')) {
+      return 'No internet connection. Please check your network and try again.';
+    }
+    if (msg.contains('timeout')) {
+      return 'Request timed out. Please try again.';
+    }
+    if (msg.contains('401') || msg.contains('unauthorized')) {
+      return 'Session expired. Please log in again.';
+    }
+    if (msg.contains('403') || msg.contains('forbidden')) {
+      return 'You don\'t have permission to perform this action.';
+    }
+    if (msg.contains('500') || msg.contains('server')) {
+      return 'Server error. Please try again later.';
+    }
+    return 'Something went wrong. Please try again.';
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    contentController?.dispose();
+    postUrlController?.dispose();
+    searchController?.dispose();
+    super.dispose();
   }
 }

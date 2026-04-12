@@ -214,11 +214,11 @@ class FestivalApiService {
         list = rawData;
       } else if (rawData is Map) {
         list = rawData['data'] is List ? rawData['data'] as List : null;
-        currentPage = rawData['current_page'] is int
-            ? rawData['current_page'] as int
+        currentPage = rawData['current_page'] is num
+            ? (rawData['current_page'] as num).toInt()
             : page;
-        lastPage = rawData['last_page'] is int
-            ? rawData['last_page'] as int
+        lastPage = rawData['last_page'] is num
+            ? (rawData['last_page'] as num).toInt()
             : page;
       }
 

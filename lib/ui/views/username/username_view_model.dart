@@ -13,12 +13,16 @@ import '../../../core/services/firebase_auth_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 
 class UsernameViewModel extends BaseViewModel {
   /// Services
   final FirebaseAuthService _authService = FirebaseAuthService();
   final NavigationService _navigationService = locator<NavigationService>();
   final StorageService _storageService = locator<StorageService>();
+  final FirestoreService _firestoreService = locator<FirestoreService>();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
 
   /// Controllers
   final TextEditingController emailController = TextEditingController();
@@ -238,13 +242,30 @@ class UsernameViewModel extends BaseViewModel {
             print('   Navigating to: ${AppRoutes.festivals}');
           }
 
-          // Save login state to storage (name and picture from auth)
+          // Save login state to storage using Firestore photo (single source of truth)
           if (user != null) {
+            String? photoUrl;
+            String? displayName = user.displayName;
+            try {
+              final userData = await _firestoreService.getUserData(user.uid);
+              if (userData != null) {
+                photoUrl = userData['photoUrl'] as String?;
+                displayName = userData['displayName'] as String? ?? displayName;
+              }
+            } catch (_) {}
+            photoUrl ??= user.photoURL;
+
+            _userPhotoCacheService.setUserProfile(
+              user.uid,
+              photoUrl: photoUrl,
+              displayName: displayName,
+            );
+
             await _storageService.setLoggedIn(
               true,
               userId: user.uid,
-              displayName: user.displayName,
-              photoUrl: user.photoURL,
+              displayName: displayName,
+              photoUrl: photoUrl,
             );
             await updateFcmTokenForUser();
 

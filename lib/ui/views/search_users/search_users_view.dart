@@ -152,7 +152,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
               textAlignVertical: TextAlignVertical.center,
               autofocus: true,
               decoration: InputDecoration(
-                hintText: 'Search by name or email...',
+                hintText: 'Search by name, email, or phone...',
                 hintStyle: TextStyle(
                   color: AppColors.grey600,
                   fontWeight: FontWeight.w600,
@@ -232,7 +232,7 @@ class SearchUsersView extends BaseView<SearchUsersViewModel> {
             ),
             SizedBox(height: AppDimensions.spaceM),
             ResponsiveTextWidget(
-              'Search for users by name or email',
+              'Search for users by name, email, or phone',
               textType: TextType.body,
               fontSize: context.getConditionalSubFont(),
               color: AppColors.black,

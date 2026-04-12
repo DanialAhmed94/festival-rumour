@@ -270,8 +270,10 @@ class _RumorsViewContentState extends State<_RumorsViewContent> {
                 viewModel.refreshPostsAfterComment();
               },
               onDeletePost: (postId) {
-                // Handle post deletion
                 viewModel.deletePost(postId, context);
+              },
+              onEditPost: (postModel) {
+                viewModel.navigateToEditPost(context, postModel);
               },
             ),
             // Conditional spacing between posts

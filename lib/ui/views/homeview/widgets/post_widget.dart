@@ -677,8 +677,15 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
   }
 
   Future<void> _openComments(BuildContext context, PostModel post) async {
-    final arguments = widget.collectionName != null
-        ? {'post': post, 'collectionName': widget.collectionName}
+    final effectiveCollection = post.sourceCollection ?? widget.collectionName;
+    if (kDebugMode) {
+      print('💬 [PostWidget] _openComments: postId=${post.postId}, '
+          'post.sourceCollection=${post.sourceCollection}, '
+          'widget.collectionName=${widget.collectionName}, '
+          'effectiveCollection=$effectiveCollection');
+    }
+    final arguments = effectiveCollection != null
+        ? {'post': post, 'collectionName': effectiveCollection}
         : post;
     final result = await Navigator.pushNamed(
       context,

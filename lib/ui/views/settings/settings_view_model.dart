@@ -15,6 +15,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/di/locator.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 import 'package:http/http.dart' as http;
 
 class SettingsViewModel extends BaseViewModel {
@@ -31,6 +32,7 @@ class SettingsViewModel extends BaseViewModel {
   final AuthService _authService = locator<AuthService>();
   final StorageService _storageService = locator<StorageService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
 
   @override
   void init() {
@@ -41,23 +43,62 @@ class SettingsViewModel extends BaseViewModel {
       _loadNotificationsPreference(); // Android remains same
     }
     _loadUserProfileFromStorage();
+    _userPhotoCacheService.addListener(_onProfileCacheUpdated);
+  }
+
+  @override
+  void dispose() {
+    _userPhotoCacheService.removeListener(_onProfileCacheUpdated);
+    super.dispose();
+  }
+
+  void _onProfileCacheUpdated() {
+    final uid = _authService.currentUser?.uid;
+    if (uid == null) return;
+    final cachedPhoto = _userPhotoCacheService.getCachedPhotoUrl(uid);
+    final cachedName = _userPhotoCacheService.getCachedDisplayName(uid);
+    bool changed = false;
+    if (cachedPhoto != null && cachedPhoto.isNotEmpty && _userPhotoUrl != cachedPhoto) {
+      _userPhotoUrl = cachedPhoto;
+      changed = true;
+    }
+    if (cachedName != null && cachedName.isNotEmpty && _userName != cachedName) {
+      _userName = cachedName;
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   Future<void> _loadUserProfileFromStorage() async {
     _userName = await _storageService.getStoredDisplayName();
     _userPhotoUrl = await _storageService.getStoredPhotoUrl();
-    if ((_userName == null || _userName!.isEmpty) ||
-        (_userPhotoUrl == null || _userPhotoUrl!.isEmpty)) {
-      final fromAuth = _authService.userDisplayName;
-      final photoFromAuth = _authService.userPhotoUrl;
-      if (_userName == null || _userName!.isEmpty) _userName = fromAuth;
-      if (_userPhotoUrl == null || _userPhotoUrl!.isEmpty)
-        _userPhotoUrl = photoFromAuth;
-      await _storageService.setUserProfile(
-        displayName: _userName,
-        photoUrl: _userPhotoUrl,
-      );
+
+    final uid = _authService.currentUser?.uid;
+
+    // Always prefer Firestore data via cache (single source of truth) over
+    // SharedPreferences / Auth, which may hold stale provider data.
+    if (uid != null) {
+      final cachedName = await _userPhotoCacheService.getDisplayName(uid);
+      if (cachedName != null && cachedName.isNotEmpty) {
+        _userName = cachedName;
+      }
+      final cachedPhoto = await _userPhotoCacheService.getPhotoUrl(uid);
+      if (cachedPhoto != null && cachedPhoto.isNotEmpty) {
+        _userPhotoUrl = cachedPhoto;
+      }
     }
+
+    if (_userName == null || _userName!.isEmpty) {
+      _userName = _authService.userDisplayName;
+    }
+    if (_userPhotoUrl == null || _userPhotoUrl!.isEmpty) {
+      _userPhotoUrl = _authService.userPhotoUrl;
+    }
+
+    await _storageService.setUserProfile(
+      displayName: _userName,
+      photoUrl: _userPhotoUrl,
+    );
     notifyListeners();
   }
 

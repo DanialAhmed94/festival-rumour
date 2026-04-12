@@ -1,295 +1,191 @@
-import 'dart:io';
+import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
-import '../../../core/viewmodels/base_view_model.dart';
-import '../../../core/router/app_router.dart';
+import 'package:flutter/material.dart';
+
 import '../../../core/constants/app_strings.dart';
 import '../../../core/di/locator.dart';
-import '../../../core/services/navigation_service.dart';
-import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
-import 'package:share_plus/share_plus.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../core/services/navigation_service.dart';
+import '../../../core/services/storage_service.dart';
+import '../../../core/viewmodels/base_view_model.dart';
 
 class CreateChatRoomViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
+  final StorageService _storageService = locator<StorageService>();
+
   final TextEditingController titleController = TextEditingController();
+  final TextEditingController searchController = TextEditingController();
+  final FocusNode searchFocusNode = FocusNode();
 
-  List<Contact> _allContacts = [];
-  List<Contact> _festivalContacts = [];
-  List<Contact> _nonFestivalContacts = [];
-  Set<String> _selectedContacts = {};
+  Timer? _searchDebounceTimer;
+  String _searchQuery = '';
+  List<Map<String, dynamic>> _searchResults = [];
+  List<String> _recentSearches = [];
+  final List<Map<String, dynamic>> _selectedUsers = [];
 
-  // Contact data for UI
-  List<Map<String, dynamic>> _festivalContactData = [];
-  List<Map<String, dynamic>> _nonFestivalContactData = [];
+  String get searchQuery => _searchQuery;
+  List<Map<String, dynamic>> get searchResults => _searchResults;
+  List<String> get recentSearches => _recentSearches;
+  List<Map<String, dynamic>> get selectedUsers =>
+      List.unmodifiable(_selectedUsers);
 
-  // Map to store contact phone -> userId mapping
-  Map<String, String> _phoneToUserIdMap = {};
-
-  // Mock contacts for fallback/demo mode
-  final List<Map<String, dynamic>> _mockContacts = [
-    {
-      'name': AppStrings.robertFox,
-      'phone': AppStrings.phone0123456789,
-      'isFestival': true,
-    },
-  ];
-
-  List<Contact> get allContacts => _allContacts;
-  List<Contact> get festivalContacts => _festivalContacts;
-  List<Contact> get nonFestivalContacts => _nonFestivalContacts;
-  Set<String> get selectedContacts => _selectedContacts;
-
-  List<Map<String, dynamic>> get festivalContactData => _festivalContactData;
-  List<Map<String, dynamic>> get nonFestivalContactData =>
-      _nonFestivalContactData;
+  bool get hasSearchResults =>
+      _searchQuery.isNotEmpty && _searchResults.isNotEmpty;
+  bool get hasNoResults =>
+      _searchQuery.isNotEmpty && _searchResults.isEmpty && !busy;
+  bool get hasRecentSearches =>
+      _recentSearches.isNotEmpty && _searchQuery.isEmpty;
 
   @override
   void init() {
     super.init();
-    if (Platform.isIOS) {
-      _loadContactsiOS();
-    } else {
-      _loadContacts();
-    }
+    loadRecentSearches();
   }
 
-  @override
-  void dispose() {
-    titleController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadContactsiOS() async {
-    await handleAsync(() async {
-      // ✅ flutter_contacts handles permission on iOS correctly
-      final granted = await FlutterContacts.requestPermission();
-
-      if (!granted) {
-        setError(AppStrings.contactsPermissionDenied);
-        return;
-      }
-
-      final contacts = await FlutterContacts.getContacts(
-        withProperties: true,
-        withPhoto: true,
-      );
-
-      if (contacts.isNotEmpty) {
-        _allContacts = contacts;
-        print("📇 Loaded ${contacts.length} contacts");
-      } else {
-        _createMockContacts();
-      }
-
-      _filterContacts();
-      await _matchContactsWithUsers();
-      notifyListeners();
-    }, errorMessage: AppStrings.failedToLoadContacts);
-  }
-
-  /// Load contacts from device or create mock contacts if unavailable
-  Future<void> _loadContacts() async {
-    await handleAsync(() async {
-      // Check permission status first (especially important for Android)
-      PermissionStatus permissionStatus = await Permission.contacts.status;
-
-      // If not granted, request permission
-      if (!permissionStatus.isGranted) {
-        permissionStatus = await Permission.contacts.request();
-      }
-
-      // Check if permission is permanently denied
-      if (permissionStatus.isPermanentlyDenied) {
-        setError(
-          'Contacts permission is permanently denied. Please enable it in app settings.',
-        );
-        return;
-      }
-
-      // If still not granted after request, show error
-      if (!permissionStatus.isGranted) {
-        setError(AppStrings.contactsPermissionDenied);
-        return;
-      }
-
-      // Now use FlutterContacts to get contacts (permission is granted)
-      try {
-        final contacts = await FlutterContacts.getContacts(
-          withProperties: true,
-          withPhoto: true,
-        );
-
-        if (contacts.isNotEmpty) {
-          _allContacts = contacts;
-          if (kDebugMode) {
-            print("📇 Loaded ${contacts.length} contacts");
-          }
-        } else {
-          _createMockContacts();
-        }
-      } catch (e) {
-        // If getting contacts fails even with permission, it might be an Android issue
-        if (kDebugMode) {
-          print('❌ Error getting contacts: $e');
-        }
-        // Try to create mock contacts as fallback
-        _createMockContacts();
-      }
-
-      _filterContacts();
-
-      // Update UI immediately with contacts (before matching)
-      _updateContactDataWithUserInfo();
-      notifyListeners();
-
-      // Match contacts asynchronously (non-blocking)
-      // This allows UI to show contacts immediately while matching happens in background
-      _matchContactsWithUsers();
-    }, errorMessage: AppStrings.failedToLoadContacts);
-  }
-
-  /// Match contacts with users in Firestore by phone number
-  /// This runs asynchronously and doesn't block the UI
-  Future<void> _matchContactsWithUsers() async {
+  Future<void> loadRecentSearches() async {
     try {
-      // Collect all phone numbers from contacts
-      final phoneNumbers = <String>[];
-      for (final contact in _allContacts) {
-        if (contact.phones.isNotEmpty) {
-          phoneNumbers.add(contact.phones.first.number);
-        }
-      }
-
-      if (phoneNumbers.isEmpty) {
-        if (kDebugMode) {
-          print('⚠️ No phone numbers found in contacts');
-        }
-        // Still update contact data even if no phone numbers
-        _updateContactDataWithUserInfo();
-        notifyListeners();
-        return;
-      }
-
-      // Show initial contact data (without matching) so UI isn't blocked
-      _updateContactDataWithUserInfo();
+      _recentSearches = await _storageService.getRecentUserSearches();
       notifyListeners();
-
-      // Get users by phone numbers from Firestore (non-blocking, runs in background)
-      // Use optimized version with parallel queries and pagination
-      _phoneToUserIdMap = await _firestoreService.getUsersByPhoneNumbers(
-        phoneNumbers,
-        useCache: true,
-        maxConcurrentQueries: 5, // Process 5 batches in parallel
-        pageSize: 100, // Fetch 100 users per page
-      );
-
-      // Update contact data with matching results
-      _updateContactDataWithUserInfo();
-      notifyListeners();
-
-      if (kDebugMode) {
-        print('✅ Matched ${_phoneToUserIdMap.length} contacts with app users');
-      }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Error matching contacts with users: $e');
+        print('Error loading recent searches: $e');
       }
-      // Still update contact data even on error
-      _updateContactDataWithUserInfo();
+    }
+  }
+
+  void searchUsers(String query) {
+    _searchQuery = query;
+    _searchDebounceTimer?.cancel();
+
+    if (query.trim().isEmpty) {
+      _searchResults = [];
       notifyListeners();
+      return;
     }
+
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _performUserSearch(query);
+    });
+    notifyListeners();
   }
 
-  /// Update contact data to include user info
-  void _updateContactDataWithUserInfo() {
-    // Rebuild contact data with user matching info
-    _festivalContactData.clear();
-    _nonFestivalContactData.clear();
+  Future<void> _performUserSearch(String query) async {
+    if (isDisposed) return;
 
-    for (final contact in _allContacts) {
-      final displayName = contact.displayName ?? '';
-      final phoneNumber =
-          contact.phones.isNotEmpty ? contact.phones.first.number : '';
+    setBusy(true);
+    try {
+      final currentUserId = _authService.userUid;
 
-      // The _phoneToUserIdMap uses original phone numbers as keys
-      // So we can directly look up using the original phone number
-      final userId = _phoneToUserIdMap[phoneNumber];
+      final cachedResults = await _storageService.getCachedSearchResults(query);
+      if (cachedResults != null && cachedResults.isNotEmpty) {
+        _searchResults = cachedResults.where((user) {
+          final userId = user['userId'] as String?;
+          return userId != null && userId != currentUserId;
+        }).toList();
 
-      final contactData = {
-        'id': contact.id,
-        'name': displayName,
-        'phone': phoneNumber,
-        'isFestival':
-            userId != null, // Mark as festival user if found in Firestore
-        'userId': userId, // Store userId if matched
-      };
+        await _storageService.saveRecentUserSearch(query);
+        await loadRecentSearches();
+        notifyListeners();
+        setBusy(false);
+        return;
+      }
 
-      if (userId != null) {
-        // User is in the app - add to festival contacts
-        _festivalContactData.add(contactData);
-      } else {
-        // User is not in the app - add to non-festival contacts
-        _nonFestivalContactData.add(contactData);
+      final results = await _firestoreService.searchUsersByName(query);
+      if (isDisposed) return;
+
+      _searchResults = results.where((user) {
+        final userId = user['userId'] as String?;
+        return userId != null && userId != currentUserId;
+      }).toList();
+
+      await _storageService.saveCachedSearchResults(query, _searchResults);
+      await _storageService.saveRecentUserSearch(query);
+      await loadRecentSearches();
+      notifyListeners();
+    } catch (e) {
+      if (isDisposed) return;
+      if (kDebugMode) {
+        print('Error searching users: $e');
+      }
+      _searchResults = [];
+      notifyListeners();
+    } finally {
+      if (!isDisposed) {
+        setBusy(false);
       }
     }
+  }
 
-    if (kDebugMode) {
-      print('📱 Festival Contacts (app users): ${_festivalContactData.length}');
-      print(
-        '📱 Non-Festival Contacts (not in app): ${_nonFestivalContactData.length}',
-      );
+  void searchFromRecent(String query) {
+    unfocusSearch();
+    searchController.text = query;
+    searchUsers(query);
+  }
+
+  void clearSearch() {
+    _searchQuery = '';
+    searchController.clear();
+    _searchResults = [];
+    notifyListeners();
+  }
+
+  Future<void> clearRecentSearches() async {
+    try {
+      await _storageService.clearRecentUserSearches();
+      _recentSearches = [];
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error clearing recent searches: $e');
+      }
     }
   }
 
-  /// Create mock contacts if no real contacts available
-  void _createMockContacts() {
-    _allContacts.clear();
-
-    for (final mockContact in _mockContacts) {
-      final contact = Contact(
-        id: mockContact['name'].hashCode.toString(),
-        displayName: mockContact['name'],
-        phones: [Phone(mockContact['phone'])],
-      );
-      _allContacts.add(contact);
+  void unfocusSearch() {
+    if (isDisposed) return;
+    try {
+      searchFocusNode.unfocus();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error unfocusing search: $e');
+      }
     }
   }
 
-  /// Separate festival and non-festival contacts
-  /// This is now called before matching with users
-  void _filterContacts() {
-    _festivalContacts.clear();
-    _nonFestivalContacts.clear();
-    // Note: Contact data will be updated in _updateContactDataWithUserInfo after matching
+  bool isUserSelected(String userId) {
+    return _selectedUsers.any((u) => u['userId'] == userId);
   }
 
-  void toggleContactSelection(String contactId) {
-    if (_selectedContacts.contains(contactId)) {
-      _selectedContacts.remove(contactId);
+  void toggleUserSelection(Map<String, dynamic> user) {
+    final userId = user['userId'] as String?;
+    if (userId == null || userId.isEmpty) return;
+
+    final idx = _selectedUsers.indexWhere((u) => u['userId'] == userId);
+    if (idx >= 0) {
+      _selectedUsers.removeAt(idx);
     } else {
-      _selectedContacts.add(contactId);
+      _selectedUsers.add(Map<String, dynamic>.from(user));
     }
     notifyListeners();
   }
 
-  bool isContactSelected(String contactId) {
-    return _selectedContacts.contains(contactId);
+  void removeSelectedUser(String userId) {
+    _selectedUsers.removeWhere((u) => u['userId'] == userId);
+    notifyListeners();
   }
 
-  /// [festivalId] and [festivalTitle] - pass from view (Provider.of<FestivalProvider>(context).selectedFestival) to scope room to selected festival.
+  /// [festivalId] and [festivalTitle] - pass from view (FestivalProvider) to scope room to selected festival.
   Future<void> createChatRoom({String? festivalId, String? festivalTitle}) async {
     if (titleController.text.trim().isEmpty) {
       setError(AppStrings.pleaseEnterChatRoomTitle);
       return;
     }
 
-    if (_selectedContacts.isEmpty) {
+    if (_selectedUsers.isEmpty) {
       setError(AppStrings.pleaseSelectAtLeastOneContact);
       return;
     }
@@ -300,10 +196,21 @@ class CreateChatRoomViewModel extends BaseViewModel {
       return;
     }
 
+    final selectedMemberIds =
+        _selectedUsers
+            .map((u) => u['userId'] as String?)
+            .whereType<String>()
+            .where((id) => id.isNotEmpty)
+            .toList();
+
+    if (selectedMemberIds.isEmpty) {
+      setError('Please select at least one member to add.');
+      return;
+    }
+
     await handleAsync(() async {
       final chatRoomName = titleController.text.trim();
 
-      // Check if a private chat room with the same name already exists
       final nameExists = await _firestoreService.privateChatRoomNameExists(
         chatRoomName,
         currentUser.uid,
@@ -316,30 +223,6 @@ class CreateChatRoomViewModel extends BaseViewModel {
         return;
       }
 
-      // Get selected contact IDs and find their user IDs
-      final selectedMemberIds = <String>[];
-
-      for (final contactId in _selectedContacts) {
-        // Find contact data
-        final contactData = _festivalContactData.firstWhere(
-          (data) => data['id'] == contactId,
-          orElse: () => {},
-        );
-
-        final userId = contactData['userId'] as String?;
-        if (userId != null && userId.isNotEmpty) {
-          selectedMemberIds.add(userId);
-        }
-      }
-
-      if (selectedMemberIds.isEmpty) {
-        setError(
-          'No app users selected. Please select contacts who are using the app.',
-        );
-        return;
-      }
-
-      // Create private chat room in Firestore (scoped to selected festival when provided by view)
       final chatRoomId = await _firestoreService.createPrivateChatRoom(
         chatRoomName: chatRoomName,
         creatorId: currentUser.uid,
@@ -350,38 +233,22 @@ class CreateChatRoomViewModel extends BaseViewModel {
 
       if (kDebugMode) {
         print('✅ Created private chat room: $chatRoomId');
-        print('   Name: ${titleController.text.trim()}');
+        print('   Name: $chatRoomName');
         print('   Members: ${selectedMemberIds.length}');
       }
 
       setError(null);
-
-      // Navigate back to chat room list
       _navigationService.pop();
     }, errorMessage: 'Failed to create chat room');
   }
 
-  void refreshContacts() {
-    _loadContacts();
-  }
-
-  void inviteContact(String contactName, String phoneNumber) async {
-    try {
-      final inviteMessage = '''
-Hey $contactName 👋,
-
-I'm using Festival Rumour to chat and connect during festivals! 🎉  
-Join me here 👉 [https://festivalrumour.com]
-
-''';
-
-      await Share.share(inviteMessage, subject: 'Join me on LunaFest 🎊');
-
-      print('✅ Invite sent to $contactName');
-      setError(null);
-    } catch (e) {
-      print('❌ Error sharing invite: $e');
-      setError('Failed to send invite');
-    }
+  @override
+  void onDispose() {
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = null;
+    titleController.dispose();
+    searchController.dispose();
+    searchFocusNode.dispose();
+    super.onDispose();
   }
 }

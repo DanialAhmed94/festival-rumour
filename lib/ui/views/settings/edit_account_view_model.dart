@@ -12,6 +12,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/exceptions/app_exception.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 import 'package:http/http.dart' as http;
 
 class EditAccountViewModel extends BaseViewModel {
@@ -19,6 +20,7 @@ class EditAccountViewModel extends BaseViewModel {
   final AuthService _authService = locator<AuthService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final StorageService _storageService = locator<StorageService>();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
   final ImagePicker _picker = ImagePicker();
 
   // Form controllers
@@ -373,6 +375,10 @@ class EditAccountViewModel extends BaseViewModel {
     profileImageUrl = photoUrl;
     profileImagePath = photoUrl;
     profileImageFile = null; // Clear local file after upload
+
+    // Update the shared photo cache so all screens see the new photo immediately
+    _userPhotoCacheService.setPhotoUrl(currentUser.uid, photoUrl);
+
     notifyListeners();
 
     if (kDebugMode) {
@@ -461,6 +467,14 @@ class EditAccountViewModel extends BaseViewModel {
         _originalName = nameToSave;
         _originalBio = bioController.text;
         _originalPhone = phoneController.text;
+
+        // Update the central profile cache so all screens reflect changes immediately
+        _userPhotoCacheService.setUserProfile(
+          currentUser.uid,
+          photoUrl: profileImageUrl,
+          displayName: nameToSave.isNotEmpty ? nameToSave : null,
+          bio: bioController.text.isNotEmpty ? bioController.text : null,
+        );
 
         // Update local storage so Settings screen shows updated name/photo
         await _storageService.setUserProfile(

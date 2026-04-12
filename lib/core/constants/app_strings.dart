@@ -357,7 +357,7 @@ class AppStrings {
   static const String pleaseEnterChatRoomTitle =
       'Please enter a chat room title';
   static const String pleaseSelectAtLeastOneContact =
-      'Please select at least one contact';
+      'Please select at least one member';
 
   // Events Related
   static const String events = 'Events';

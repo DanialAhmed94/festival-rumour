@@ -18,6 +18,7 @@ import '../../../core/api/festival_api_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/firestore_service.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 import '../../../util/firebase_notification_service.dart';
 import 'festival_model.dart';
 
@@ -65,12 +66,17 @@ class FestivalViewModel extends BaseViewModel {
 
   String? get userPhotoUrl => _userPhotoUrl;
 
+  final UserPhotoCacheService _profileCacheService = locator<UserPhotoCacheService>();
+
   FestivalViewModel() {
     searchFocusNode = FocusNode();
-    // Use cached photo immediately so it doesn't reload when returning from create post etc.
-    _userPhotoUrl = _authService.cachedUserPhotoUrl;
+    final uid = _authService.currentUser?.uid;
+    if (uid != null) {
+      _userPhotoUrl = _profileCacheService.getCachedPhotoUrl(uid) ?? _authService.cachedUserPhotoUrl;
+    }
     _loadUserPhoto();
     _requestNotificationPermission();
+    _profileCacheService.addListener(_onProfileCacheUpdated);
   }
 
   /// Request notification permission once when user lands on festival screen (no prompt on splash).
@@ -78,36 +84,29 @@ class FestivalViewModel extends BaseViewModel {
     FirebaseNotificationService.requestPermissionIfNeeded();
   }
 
-  /// Load user profile photo URL and update cache so it's available when returning to this screen.
+  void _onProfileCacheUpdated() {
+    final uid = _authService.currentUser?.uid;
+    if (uid == null) return;
+    final cachedPhoto = _profileCacheService.getCachedPhotoUrl(uid);
+    if (cachedPhoto != null && cachedPhoto.isNotEmpty && _userPhotoUrl != cachedPhoto) {
+      _userPhotoUrl = cachedPhoto;
+      _authService.setCachedUserPhotoUrl(_userPhotoUrl);
+      notifyListeners();
+    }
+  }
+
+  /// Load user profile photo URL via the shared profile cache (Firestore-backed).
   Future<void> _loadUserPhoto() async {
     try {
       final currentUser = _authService.currentUser;
       if (currentUser == null) {
         _userPhotoUrl = null;
-        _authService.setCachedUserPhotoUrl(null);
         notifyListeners();
         return;
       }
 
-      // Try to get from Firestore first (where uploaded images are stored)
-      try {
-        final userData = await _firestoreService.getUserData(currentUser.uid);
-        if (userData != null &&
-            userData['photoUrl'] != null &&
-            (userData['photoUrl'] as String).isNotEmpty) {
-          _userPhotoUrl = userData['photoUrl'] as String;
-          _authService.setCachedUserPhotoUrl(_userPhotoUrl);
-          notifyListeners();
-          return;
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('Could not fetch user photo from Firestore: $e');
-        }
-      }
-
-      // Fallback to Firebase Auth photoURL
-      _userPhotoUrl = currentUser.photoURL;
+      final cachedPhoto = await _profileCacheService.getPhotoUrl(currentUser.uid);
+      _userPhotoUrl = cachedPhoto ?? currentUser.photoURL;
       _authService.setCachedUserPhotoUrl(_userPhotoUrl);
       notifyListeners();
     } catch (e) {
@@ -115,7 +114,6 @@ class FestivalViewModel extends BaseViewModel {
         print('Error loading user photo: $e');
       }
       _userPhotoUrl = null;
-      _authService.setCachedUserPhotoUrl(null);
       notifyListeners();
     }
   }
@@ -637,6 +635,7 @@ class FestivalViewModel extends BaseViewModel {
 
   @override
   void onDispose() {
+    _profileCacheService.removeListener(_onProfileCacheUpdated);
     _autoSlideTimer?.cancel();
     _searchDebounce?.cancel();
     pageController.dispose();

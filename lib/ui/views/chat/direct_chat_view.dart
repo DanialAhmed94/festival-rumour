@@ -193,27 +193,7 @@ class DirectChatView extends BaseView<ChatViewModel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isCurrentUser) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.primary.withOpacity(0.3),
-              backgroundImage: message.userPhotoUrl != null &&
-                      message.userPhotoUrl!.isNotEmpty
-                  ? NetworkImage(message.userPhotoUrl!)
-                  : null,
-              child: message.userPhotoUrl == null ||
-                      message.userPhotoUrl!.isEmpty
-                  ? Text(
-                      message.username.isNotEmpty
-                          ? message.username[0].toUpperCase()
-                          : 'U',
-                      style: const TextStyle(
-                        color: AppColors.black,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                  : null,
-            ),
+            _buildMessageAvatar(viewModel, message),
             const SizedBox(width: AppDimensions.spaceS),
           ],
           Flexible(
@@ -235,7 +215,7 @@ class DirectChatView extends BaseView<ChatViewModel> {
                         bottom: AppDimensions.spaceXS,
                       ),
                       child: ResponsiveTextWidget(
-                        message.username,
+                        viewModel.getUserDisplayName(message.userId) ?? message.username,
                         textType: TextType.caption,
                         fontSize: 12,
                         color: Colors.black,
@@ -281,31 +261,36 @@ class DirectChatView extends BaseView<ChatViewModel> {
           ),
           if (isCurrentUser) ...[
             const SizedBox(width: AppDimensions.spaceS),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.primary.withOpacity(0.3),
-              backgroundImage: message.userPhotoUrl != null &&
-                      message.userPhotoUrl!.isNotEmpty
-                  ? NetworkImage(message.userPhotoUrl!)
-                  : null,
-              child: message.userPhotoUrl == null ||
-                      message.userPhotoUrl!.isEmpty
-                  ? Text(
-                      message.username.isNotEmpty
-                          ? message.username[0].toUpperCase()
-                          : 'U',
-                      style: const TextStyle(
-                        color: AppColors.black,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                  : null,
-            ),
+            _buildMessageAvatar(viewModel, message),
           ],
         ],
       ),
     ),
+    );
+  }
+
+  /// Build a message avatar resolving the photo from the cache (single source of truth).
+  Widget _buildMessageAvatar(ChatViewModel viewModel, ChatMessageModel message) {
+    final photoUrl = viewModel.getUserPhotoUrl(message.userId) ?? message.userPhotoUrl;
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: AppColors.primary.withOpacity(0.3),
+      backgroundImage: photoUrl != null && photoUrl.isNotEmpty
+          ? NetworkImage(photoUrl)
+          : null,
+      child: photoUrl == null || photoUrl.isEmpty
+          ? Text(
+              () {
+                final name = viewModel.getUserDisplayName(message.userId) ?? message.username;
+                return name.isNotEmpty ? name[0].toUpperCase() : 'U';
+              }(),
+              style: const TextStyle(
+                color: AppColors.black,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          : null,
     );
   }
 

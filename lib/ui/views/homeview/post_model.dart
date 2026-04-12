@@ -17,9 +17,10 @@ class PostModel {
   final Map<String, int>? reactionCounts; // Count of reactions per emotion (e.g., {'👍': 5, '❤️': 3})
   final String? userPhotoUrl; // User's profile photo URL from Firestore
   final String? userId; // User ID to fetch profile photo if userPhotoUrl is missing
-  final String? postUrl; // Optional URL attached to the post
-  final String? linkPreviewImageUrl; // Thumbnail for link preview (og:image)
-  final String? linkPreviewTitle; // Title/headline for link preview (og:title)
+  final String? postUrl;
+  final String? linkPreviewImageUrl;
+  final String? linkPreviewTitle;
+  final String? sourceCollection;
 
   PostModel({
     this.postId,
@@ -30,7 +31,7 @@ class PostModel {
     required this.likes,
     required this.comments,
     required this.status,
-    this.isVideo = false, // Default to false for backward compatibility
+    this.isVideo = false,
     this.mediaPaths,
     this.isVideoList,
     this.createdAt,
@@ -41,6 +42,7 @@ class PostModel {
     this.postUrl,
     this.linkPreviewImageUrl,
     this.linkPreviewTitle,
+    this.sourceCollection,
   });
 
   /// Get total reaction count (sum of all emotion counts)
@@ -152,6 +154,7 @@ class PostModel {
       postUrl: data['postUrl'] as String?,
       linkPreviewImageUrl: data['linkPreviewImageUrl'] as String?,
       linkPreviewTitle: data['linkPreviewTitle'] as String?,
+      sourceCollection: data['sourceCollection'] as String?,
     );
   }
 
@@ -196,6 +199,7 @@ class PostModel {
     String? postUrl,
     String? linkPreviewImageUrl,
     String? linkPreviewTitle,
+    String? sourceCollection,
   }) {
     return PostModel(
       postId: postId ?? this.postId,
@@ -217,6 +221,7 @@ class PostModel {
       postUrl: postUrl ?? this.postUrl,
       linkPreviewImageUrl: linkPreviewImageUrl ?? this.linkPreviewImageUrl,
       linkPreviewTitle: linkPreviewTitle ?? this.linkPreviewTitle,
+      sourceCollection: sourceCollection ?? this.sourceCollection,
     );
   }
 

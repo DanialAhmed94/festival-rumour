@@ -13,12 +13,14 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/router/app_router.dart';
 import '../homeview/post_model.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 
 class CreatePostViewModel extends BaseViewModel {
   final ImagePicker _picker = ImagePicker();
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
   final TextEditingController postTextController = TextEditingController();
   final TextEditingController postUrlController = TextEditingController();
 
@@ -239,63 +241,19 @@ class CreatePostViewModel extends BaseViewModel {
       // Get post content
       final postContent = postTextController.text.trim();
       
-      // Get current user info
+      // Get current user info from profile cache (single source of truth)
       final currentUser = _authService.currentUser;
-      String username = _authService.userDisplayName ?? 
-                       currentUser?.email?.split('@')[0] ?? 
-                       'Unknown User';
-      
-      // Get user photo URL - prioritize Firestore over Firebase Auth
-      // because Firestore has the uploaded profile image
+      String? cachedName;
       String? userPhotoUrl;
       if (currentUser != null) {
-        try {
-          // First try to get from Firestore (where we save the uploaded image)
-          final userData = await _firestoreService.getUserData(currentUser.uid);
-          if (userData != null) {
-            if (userData['photoUrl'] != null && (userData['photoUrl'] as String).isNotEmpty) {
-              userPhotoUrl = userData['photoUrl'] as String?;
-              if (kDebugMode) {
-                print('✅ Got userPhotoUrl from Firestore: $userPhotoUrl');
-              }
-            } else {
-              if (kDebugMode) {
-                print('⚠️ Firestore userData exists but photoUrl is null or empty');
-              }
-            }
-          } else {
-            if (kDebugMode) {
-              print('⚠️ No userData found in Firestore for userId: ${currentUser.uid}');
-            }
-          }
-          
-          // If not in Firestore, fallback to Firebase Auth photoURL
-          if (userPhotoUrl == null || userPhotoUrl.isEmpty) {
-            userPhotoUrl = _authService.userPhotoUrl;
-            if (kDebugMode) {
-              print('📸 Got userPhotoUrl from Firebase Auth: $userPhotoUrl');
-            }
-          }
-          
-          if (kDebugMode) {
-            print('🎯 Final userPhotoUrl for post: $userPhotoUrl');
-          }
-          
-          // Update username from Firestore if available
-          if (userData != null && userData['displayName'] != null) {
-            username = userData['displayName'] as String;
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('Could not fetch user data from Firestore: $e');
-          }
-          // Fallback to Firebase Auth photoURL
-          userPhotoUrl = _authService.userPhotoUrl;
-        }
-      } else {
-        // Fallback to Firebase Auth photoURL if no current user
-        userPhotoUrl = _authService.userPhotoUrl;
+        cachedName = await _userPhotoCacheService.getDisplayName(currentUser.uid);
+        userPhotoUrl = await _userPhotoCacheService.getPhotoUrl(currentUser.uid);
       }
+      String username = cachedName ??
+                       _authService.userDisplayName ??
+                       currentUser?.email?.split('@')[0] ??
+                       'Unknown User';
+      userPhotoUrl ??= _authService.userPhotoUrl;
       
       // Upload media to Firebase Storage and get URLs (no default image for text/URL-only posts)
       String imagePath = '';

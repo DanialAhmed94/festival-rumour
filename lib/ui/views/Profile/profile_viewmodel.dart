@@ -14,6 +14,7 @@ import '../../../core/services/network_service.dart';
 import '../../../core/services/post_data_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/services/user_photo_cache_service.dart';
 
 class ProfileViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
@@ -21,6 +22,7 @@ class ProfileViewModel extends BaseViewModel {
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final NetworkService _networkService = locator<NetworkService>();
   final PostDataService _postDataService = locator<PostDataService>();
+  final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
 
   // Profile content tabs: 0 = Posts, 1 = Reels, 2 = Reposts
   int _selectedTab = 0;
@@ -74,10 +76,37 @@ class ProfileViewModel extends BaseViewModel {
   bool get isSearchActive => _isSearchActive;
   bool get hasSearchResults => _userSearchQuery.isNotEmpty && _searchResults.isNotEmpty;
   
-  String? get userBio => _userBio;
-  /// When viewing another user (_viewingUserId != null), never fall back to current user's data.
-  String? get userDisplayName => _viewingUserId != null ? _userDisplayName : (_userDisplayName ?? _authService.userDisplayName);
-  String? get userPhotoUrl => _viewingUserId != null ? _userPhotoUrl : (_userPhotoUrl ?? _authService.userPhotoUrl);
+  String? get userBio {
+    if (_viewingUserId != null) return _userBio;
+    if (_userBio != null) return _userBio;
+    final uid = _authService.currentUser?.uid;
+    if (uid != null) {
+      return _userPhotoCacheService.getCachedBio(uid);
+    }
+    return null;
+  }
+
+  String? get userDisplayName {
+    if (_viewingUserId != null) return _userDisplayName;
+    if (_userDisplayName != null) return _userDisplayName;
+    final uid = _authService.currentUser?.uid;
+    if (uid != null) {
+      final cached = _userPhotoCacheService.getCachedDisplayName(uid);
+      if (cached != null) return cached;
+    }
+    return _authService.userDisplayName;
+  }
+
+  String? get userPhotoUrl {
+    if (_viewingUserId != null) return _userPhotoUrl;
+    if (_userPhotoUrl != null) return _userPhotoUrl;
+    final uid = _authService.currentUser?.uid;
+    if (uid != null) {
+      final cached = _userPhotoCacheService.getCachedPhotoUrl(uid);
+      if (cached != null) return cached;
+    }
+    return _authService.userPhotoUrl;
+  }
   
   // Store selected post data for sub-navigation
   List<Map<String, dynamic>>? _selectedPostData;
@@ -263,6 +292,7 @@ class ProfileViewModel extends BaseViewModel {
     _isInitialized = true;
     _viewingUserId = userId; // Store the userId to view (null means current user)
     _fromRoute = fromRoute; // Store the route we came from
+    _userPhotoCacheService.addListener(_onProfileCacheUpdated);
     await loadUserProfileData(context);
   }
   
@@ -343,9 +373,21 @@ class ProfileViewModel extends BaseViewModel {
             // Load follow status if viewing another user
             await loadFollowStatus();
           } else {
-            // Viewing own profile: get from Firebase Auth
-            _userDisplayName = currentUser?.displayName;
-            _userPhotoUrl = currentUser?.photoURL;
+            // Viewing own profile: use Firestore as single source of truth,
+            // fall back to Auth only if Firestore has no photo
+            _userDisplayName = userData?['displayName'] as String? ?? currentUser?.displayName;
+            _userPhotoUrl = userData?['photoUrl'] as String? ?? currentUser?.photoURL;
+          }
+
+          // Update the profile cache
+          final targetId = _viewingUserId ?? currentUser?.uid;
+          if (targetId != null) {
+            _userPhotoCacheService.setUserProfile(
+              targetId,
+              photoUrl: _userPhotoUrl,
+              displayName: _userDisplayName,
+              bio: _userBio,
+            );
           }
           
           if (kDebugMode) {
@@ -654,8 +696,36 @@ class ProfileViewModel extends BaseViewModel {
     }
   }
 
-  /// Refresh only posts (images and videos) without reloading profile info
-  /// This is called when user taps the refresh button in the appbar
+  void removeDeletedPosts(List<String> deletedPostIds) {
+    if (deletedPostIds.isEmpty) return;
+    final deletedSet = deletedPostIds.toSet();
+    bool changed = false;
+
+    for (int i = _imagePostInfos.length - 1; i >= 0; i--) {
+      final postId = _imagePostInfos[i]['postId'] as String?;
+      if (postId != null && deletedSet.contains(postId)) {
+        _imagePostInfos.removeAt(i);
+        if (i < _userImages.length) {
+          _userImages.removeAt(i);
+        }
+        changed = true;
+      }
+    }
+
+    for (int i = _videoPostInfos.length - 1; i >= 0; i--) {
+      final postId = _videoPostInfos[i]['postId'] as String?;
+      if (postId != null && deletedSet.contains(postId)) {
+        _videoPostInfos.removeAt(i);
+        if (i < _userVideos.length) {
+          _userVideos.removeAt(i);
+        }
+        changed = true;
+      }
+    }
+
+    if (changed) notifyListeners();
+  }
+
   Future<void> refreshPostsOnly(BuildContext context) async {
     final targetUserId = _targetUserId;
     if (targetUserId == null) return;
@@ -772,10 +842,19 @@ class ProfileViewModel extends BaseViewModel {
       // Reload user data from Firestore to get updated bio and counts
       final userData = await _firestoreService.getUserData(currentUser.uid);
       
-      // Update only profile picture, username, and bio
+      // Update profile picture, username, and bio
+      // Use Firestore as single source of truth for photo, fall back to Auth
       _userBio = userData?['bio'] as String?;
-      _userDisplayName = currentUser.displayName;
-      _userPhotoUrl = currentUser.photoURL;
+      _userDisplayName = userData?['displayName'] as String? ?? currentUser.displayName;
+      _userPhotoUrl = userData?['photoUrl'] as String? ?? currentUser.photoURL;
+
+      // Update the profile cache
+      _userPhotoCacheService.setUserProfile(
+        currentUser.uid,
+        photoUrl: _userPhotoUrl,
+        displayName: _userDisplayName,
+        bio: _userBio,
+      );
       
       _hasRefreshedProfile = true; // Mark as refreshed
       
@@ -1348,12 +1427,36 @@ class ProfileViewModel extends BaseViewModel {
     }
   }
 
+  void _onProfileCacheUpdated() {
+    final uid = _viewingUserId ?? _authService.currentUser?.uid;
+    if (uid == null) return;
+    final cachedPhoto = _userPhotoCacheService.getCachedPhotoUrl(uid);
+    final cachedName = _userPhotoCacheService.getCachedDisplayName(uid);
+    final cachedBio = _userPhotoCacheService.getCachedBio(uid);
+    bool changed = false;
+    if (cachedPhoto != null && _userPhotoUrl != cachedPhoto) {
+      _userPhotoUrl = cachedPhoto;
+      changed = true;
+    }
+    if (cachedName != null && _userDisplayName != cachedName) {
+      _userDisplayName = cachedName;
+      changed = true;
+    }
+    if (cachedBio != null && _userBio != cachedBio) {
+      _userBio = cachedBio;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
   @override
   void onDispose() {
+    _userPhotoCacheService.removeListener(_onProfileCacheUpdated);
+
     // Cancel the real-time listener when view is disposed
     _userDataSubscription?.cancel();
     _userDataSubscription = null;
-    
+
     // Cancel favorite festivals listener
     _favoriteFestivalsSubscription?.cancel();
     _favoriteFestivalsSubscription = null;
