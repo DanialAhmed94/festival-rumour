@@ -353,6 +353,8 @@ class FestivalRumourApp extends StatelessWidget {
             onGenerateInitialRoutes: onGenerateInitialRoutes,
             onGenerateRoute: onGenerateRoute,
             navigatorKey: locator<NavigationService>().navigatorKey,
+            scaffoldMessengerKey:
+                locator<NavigationService>().scaffoldMessengerKey,
             builder: (context, widget) {
               _log(
                 'FestivalRumourApp.MaterialApp.builder()',

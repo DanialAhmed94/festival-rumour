@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/constants/app_assets.dart';
+import '../../../../core/utils/backbutton.dart';
 import '../../../../shared/extensions/context_extensions.dart';
 import '../../../../shared/widgets/responsive_widget.dart';
 import '../../../core/router/app_router.dart';
@@ -133,9 +134,26 @@ class _UsernameViewState extends State<UsernameView> {
                               borderRadius: BorderRadius.circular(AppDimensions.radiusL),
                             ),
                             child: Column(
-                            // crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 SizedBox(height: context.getConditionalSpacing()),
+
+                                /// Back Button + Title
+                                Row(
+                                  children: [
+                                    CustomBackButton(onTap: () => Navigator.of(context).pop()),
+                                    SizedBox(width: context.getConditionalSpacing()),
+                                    Text(
+                                      AppStrings.login,
+                                      style: TextStyle(
+                                        fontSize: context.responsiveTextXL,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.black,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: context.getConditionalSpacing()),
+
                                 /// Username Label
                                 Row(
                                   children: [

@@ -27,6 +27,8 @@ class ChatViewModel extends BaseViewModel {
   final AuthService _authService = locator<AuthService>();
   final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
 
+  bool openedViaDeepLink = false;
+
   /// Don't use post-image URLs as profile photos (they often 404). Return null for those.
   static String? _sanitizeProfilePhotoUrl(String? url) {
     if (url == null || url.trim().isEmpty) return null;

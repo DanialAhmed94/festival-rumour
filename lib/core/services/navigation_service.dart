@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 class NavigationService {
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
 
   /// Navigate to a new screen
   Future<T?> navigateTo<T extends Object?>(String routeName, {Object? arguments}) async {
@@ -76,10 +78,7 @@ class NavigationService {
     return pushNamedAndRemoveUntil<T>('/welcome', (route) => false);
   }
   void showSnackbar(String message, {bool isError = false}) {
-    final context = navigatorKey.currentContext;
-    if (context == null) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
+    scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isError ? Colors.red : Colors.green,

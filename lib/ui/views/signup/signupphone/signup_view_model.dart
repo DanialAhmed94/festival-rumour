@@ -227,7 +227,7 @@ class SignupViewModel extends BaseViewModel {
     }
   }
 
-  /// 🔹 Verify OTP code
+  /// 🔹 Verify OTP code (signup flow — no ghost accounts)
   Future<bool> verifyOtpCode(String smsCode) async {
     if (_verificationId == null) {
       setError('No verification ID available. Please try again.');
@@ -238,7 +238,7 @@ class SignupViewModel extends BaseViewModel {
     clearError();
 
     try {
-      final result = await _authService.verifyPhoneNumber(
+      final result = await _authService.verifyPhoneOtpOnly(
         verificationId: _verificationId!,
         smsCode: smsCode,
       );

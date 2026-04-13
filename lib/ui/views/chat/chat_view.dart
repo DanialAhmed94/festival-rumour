@@ -38,15 +38,13 @@ class ChatView extends BaseView<ChatViewModel> {
 
   @override
   Widget buildView(BuildContext context, ChatViewModel viewModel) {
-    // Initialize chat room if chatRoomId is provided and not already initialized
-    // Only initialize if we're not already in a chat room (to prevent re-initialization after back button)
     if (viewModel.chatRoomId == null && !viewModel.isInChatRoom) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Double-check to prevent race conditions
         if (viewModel.chatRoomId == null && !viewModel.isInChatRoom) {
           final chatRoomId =
               ModalRoute.of(context)?.settings.arguments as String?;
           if (chatRoomId != null && chatRoomId.isNotEmpty) {
+            viewModel.openedViaDeepLink = true;
             viewModel.initializeChatRoom(chatRoomId);
           }
         }
@@ -714,8 +712,12 @@ class ChatView extends BaseView<ChatViewModel> {
         children: [
           CustomBackButton(
             onTap: () {
-              // Exit chat room and return to chat list view (public/private tabs)
-              viewModel.exitChatRoom();
+              if (viewModel.openedViaDeepLink) {
+                viewModel.exitChatRoom();
+                Navigator.of(context).pop();
+              } else {
+                viewModel.exitChatRoom();
+              }
             },
           ),
           Expanded(

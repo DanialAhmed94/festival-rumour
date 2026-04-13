@@ -187,10 +187,10 @@ class InterestsViewModel extends BaseViewModel {
         }
       }
     } else {
-      // Email/Password flow - create new user
       if (kDebugMode) {
         print('🔐 [SIGNUP] Creating user via Email/Password flow');
-        print('   Email: $email');
+        print('   Email: "$email"');
+        print('   Password (length=${password?.length}): "$password"');
       }
 
       // Validate required data - use ValidationException for validation errors

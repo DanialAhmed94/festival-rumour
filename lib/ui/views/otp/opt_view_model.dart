@@ -274,7 +274,15 @@ class OtpViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  /// Verify phone OTP with comprehensive error handling
+  /// Verify phone OTP with comprehensive error handling.
+  ///
+  /// **Signup flow** (`fromFestival == false`):
+  ///   Uses [AuthService.verifyPhoneOtpOnly] which validates the code,
+  ///   deletes the temporary phone account, and signs out — no ghost users.
+  ///
+  /// **Festival flow** (`fromFestival == true`):
+  ///   Uses [AuthService.verifyAndLinkPhone] which links the phone credential
+  ///   to the already-signed-in user — no ghost users and session is preserved.
   Future<void> verifyCode() async {
     if (!isOtpValid) {
       _setError(
@@ -300,7 +308,6 @@ class OtpViewModel extends BaseViewModel {
       return;
     }
 
-    // Track verification attempt
     _verificationAttempts++;
     _lastVerificationAttempt = DateTime.now();
 
@@ -313,12 +320,10 @@ class OtpViewModel extends BaseViewModel {
 
         if (kDebugMode) {
           print(
-            '🔍 [SIGNUP] Verifying OTP (Attempt $_verificationAttempts/$_maxVerificationAttempts)',
-          );
-          print(
-            '   Verification ID: ${_verificationId != null ? "${_verificationId!.substring(0, 20)}..." : "NULL"}',
+            '🔍 [OTP] Verifying code (Attempt $_verificationAttempts/$_maxVerificationAttempts)',
           );
           print('   Phone Number: $_phoneNumber');
+          print('   fromFestival: $fromFestival');
         }
 
         if (_verificationId == null ||
@@ -330,10 +335,21 @@ class OtpViewModel extends BaseViewModel {
           );
         }
 
-        final result = await _authService.verifyPhoneNumber(
-          verificationId: _verificationId!,
-          smsCode: _otpCode,
-        );
+        final AuthResult result;
+
+        if (fromFestival) {
+          // Already signed-in user adding a phone — link, don't create.
+          result = await _authService.verifyAndLinkPhone(
+            verificationId: _verificationId!,
+            smsCode: _otpCode,
+          );
+        } else {
+          // Signup flow — verify only, delete temp account, sign out.
+          result = await _authService.verifyPhoneOtpOnly(
+            verificationId: _verificationId!,
+            smsCode: _otpCode,
+          );
+        }
 
         if (!result.isSuccess) {
           throw AuthException(
@@ -345,22 +361,14 @@ class OtpViewModel extends BaseViewModel {
         verificationSuccessful = true;
 
         if (kDebugMode) {
-          print('✅ [SIGNUP] OTP verification SUCCESSFUL');
+          print('✅ [OTP] Phone verification SUCCESSFUL');
         }
 
         _signupDataService.setPhoneNumber(_phoneNumber!);
 
-        // try {
-        //   await _authService.signOut();
-        // } catch (e) {
-        //   if (kDebugMode) {
-        //     print('Warning: Could not sign out temporary user: $e');
-        //   }
-        // }
-
         clearErrorText();
         _isOtpVerified = true;
-        _verificationAttempts = 0; // Reset on success
+        _verificationAttempts = 0;
         notifyListeners();
       },
       onException: (exception) {
@@ -386,35 +394,38 @@ class OtpViewModel extends BaseViewModel {
       },
       minimumLoadingDuration: AppDurations.otpVerificationDuration,
     );
-    if (verificationSuccessful && _isOtpVerified) {
-      if (kDebugMode) {
-        print('🚀 [SIGNUP] Navigating to interest/festival screen');
-      }
 
-      print("fromFestival${fromFestival}");
+    if (!verificationSuccessful || !_isOtpVerified) return;
 
-      if (fromFestival) {
-        final StorageService storageService = locator<StorageService>();
-
-        final uid = await storageService.getUserId(); // <-- FIXED
-        print("🔥 Current UID: $uid");
-
-        if (uid != null && _phoneNumber != null) {
-          await _authService.savePhoneToFirestore(uid, _phoneNumber!);
-        }
-
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _navigationService.navigateTo(AppRoutes.festivals);
-        });
-
-        return;
-      }
-
-      // Normal signup → interest
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _navigationService.navigateTo(AppRoutes.interest);
-      });
+    if (kDebugMode) {
+      print('🚀 [OTP] Navigating after successful verification');
     }
+
+    if (fromFestival) {
+      // User stayed signed in (phone was linked). Save number to Firestore.
+      final StorageService storageService = locator<StorageService>();
+      final uid = await storageService.getUserId();
+
+      if (uid != null && _phoneNumber != null) {
+        try {
+          await _authService.savePhoneToFirestore(uid, _phoneNumber!);
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ [OTP] Could not save phone to Firestore: $e');
+          }
+        }
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigationService.navigateTo(AppRoutes.festivals);
+      });
+      return;
+    }
+
+    // Normal signup → interest screen (email/password account created there).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _navigationService.navigateTo(AppRoutes.interest);
+    });
   }
 
   /// Resend phone OTP with cooldown and error handling

@@ -40,8 +40,8 @@ class SignupViewEmailModel extends BaseViewModel {
   /// ✅ Validate fields
   bool validateFields() {
     final email = emailController.text.trim();
-    final password = passwordController.text;
-    final confirmPassword = confirmPasswordController.text;
+    final password = passwordController.text.trim();
+    final confirmPassword = confirmPasswordController.text.trim();
 
     bool isValid = true;
 
@@ -178,7 +178,7 @@ class SignupViewEmailModel extends BaseViewModel {
     await handleAsync(
       () async {
         final email = emailController.text.trim();
-        final password = passwordController.text;
+        final password = passwordController.text.trim();
         
         // Validate email format before checking
         if (!RegExp(r'^[\w\.-]+@[\w\.-]+\.\w{2,}$').hasMatch(email)) {
@@ -194,9 +194,8 @@ class SignupViewEmailModel extends BaseViewModel {
         
         if (kDebugMode) {
           print('📧 [SIGNUP] Email signup screen completed');
-          print('   Current Route: ${AppRoutes.signupEmail}');
-          print('   Navigating to: ${AppRoutes.name}');
           print('   Email stored: $email');
+          print('   Password stored (length=${password.length}): "$password"');
         }
         
         // Navigate to name screen

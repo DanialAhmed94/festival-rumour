@@ -187,17 +187,12 @@ class UsernameViewModel extends BaseViewModel {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
-    // Always validate all fields when login button is clicked
     _validateEmail(email);
     _validatePassword(password);
     _updateFormValidity();
-
-    // Notify listeners to update UI with error messages
     notifyListeners();
 
-    // If any error found, show specific error messages
     if (!isFormValid) {
-      // Show specific error message based on what's missing
       String errorMessage = '';
       if (email.isEmpty) {
         errorMessage = AppStrings.emailRequired;
@@ -211,20 +206,18 @@ class UsernameViewModel extends BaseViewModel {
         errorMessage = AppStrings.fixErrors;
       }
 
-      _showErrorSnackBar(context, errorMessage);
+      _showErrorSnackBar(errorMessage);
       return;
     }
 
     await handleAsync(
       () async {
-        // Simulate API delay
         await Future.delayed(AppDurations.loginLoadingDuration);
 
-        // Firebase login validation
         if (kDebugMode) {
           print('🔐 [LOGIN] Attempting email/password login...');
           print('   Email: $email');
-          print('   Route: ${AppRoutes.username}');
+          print('   Password (length=${password.length}): "$password"');
         }
 
         final result = await _authService.signInWithEmail(
@@ -242,7 +235,6 @@ class UsernameViewModel extends BaseViewModel {
             print('   Navigating to: ${AppRoutes.festivals}');
           }
 
-          // Save login state to storage using Firestore photo (single source of truth)
           if (user != null) {
             String? photoUrl;
             String? displayName = user.displayName;
@@ -274,49 +266,46 @@ class UsernameViewModel extends BaseViewModel {
             }
           }
 
-          _showSuccessSnackBar(context, AppStrings.loginSuccess);
-          // Navigate to Festival Screen using navigation service
           _navigationService.navigateTo(AppRoutes.festivals);
         } else {
           if (kDebugMode) {
             print('❌ [LOGIN] Email/Password login failed!');
             print('   Error: ${result.errorMessage}');
           }
-          // Error message is already set by handleAsync from the exception
-          // The error will be displayed via BaseView's onError handler
           if (result.errorMessage != null) {
-            _showErrorSnackBar(context, result.errorMessage!);
+            _showErrorSnackBar(result.errorMessage!);
           }
         }
       },
       minimumLoadingDuration: AppDurations.loginLoadingDuration,
       onError: (error) {
-        // Additional error handling if needed
-        _showErrorSnackBar(context, error);
+        _showErrorSnackBar(error);
       },
     );
   }
 
-  void _showSuccessSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: AppColors.success),
-            const SizedBox(width: AppDimensions.spaceS),
-            Expanded(
-              child: Text(
-                message,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+  void _showSuccessSnackBar(String message) {
+    try {
+      _navigationService.scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: AppColors.success),
+              const SizedBox(width: AppDimensions.spaceS),
+              Expanded(
+                child: Text(
+                  message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+          backgroundColor: AppColors.success.withOpacity(0.1),
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: AppColors.success.withOpacity(0.1),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+      );
+    } catch (_) {}
   }
 
   static Future<void> updateFcmTokenForUser() async {
@@ -334,29 +323,30 @@ class UsernameViewModel extends BaseViewModel {
     print("✅ FCM token replaced in Firestore");
   }
 
-  void _showErrorSnackBar(BuildContext context, String message) {
-    // Make error message more user-friendly
-    String userFriendlyMessage = _getUserFriendlyErrorMessage(message);
+  void _showErrorSnackBar(String message) {
+    try {
+      String userFriendlyMessage = _getUserFriendlyErrorMessage(message);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error, color: AppColors.error),
-            const SizedBox(width: AppDimensions.spaceS),
-            Expanded(
-              child: Text(
-                userFriendlyMessage,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+      _navigationService.scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: AppColors.error),
+              const SizedBox(width: AppDimensions.spaceS),
+              Expanded(
+                child: Text(
+                  userFriendlyMessage,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+          backgroundColor: AppColors.error.withOpacity(0.1),
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: AppColors.error.withOpacity(0.1),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+      );
+    } catch (_) {}
   }
 
   /// Convert technical error messages to user-friendly messages

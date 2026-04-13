@@ -452,8 +452,11 @@ class AuthService {
     }
   }
 
-  /// Verify phone number with OTP
-  Future<AuthResult> verifyPhoneNumber({
+  /// Verify phone OTP for signup flow only.
+  /// Validates the SMS code, then immediately deletes the temporary phone
+  /// account and signs out so no ghost/orphan user remains in Firebase Auth.
+  /// After this call the auth state is clean (no signed-in user).
+  Future<AuthResult> verifyPhoneOtpOnly({
     required String verificationId,
     required String smsCode,
   }) async {
@@ -463,14 +466,85 @@ class AuthService {
         smsCode: smsCode,
       );
 
-      await _auth.signInWithCredential(credential);
+      final userCredential = await _auth.signInWithCredential(credential);
+
+      // OTP is valid — clean up the temporary phone-based account.
+      try {
+        await userCredential.user?.delete();
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ Could not delete temporary phone user: $e');
+        }
+      }
+
+      try {
+        await _auth.signOut();
+      } catch (_) {}
+
       return AuthResult.success();
+    } catch (e, stackTrace) {
+      // Ensure clean auth state even on failure
+      try {
+        await _auth.signOut();
+      } catch (_) {}
+
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'AuthService.verifyPhoneOtpOnly',
+      );
+      return AuthResult.failure(exception.message);
+    }
+  }
+
+  /// Verify phone OTP for an already-signed-in user (e.g. adding phone from
+  /// the festival screen).  Links the phone provider to the current user so
+  /// no ghost account is created and the user stays signed in.
+  Future<AuthResult> verifyAndLinkPhone({
+    required String verificationId,
+    required String smsCode,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return AuthResult.failure('No user is currently signed in.');
+      }
+
+      final credential = PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: smsCode,
+      );
+
+      final hasPhoneProvider =
+          user.providerData.any((p) => p.providerId == 'phone');
+
+      if (hasPhoneProvider) {
+        await user.updatePhoneNumber(credential);
+      } else {
+        await user.linkWithCredential(credential);
+      }
+
+      return AuthResult.success();
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'credential-already-in-use') {
+        return AuthResult.failure(
+          'This phone number is already used by another account.',
+        );
+      }
+      final exception = ExceptionMapper.mapToAppException(e);
+      _errorHandler.handleError(
+        exception,
+        StackTrace.current,
+        'AuthService.verifyAndLinkPhone',
+      );
+      return AuthResult.failure(exception.message);
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(
         exception,
         stackTrace,
-        'AuthService.verifyPhoneNumber',
+        'AuthService.verifyAndLinkPhone',
       );
       return AuthResult.failure(exception.message);
     }
