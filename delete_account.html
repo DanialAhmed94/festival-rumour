@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delete Your Account — The Festival App</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.7;
+            color: #1a1a2e;
+            background-color: #f8f9fa;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 48px 24px 80px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .app-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .header p {
+            color: #555;
+            font-size: 1.05rem;
+            max-width: 540px;
+            margin: 0 auto;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid #dee2e6;
+            margin: 36px 0;
+        }
+
+        h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        p {
+            margin-bottom: 16px;
+        }
+
+        .steps {
+            list-style: none;
+            padding: 0;
+            counter-reset: step-counter;
+            margin-bottom: 24px;
+        }
+
+        .steps li {
+            counter-increment: step-counter;
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            padding: 20px;
+            margin-bottom: 12px;
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+        }
+
+        .steps li::before {
+            content: counter(step-counter);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            background: #4361ee;
+            color: #fff;
+            font-weight: 700;
+            font-size: 1rem;
+            border-radius: 50%;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-content strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .step-content span {
+            color: #555;
+            font-size: 0.95rem;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+
+        .warning-box h3 {
+            color: #856404;
+            margin-bottom: 12px;
+        }
+
+        .warning-box ul {
+            padding-left: 20px;
+            margin: 0;
+        }
+
+        .warning-box ul li {
+            margin-bottom: 6px;
+            color: #664d03;
+            font-size: 0.95rem;
+        }
+
+        .data-deleted {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin-bottom: 24px;
+        }
+
+        .data-deleted h3 {
+            margin-bottom: 12px;
+        }
+
+        .data-deleted ul {
+            padding-left: 20px;
+            margin: 0;
+        }
+
+        .data-deleted ul li {
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+        }
+
+        .contact-section {
+            background: #e8f4fd;
+            border: 1px solid #b6d4fe;
+            border-radius: 10px;
+            padding: 20px 24px;
+        }
+
+        .contact-section h3 {
+            color: #0a58ca;
+            margin-bottom: 8px;
+        }
+
+        .contact-section p {
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        a {
+            color: #4361ee;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 48px;
+            color: #6c757d;
+            font-size: 0.85rem;
+        }
+
+        .footer a {
+            color: #6c757d;
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 24px 16px 48px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .steps li {
+                padding: 16px;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <div class="header">
+            <p class="app-name">The Festival App</p>
+            <h1>Delete Your Account</h1>
+            <p>Follow the steps below to permanently delete your Festival App account and all data associated with it.</p>
+        </div>
+
+        <hr>
+
+        <h2>How to Delete Your Account</h2>
+
+        <ol class="steps">
+            <li>
+                <div class="step-content">
+                    <strong>Open The Festival App</strong>
+                    <span>Launch The Festival App on your iOS or Android device and make sure you are signed in to the account you wish to delete.</span>
+                </div>
+            </li>
+            <li>
+                <div class="step-content">
+                    <strong>Go to Settings</strong>
+                    <span>Tap on your <strong>Profile</strong> tab, then tap the <strong>Settings</strong> icon (gear icon) in the top-right corner of the screen.</span>
+                </div>
+            </li>
+            <li>
+                <div class="step-content">
+                    <strong>Scroll to the Danger Zone</strong>
+                    <span>Scroll down to the bottom of the Settings screen until you see the <strong>"Danger Zone"</strong> section.</span>
+                </div>
+            </li>
+            <li>
+                <div class="step-content">
+                    <strong>Tap "Delete Account"</strong>
+                    <span>Tap the <strong>"Delete Account"</strong> button. You will be asked to confirm that you want to permanently delete your account.</span>
+                </div>
+            </li>
+            <li>
+                <div class="step-content">
+                    <strong>Confirm Deletion</strong>
+                    <span>Confirm your choice in the dialog. Your account, profile, and all associated data will be permanently deleted. This action cannot be undone.</span>
+                </div>
+            </li>
+        </ol>
+
+        <hr>
+
+        <div class="warning-box">
+            <h3>&#9888; Before You Delete</h3>
+            <ul>
+                <li>Account deletion is <strong>permanent and irreversible</strong>. Once deleted, your account cannot be recovered.</li>
+                <li>You will be signed out immediately and will no longer be able to log in with the same credentials.</li>
+                <li>Any content you have posted (posts, comments, chat messages) may be removed or anonymized.</li>
+                <li>Active subscriptions (if any) are not automatically cancelled. Please cancel any subscriptions through the App Store or Google Play before deleting your account.</li>
+            </ul>
+        </div>
+
+        <div class="data-deleted">
+            <h3>What Data Gets Deleted</h3>
+            <ul>
+                <li>Your profile information (name, email, phone number, profile photo, bio)</li>
+                <li>Your festival interest categories and followed festivals</li>
+                <li>Your posts, comments, and reactions</li>
+                <li>Your chat messages and chat room memberships</li>
+                <li>Your location sharing data</li>
+                <li>Your festival attendance records and uploaded photos</li>
+                <li>Your job listings</li>
+                <li>Your leaderboard score and badges</li>
+                <li>Your push notification token and notification preferences</li>
+                <li>Your Firebase authentication credentials</li>
+            </ul>
+        </div>
+
+        <hr>
+
+        <div class="contact-section">
+            <h3>Need Help?</h3>
+            <p>If you are unable to access your account or need assistance with account deletion, you can request deletion by contacting us directly:</p>
+            <p><strong>Email:</strong> <a href="mailto:jameswaudby@thefestivalapps.com">jameswaudby@thefestivalapps.com</a></p>
+            <p>Please include the email address or phone number associated with your account so we can locate and process your request. We will respond within 7 business days.</p>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2026 The Festival App &mdash; Asteral Design. All rights reserved.</p>
+            <p><a href="privacy_policy.html">Privacy Policy</a></p>
+        </div>
+
+    </div>
+</body>
+</html>

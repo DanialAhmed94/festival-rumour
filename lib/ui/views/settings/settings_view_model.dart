@@ -453,8 +453,11 @@ class SettingsViewModel extends BaseViewModel {
     }
   }
 
-  void openPrivacyPolicy() {
-    // TODO: Navigate to Privacy Policy page
+  Future<void> openPrivacyPolicy() async {
+    final url = Uri.parse('https://thefestivalapps.com/the-festival-app/privacy-policy.html');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
   }
 
   void openTerms() {

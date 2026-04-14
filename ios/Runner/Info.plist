@@ -43,14 +43,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs access to camera to take photos for your profile and posts.</string>
-	<key>NSContactsUsageDescription</key>
-	<string>This app needs access to contacts to help you find and invite friends.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>This app needs access to location to show nearby events and festivals.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs access to location to show nearby events and festivals.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>This app needs access to microphone for voice messages and video calls.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs access to photo library to select and share photos.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
