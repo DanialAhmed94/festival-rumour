@@ -178,7 +178,7 @@ class _UsernameViewState extends State<UsernameView> {
                                   child: TextField(
                                     controller: viewModel.emailController,
                                     focusNode: _emailFocusNode,
-                                    cursorColor: AppColors.primary,
+                                    cursorColor: Colors.black,
                                     keyboardType: TextInputType.emailAddress,
                                     textInputAction: TextInputAction.next,
                                     textAlignVertical: TextAlignVertical.center,
@@ -275,7 +275,7 @@ class _UsernameViewState extends State<UsernameView> {
                                     controller: viewModel.passwordController,
                                     focusNode: _passwordFocusNode,
                                     obscureText: !viewModel.isPasswordVisible,
-                                    cursorColor: AppColors.primary,
+                                    cursorColor: Colors.black,
                                     textInputAction: TextInputAction.done,
                                     textAlignVertical: TextAlignVertical.center,
                                     onChanged: viewModel.onPasswordChanged,

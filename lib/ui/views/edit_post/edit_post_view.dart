@@ -190,7 +190,7 @@ class EditPostView extends BaseView<EditPostViewModel> {
             fontSize: 16,
             height: 1.5,
           ),
-          cursorColor: AppColors.accent,
+          cursorColor: Colors.black,
           onChanged: (_) => viewModel.notifyListeners(),
         ),
       ),
@@ -234,7 +234,7 @@ class EditPostView extends BaseView<EditPostViewModel> {
                   color: AppColors.onSurface,
                   fontSize: 16,
                 ),
-                cursorColor: AppColors.accent,
+                cursorColor: Colors.black,
                 onChanged: (_) => viewModel.notifyListeners(),
               ),
             ),
@@ -386,7 +386,7 @@ class EditPostView extends BaseView<EditPostViewModel> {
         isDense: true,
       ),
       style: const TextStyle(color: AppColors.onSurface, fontSize: 14),
-      cursorColor: AppColors.accent,
+      cursorColor: Colors.black,
     );
   }
 

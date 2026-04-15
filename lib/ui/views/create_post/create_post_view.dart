@@ -159,7 +159,7 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
             fontSize: 16,
             height: 1.5,
           ),
-          cursorColor: AppColors.accent,
+          cursorColor: Colors.black,
         ),
       ),
     );
@@ -202,7 +202,7 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                   color: AppColors.onSurface,
                   fontSize: 16,
                 ),
-                cursorColor: AppColors.accent,
+                cursorColor: Colors.black,
                 onChanged: (_) => viewModel.notifyListeners(),
               ),
             ),

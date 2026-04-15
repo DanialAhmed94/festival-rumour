@@ -757,6 +757,7 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
       validator: validator,
       onFieldSubmitted: onSubmitted,
       textInputAction: TextInputAction.next,
+      cursorColor: Colors.black,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

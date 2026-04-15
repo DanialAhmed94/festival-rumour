@@ -43,6 +43,7 @@ dependencies:
 
   # Image Loading and Caching
   cached_network_image: ^3.3.1
+  shimmer: ^3.0.0
 
   # Fonts
   google_fonts: ^6.1.0

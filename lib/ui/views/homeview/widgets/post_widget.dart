@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
@@ -772,14 +773,13 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: double.infinity,
-                placeholder: (_, __) => Container(
-                  color: AppColors.onSurfaceVariant.withOpacity(0.15),
-                  child: const Center(
-                    child: SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
-                    ),
+                placeholder: (_, __) => Shimmer.fromColors(
+                  baseColor: AppColors.grey300,
+                  highlightColor: AppColors.grey100,
+                  child: Container(
+                    color: AppColors.grey300,
+                    width: double.infinity,
+                    height: double.infinity,
                   ),
                 ),
                 errorWidget: (_, __, ___) => _buildLinkPreviewThumbnailPlaceholder(),
@@ -1048,14 +1048,13 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
                       ? CachedNetworkImage(
                           imageUrl: post.linkPreviewImageUrl!,
                           fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(
-                            color: AppColors.onSurfaceVariant.withOpacity(0.15),
-                            child: const Center(
-                              child: SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
-                              ),
+                          placeholder: (_, __) => Shimmer.fromColors(
+                            baseColor: AppColors.grey300,
+                            highlightColor: AppColors.grey100,
+                            child: Container(
+                              color: AppColors.grey300,
+                              width: double.infinity,
+                              height: double.infinity,
                             ),
                           ),
                         errorWidget: (_, __, ___) => _buildLinkPreviewThumbnailPlaceholder(),
@@ -1282,12 +1281,13 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
         imageUrl: mediaPath,
         fit: BoxFit.cover,
         width: double.infinity,
-        placeholder: (context, url) => Container(
-          color: AppColors.onSurfaceVariant.withOpacity(0.3),
-          child: const Center(
-            child: CircularProgressIndicator(
-              color: AppColors.accent,
-            ),
+        placeholder: (context, url) => Shimmer.fromColors(
+          baseColor: AppColors.grey300,
+          highlightColor: AppColors.grey100,
+          child: Container(
+            color: AppColors.grey300,
+            width: double.infinity,
+            height: double.infinity,
           ),
         ),
         errorWidget: (context, url, error) {
@@ -1705,14 +1705,13 @@ class _NetworkImageAvatar extends StatelessWidget {
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,
-          placeholder: (context, url) =>
-              Container(
-                color: AppColors.primary,
-                child: const Center(
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.accent,
-                  ),
+          placeholder: (context, url) => Shimmer.fromColors(
+                baseColor: AppColors.grey300,
+                highlightColor: AppColors.grey100,
+                child: Container(
+                  color: AppColors.grey300,
+                  width: double.infinity,
+                  height: double.infinity,
                 ),
               ),
           errorWidget: (context, url, error) {

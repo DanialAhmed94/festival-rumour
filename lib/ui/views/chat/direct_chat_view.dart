@@ -9,6 +9,7 @@ import '../../../core/services/current_chat_room_service.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
+import '../../../shared/widgets/shimmer_avatar.dart';
 import 'chat_message_model.dart';
 import 'chat_view_model.dart';
 
@@ -269,28 +270,16 @@ class DirectChatView extends BaseView<ChatViewModel> {
     );
   }
 
-  /// Build a message avatar resolving the photo from the cache (single source of truth).
   Widget _buildMessageAvatar(ChatViewModel viewModel, ChatMessageModel message) {
     final photoUrl = viewModel.getUserPhotoUrl(message.userId) ?? message.userPhotoUrl;
-    return CircleAvatar(
+    final name = viewModel.getUserDisplayName(message.userId) ?? message.username;
+    final letter = name.isNotEmpty ? name[0].toUpperCase() : 'U';
+
+    return ShimmerAvatar(
+      photoUrl: photoUrl,
       radius: 16,
+      fallbackLetter: letter,
       backgroundColor: AppColors.primary.withOpacity(0.3),
-      backgroundImage: photoUrl != null && photoUrl.isNotEmpty
-          ? NetworkImage(photoUrl)
-          : null,
-      child: photoUrl == null || photoUrl.isEmpty
-          ? Text(
-              () {
-                final name = viewModel.getUserDisplayName(message.userId) ?? message.username;
-                return name.isNotEmpty ? name[0].toUpperCase() : 'U';
-              }(),
-              style: const TextStyle(
-                color: AppColors.black,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            )
-          : null,
     );
   }
 
