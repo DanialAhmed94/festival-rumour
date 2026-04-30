@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>$(FLUTTER_BUILD_NAME)</string>
+	<string>1.0.1</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -43,6 +43,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs access to camera to take photos for your profile and posts.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>This app needs access to your contacts to invite and share the app with your friends.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app needs access to location to show nearby events and festivals.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs access to location to show nearby events and festivals.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

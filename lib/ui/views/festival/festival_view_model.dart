@@ -53,7 +53,8 @@ class FestivalViewModel extends BaseViewModel {
 
   /// User-facing error message when search API fails (e.g. no connection). Null when no error.
   String? get searchError => _searchError;
-  String currentFilter = 'live'; // Current filter: live, upcoming, past (default Live)
+  String currentFilter =
+      'live'; // Current filter: live, upcoming, past (default Live)
   late FocusNode searchFocusNode; // Search field focus node
   TextEditingController searchController =
       TextEditingController(); // Search field controller
@@ -66,13 +67,16 @@ class FestivalViewModel extends BaseViewModel {
 
   String? get userPhotoUrl => _userPhotoUrl;
 
-  final UserPhotoCacheService _profileCacheService = locator<UserPhotoCacheService>();
+  final UserPhotoCacheService _profileCacheService =
+      locator<UserPhotoCacheService>();
 
   FestivalViewModel() {
     searchFocusNode = FocusNode();
     final uid = _authService.currentUser?.uid;
     if (uid != null) {
-      _userPhotoUrl = _profileCacheService.getCachedPhotoUrl(uid) ?? _authService.cachedUserPhotoUrl;
+      _userPhotoUrl =
+          _profileCacheService.getCachedPhotoUrl(uid) ??
+          _authService.cachedUserPhotoUrl;
     }
     _loadUserPhoto();
     _requestNotificationPermission();
@@ -88,7 +92,9 @@ class FestivalViewModel extends BaseViewModel {
     final uid = _authService.currentUser?.uid;
     if (uid == null) return;
     final cachedPhoto = _profileCacheService.getCachedPhotoUrl(uid);
-    if (cachedPhoto != null && cachedPhoto.isNotEmpty && _userPhotoUrl != cachedPhoto) {
+    if (cachedPhoto != null &&
+        cachedPhoto.isNotEmpty &&
+        _userPhotoUrl != cachedPhoto) {
       _userPhotoUrl = cachedPhoto;
       _authService.setCachedUserPhotoUrl(_userPhotoUrl);
       notifyListeners();
@@ -105,7 +111,9 @@ class FestivalViewModel extends BaseViewModel {
         return;
       }
 
-      final cachedPhoto = await _profileCacheService.getPhotoUrl(currentUser.uid);
+      final cachedPhoto = await _profileCacheService.getPhotoUrl(
+        currentUser.uid,
+      );
       _userPhotoUrl = cachedPhoto ?? currentUser.photoURL;
       _authService.setCachedUserPhotoUrl(_userPhotoUrl);
       notifyListeners();
@@ -130,7 +138,9 @@ class FestivalViewModel extends BaseViewModel {
 
   /// Navigate to create post screen; on success go to Profile (back from Profile → Festival)
   Future<void> navigateToCreatePost(BuildContext context) async {
-    final createdPost = await _navigationService.navigateTo<dynamic>(AppRoutes.createPost);
+    final createdPost = await _navigationService.navigateTo<dynamic>(
+      AppRoutes.createPost,
+    );
     if (createdPost != null) {
       _navigationService.navigateTo(AppRoutes.profile);
     }
@@ -138,7 +148,11 @@ class FestivalViewModel extends BaseViewModel {
 
   /// Selected tab index for Live (0), Upcoming (1), Past (2).
   int get selectedFilterTab =>
-      currentFilter == 'live' ? 0 : currentFilter == 'upcoming' ? 1 : 2;
+      currentFilter == 'live'
+          ? 0
+          : currentFilter == 'upcoming'
+          ? 1
+          : 2;
 
   Future<void> loadFestivals() async {
     if (kDebugMode) {
@@ -150,7 +164,9 @@ class FestivalViewModel extends BaseViewModel {
         final response = await _festivalApiService.getFestivals();
 
         if (kDebugMode) {
-          print('🎪 [FestivalViewModel] API response: success=${response.success}, data is null=${response.data == null}, data length=${response.data?.length ?? 0}');
+          print(
+            '🎪 [FestivalViewModel] API response: success=${response.success}, data is null=${response.data == null}, data length=${response.data?.length ?? 0}',
+          );
         }
 
         if (response.success && response.data != null) {
@@ -174,21 +190,27 @@ class FestivalViewModel extends BaseViewModel {
           }
 
           if (kDebugMode) {
-            print('🎪 [FestivalViewModel] After parse: allFestivals.length=${allFestivals.length}');
+            print(
+              '🎪 [FestivalViewModel] After parse: allFestivals.length=${allFestivals.length}',
+            );
           }
 
           // Convert coordinates to city and country names
           await _convertCoordinatesToLocation();
 
           if (kDebugMode) {
-            print('🎪 [FestivalViewModel] After _convertCoordinatesToLocation: allFestivals.length=${allFestivals.length}');
+            print(
+              '🎪 [FestivalViewModel] After _convertCoordinatesToLocation: allFestivals.length=${allFestivals.length}',
+            );
           }
 
           // Apply current filter (Live / Upcoming / Past)
           _applyFilter();
 
           if (kDebugMode) {
-            print('🎪 [FestivalViewModel] After _applyFilter: currentFilter=$currentFilter, festivals.length=${festivals.length}, allFestivals.length=${allFestivals.length}');
+            print(
+              '🎪 [FestivalViewModel] After _applyFilter: currentFilter=$currentFilter, festivals.length=${festivals.length}, allFestivals.length=${allFestivals.length}',
+            );
           }
         } else {
           if (kDebugMode) {
@@ -203,7 +225,9 @@ class FestivalViewModel extends BaseViewModel {
     );
 
     if (kDebugMode) {
-      print('🎪 [FestivalViewModel] loadFestivals() finished: isLoading=$isLoading, festivals.length=${festivals.length}, allFestivals.length=${allFestivals.length}');
+      print(
+        '🎪 [FestivalViewModel] loadFestivals() finished: isLoading=$isLoading, festivals.length=${festivals.length}, allFestivals.length=${allFestivals.length}',
+      );
     }
 
     if (festivals.isNotEmpty) {
@@ -318,11 +342,15 @@ class FestivalViewModel extends BaseViewModel {
   /// Updates FestivalProvider with current allFestivals so edit post / other screens have the list.
   void navigateToGlobalFeed(BuildContext context) {
     if (allFestivals.isNotEmpty) {
-      final festivalProvider =
-          Provider.of<FestivalProvider>(context, listen: false);
+      final festivalProvider = Provider.of<FestivalProvider>(
+        context,
+        listen: false,
+      );
       festivalProvider.setAllFestivals(allFestivals);
       if (kDebugMode) {
-        print('🎪 FestivalProvider updated with ${allFestivals.length} festivals (festival chat tap)');
+        print(
+          '🎪 FestivalProvider updated with ${allFestivals.length} festivals (festival chat tap)',
+        );
       }
     }
     _navigationService.navigateTo(AppRoutes.home);
@@ -432,8 +460,8 @@ class FestivalViewModel extends BaseViewModel {
       } else {
         _searchResults.clear();
         if (query == searchQuery && !isDisposed) {
-          _searchError = response.message ??
-              'Something went wrong. Please try again.';
+          _searchError =
+              response.message ?? 'Something went wrong. Please try again.';
         }
       }
     } catch (e) {
@@ -442,9 +470,10 @@ class FestivalViewModel extends BaseViewModel {
       }
       if (!isDisposed && query == searchQuery) {
         _searchResults.clear();
-        _searchError = e is Exception
-            ? e.toString().replaceFirst('Exception: ', '')
-            : 'Something went wrong. Please check your connection and try again.';
+        _searchError =
+            e is Exception
+                ? e.toString().replaceFirst('Exception: ', '')
+                : 'Something went wrong. Please check your connection and try again.';
       }
     } finally {
       if (!isDisposed) {
@@ -525,60 +554,75 @@ class FestivalViewModel extends BaseViewModel {
   void _applyFilter() {
     final now = DateTime.now();
     if (kDebugMode) {
-      print('🎪 [FestivalViewModel] _applyFilter: currentFilter=$currentFilter, allFestivals.length=${allFestivals.length}, now=$now');
+      print(
+        '🎪 [FestivalViewModel] _applyFilter: currentFilter=$currentFilter, allFestivals.length=${allFestivals.length}, now=$now',
+      );
     }
 
     switch (currentFilter) {
       case 'live':
         festivals.clear();
-        final liveList = allFestivals.where((festival) => festival.isLive).toList();
+        final liveList =
+            allFestivals.where((festival) => festival.isLive).toList();
         festivals.addAll(liveList);
         if (kDebugMode) {
-          print('🎪 [FestivalViewModel] live filter: ${liveList.length} festivals are live');
+          print(
+            '🎪 [FestivalViewModel] live filter: ${liveList.length} festivals are live',
+          );
         }
         break;
       case 'upcoming':
         festivals.clear();
-        final upcomingList = allFestivals.where((festival) {
-          if (festival.startingDate == null) return false;
-          try {
-            final startDate = DateTime.parse(festival.startingDate!);
-            return startDate.isAfter(now) && !festival.isLive;
-          } catch (e) {
-            return false;
-          }
-        }).toList();
+        final upcomingList =
+            allFestivals.where((festival) {
+              if (festival.startingDate == null) return false;
+              try {
+                final startDate = DateTime.parse(festival.startingDate!);
+                return startDate.isAfter(now) && !festival.isLive;
+              } catch (e) {
+                return false;
+              }
+            }).toList();
         festivals.addAll(upcomingList);
         if (kDebugMode) {
-          print('🎪 [FestivalViewModel] upcoming filter: ${upcomingList.length} festivals');
+          print(
+            '🎪 [FestivalViewModel] upcoming filter: ${upcomingList.length} festivals',
+          );
         }
         break;
       case 'past':
         festivals.clear();
-        final pastList = allFestivals.where((festival) {
-          if (festival.endingDate == null) return false;
-          try {
-            final endDate = DateTime.parse(festival.endingDate!);
-            return endDate.isBefore(now) && !festival.isLive;
-          } catch (e) {
-            return false;
-          }
-        }).toList();
+        final pastList =
+            allFestivals.where((festival) {
+              if (festival.endingDate == null) return false;
+              try {
+                final endDate = DateTime.parse(festival.endingDate!);
+                return endDate.isBefore(now) && !festival.isLive;
+              } catch (e) {
+                return false;
+              }
+            }).toList();
         festivals.addAll(pastList);
         if (kDebugMode) {
-          print('🎪 [FestivalViewModel] past filter: ${pastList.length} festivals');
+          print(
+            '🎪 [FestivalViewModel] past filter: ${pastList.length} festivals',
+          );
         }
         break;
       default:
         festivals.clear();
         festivals.addAll(allFestivals);
         if (kDebugMode) {
-          print('🎪 [FestivalViewModel] default: showing all ${allFestivals.length} festivals');
+          print(
+            '🎪 [FestivalViewModel] default: showing all ${allFestivals.length} festivals',
+          );
         }
     }
 
     if (kDebugMode) {
-      print('🎪 [FestivalViewModel] _applyFilter done: festivals.length=${festivals.length}');
+      print(
+        '🎪 [FestivalViewModel] _applyFilter done: festivals.length=${festivals.length}',
+      );
     }
   }
 
@@ -587,7 +631,9 @@ class FestivalViewModel extends BaseViewModel {
   /// Convert latitude/longitude to city and country for all festivals
   Future<void> _convertCoordinatesToLocation() async {
     if (kDebugMode) {
-      print('🎪 [FestivalViewModel] _convertCoordinatesToLocation: starting with ${allFestivals.length} festivals');
+      print(
+        '🎪 [FestivalViewModel] _convertCoordinatesToLocation: starting with ${allFestivals.length} festivals',
+      );
     }
     final updatedFestivals = <FestivalModel>[];
 
@@ -621,7 +667,9 @@ class FestivalViewModel extends BaseViewModel {
     allFestivals.addAll(updatedFestivals);
 
     if (kDebugMode) {
-      print('🎪 [FestivalViewModel] _convertCoordinatesToLocation: done, allFestivals.length=${allFestivals.length}');
+      print(
+        '🎪 [FestivalViewModel] _convertCoordinatesToLocation: done, allFestivals.length=${allFestivals.length}',
+      );
     }
 
     // Update filtered festivals if needed (festivals list not populated until _applyFilter, so this often no-op)
