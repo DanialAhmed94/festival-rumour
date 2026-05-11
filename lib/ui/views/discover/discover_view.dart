@@ -528,9 +528,15 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
   }
 
   Future<void> _shareFestival(BuildContext context) async {
+    final festival =
+        Provider.of<FestivalProvider>(context, listen: false).selectedFestival;
+    final body =
+        AppStrings.shareDiscoverInviteMessage(festival?.title);
+    final subject =
+        AppStrings.shareDiscoverInviteSubject(festival?.title);
     await Share.share(
-      AppStrings.shareMessage,
-      subject: AppStrings.shareSubject,
+      body,
+      subject: subject,
       sharePositionOrigin: const Rect.fromLTWH(0, 0, 0, 0),
     );
   }
@@ -1257,7 +1263,6 @@ class _ShareLocationPopupState extends State<ShareLocationPopup> {
             title: name,
             message: locationMessage,
             chatRoomId: FirestoreService.getDeterministicDmRoomId(uid, recipientId),
-            chatRoomName: 'Direct message',
           ).catchError((e) {
             if (kDebugMode) print('[ShareLocation] Push notification (DM) error: $e');
           });
@@ -1474,6 +1479,7 @@ class _ShareLocationPopupState extends State<ShareLocationPopup> {
           controller: _searchController,
           onChanged: _onSearchChanged,
           style: const TextStyle(color: AppColors.black, fontSize: 15),
+          cursorColor: AppColors.black,
           decoration: InputDecoration(
             hintText: AppStrings.searchUsersOrGroups,
             hintStyle: const TextStyle(color: AppColors.grey600, fontSize: 14),

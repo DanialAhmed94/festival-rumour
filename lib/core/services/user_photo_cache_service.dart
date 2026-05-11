@@ -104,6 +104,19 @@ class UserPhotoCacheService extends ChangeNotifier {
 
   /// Kept for backward compatibility — returns photo URLs only.
   Future<Map<String, String?>> batchFetch(List<String> userIds) async {
+    final r = await _batchFetchPhotos(userIds);
+    return r.urls;
+  }
+
+  /// Same as [batchFetch] but reports whether any network/cache fill ran (misses only).
+  Future<bool> batchFetchPhotosIfNeeded(List<String> userIds) async {
+    final r = await _batchFetchPhotos(userIds);
+    return r.didFetch;
+  }
+
+  Future<({bool didFetch, Map<String, String?> urls})> _batchFetchPhotos(
+    List<String> userIds,
+  ) async {
     final result = <String, String?>{};
     final toFetch = <String>[];
 
@@ -115,7 +128,8 @@ class UserPhotoCacheService extends ChangeNotifier {
       }
     }
 
-    if (toFetch.isNotEmpty) {
+    final didFetch = toFetch.isNotEmpty;
+    if (didFetch) {
       final futures = toFetch.map((id) async {
         await _fetchAndCacheAll(id);
         return MapEntry(id, _photoCache[id]);
@@ -126,7 +140,7 @@ class UserPhotoCacheService extends ChangeNotifier {
       }
     }
 
-    return result;
+    return (didFetch: didFetch, urls: result);
   }
 
   // --------------- Invalidation ---------------

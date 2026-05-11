@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/utils/job_url_utils.dart';
+import '../../../core/utils/launch_job_url.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/extensions/context_extensions.dart';
@@ -272,7 +273,53 @@ class MyJobsView extends BaseView<MyJobsViewModel> {
               Icons.calendar_today, 
               job['festivalDate'] as String,
             ),
+          _buildJobUrlRowIfPresent(context, job),
         ],
+      ),
+    );
+  }
+
+  Widget _buildJobUrlRowIfPresent(BuildContext context, Map<String, dynamic> job) {
+    final url = JobUrlUtils.readFromJobMap(job);
+    if (url == null) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: context.isSmallScreen
+            ? AppDimensions.spaceXS
+            : AppDimensions.spaceS,
+      ),
+      child: InkWell(
+        onTap: () => tryLaunchJobUrl(context, url),
+        child: Row(
+          children: [
+            Icon(
+              Icons.link,
+              size: context.isSmallScreen ? 14 : 16,
+              color: AppColors.yellow,
+            ),
+            SizedBox(
+              width: context.isSmallScreen
+                  ? AppDimensions.spaceXS
+                  : AppDimensions.spaceS,
+            ),
+            Expanded(
+              child: ResponsiveTextWidget(
+                url,
+                textType: TextType.body,
+                fontSize:
+                    context.isSmallScreen ? AppDimensions.textXS : AppDimensions.textS,
+                color: AppColors.white.withOpacity(0.9),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Icon(
+              Icons.open_in_new,
+              size: context.isSmallScreen ? 14 : 16,
+              color: AppColors.yellow.withOpacity(0.8),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/viewmodels/base_view_model.dart';
-import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/job_url_utils.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 
 class FestivalsJobPostViewModel extends BaseViewModel {
+  static const String _defaultJobCategory = 'Festival Gizza';
+
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
@@ -21,6 +24,7 @@ class FestivalsJobPostViewModel extends BaseViewModel {
   late TextEditingController descriptionController;
   late TextEditingController requirementsController;
   late TextEditingController contactController;
+  late TextEditingController jobUrlController;
   late TextEditingController festivalDateController;
 
   // Focus Nodes
@@ -31,7 +35,11 @@ class FestivalsJobPostViewModel extends BaseViewModel {
   late FocusNode descriptionFocusNode;
   late FocusNode requirementsFocusNode;
   late FocusNode contactFocusNode;
+  late FocusNode jobUrlFocusNode;
   late FocusNode festivalDateFocusNode;
+  /// Target for IME "next" from the festival date row; avoids allocating a throwaway node per rebuild.
+  late final FocusNode festivalDateDummyNextFocusNode;
+
 
   // Job Type Selection
   String selectedJobType = 'Full-time';
@@ -44,8 +52,16 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     'Internship',
   ];
 
-  // Job Category Selection (set from navigation, not from form)
+  // Job Category Selection (optional in form; Firestore uses default if unset)
   String? selectedCategory;
+
+  String get _effectiveCategory {
+    final trimmed = selectedCategory?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return _defaultJobCategory;
+    }
+    return trimmed;
+  }
 
   // Job Post Model
   JobPost? currentJobPost;
@@ -76,6 +92,7 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     descriptionController = TextEditingController();
     requirementsController = TextEditingController();
     contactController = TextEditingController();
+    jobUrlController = TextEditingController();
     festivalDateController = TextEditingController();
   }
 
@@ -87,7 +104,9 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     descriptionFocusNode = FocusNode();
     requirementsFocusNode = FocusNode();
     contactFocusNode = FocusNode();
+    jobUrlFocusNode = FocusNode();
     festivalDateFocusNode = FocusNode();
+    festivalDateDummyNextFocusNode = FocusNode(skipTraversal: true);
   }
 
   void setJobType(String jobType) {
@@ -125,7 +144,8 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     descriptionController.text = jobData['description'] as String? ?? '';
     requirementsController.text = jobData['requirements'] as String? ?? '';
     contactController.text = jobData['contact'] as String? ?? '';
-    
+    jobUrlController.text = JobUrlUtils.readFromJobMap(jobData) ?? '';
+
     // Handle festival date - could be string or DateTime
     if (jobData['festivalDate'] != null) {
       final festivalDate = jobData['festivalDate'];
@@ -144,11 +164,12 @@ class FestivalsJobPostViewModel extends BaseViewModel {
       selectedJobType = jobType;
     }
     
-    // Set category
+    // Set category (required for Firestore collection when editing existing doc)
     final category = jobData['category'] as String?;
-    if (category != null) {
-      selectedCategory = category;
-    }
+    selectedCategory =
+        category != null && category.trim().isNotEmpty
+            ? category.trim()
+            : _defaultJobCategory;
     
     notifyListeners();
   }
@@ -161,141 +182,20 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     descriptionFocusNode.unfocus();
     requirementsFocusNode.unfocus();
     contactFocusNode.unfocus();
+    jobUrlFocusNode.unfocus();
     festivalDateFocusNode.unfocus();
+    festivalDateDummyNextFocusNode.unfocus();
   }
 
   bool _validateForm() {
-    // Validate Job Title
     if (jobTitleController.text.trim().isEmpty) {
       setError('Please enter a job title');
       jobTitleFocusNode.requestFocus();
       return false;
     }
-    if (jobTitleController.text.trim().length < 3) {
-      setError('Job title must be at least 3 characters long');
-      jobTitleFocusNode.requestFocus();
-      return false;
-    }
-
-    // Validate Company
-    if (companyController.text.trim().isEmpty) {
-      setError('Please enter company/organization name');
-      companyFocusNode.requestFocus();
-      return false;
-    }
-    if (companyController.text.trim().length < 2) {
-      setError('Company name must be at least 2 characters long');
-      companyFocusNode.requestFocus();
-      return false;
-    }
-
-    // Validate Location
-    if (locationController.text.trim().isEmpty) {
-      setError('Please enter job location');
-      locationFocusNode.requestFocus();
-      return false;
-    }
-    if (locationController.text.trim().length < 3) {
-      setError('Location must be at least 3 characters long');
-      locationFocusNode.requestFocus();
-      return false;
-    }
-
-    // Validate Salary (required unless job type is Volunteer)
-    if (selectedJobType != 'Volunteer') {
-      if (salaryController.text.trim().isEmpty) {
-        setError('Please enter salary information');
-        salaryFocusNode.requestFocus();
-        return false;
-      }
-    }
-
-    // Validate Description
-    if (descriptionController.text.trim().isEmpty) {
-      setError('Please enter job description');
-      descriptionFocusNode.requestFocus();
-      return false;
-    }
-    if (descriptionController.text.trim().length < 10) {
-      setError('Job description must be at least 10 characters long');
-      descriptionFocusNode.requestFocus();
-      return false;
-    }
-
-    // Validate Requirements (optional but if provided, should be meaningful)
-    if (requirementsController.text.trim().isNotEmpty && 
-        requirementsController.text.trim().length < 5) {
-      setError('Requirements must be at least 5 characters if provided');
-      requirementsFocusNode.requestFocus();
-      return false;
-    }
-
-    // Validate Contact Information
-    if (contactController.text.trim().isEmpty) {
-      setError('Please enter contact information');
-      contactFocusNode.requestFocus();
-      return false;
-    }
-    // Check if it's an email or phone number
-    final contactText = contactController.text.trim();
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    final phoneRegex = RegExp(r'^[\d\s\-\+\(\)]+$');
-    if (!emailRegex.hasMatch(contactText) && !phoneRegex.hasMatch(contactText)) {
-      setError('Please enter a valid email address or phone number');
-      contactFocusNode.requestFocus();
-      return false;
-    }
-
-    // Validate Festival Date (required + format DD/MM/YYYY + not in past)
-    final festivalDateStr = festivalDateController.text.trim();
-    if (festivalDateStr.isEmpty) {
-      setError('Please select festival date');
-      festivalDateFocusNode.requestFocus();
-      return false;
-    }
-    final parsedDate = _parseFestivalDate(festivalDateStr);
-    if (parsedDate == null) {
-      setError('Festival date must be in DD/MM/YYYY format (e.g. 25/12/2025)');
-      festivalDateFocusNode.requestFocus();
-      return false;
-    }
-    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-    if (parsedDate.isBefore(today)) {
-      setError('Festival date cannot be in the past');
-      festivalDateFocusNode.requestFocus();
-      return false;
-    }
-
-    // Validate Category (should be set from navigation)
-    if (selectedCategory == null || selectedCategory!.isEmpty) {
-      setError('Job category is required');
-      if (kDebugMode) {
-        print('❌ [JobPostViewModel] Category validation failed: selectedCategory is null or empty');
-      }
-      return false;
-    }
 
     clearError();
     return true;
-  }
-
-  /// Parses festival date string DD/MM/YYYY; returns null if invalid.
-  DateTime? _parseFestivalDate(String value) {
-    final parts = value.split('/');
-    if (parts.length != 3) return null;
-    final day = int.tryParse(parts[0]);
-    final month = int.tryParse(parts[1]);
-    final year = int.tryParse(parts[2]);
-    if (day == null || month == null || year == null) return null;
-    if (month < 1 || month > 12) return null;
-    if (day < 1 || day > 31) return null;
-    try {
-      final date = DateTime(year, month, day);
-      if (date.day != day || date.month != month || date.year != year) return null;
-      return date;
-    } catch (_) {
-      return null;
-    }
   }
 
   // Method to select festival date
@@ -369,9 +269,12 @@ class FestivalsJobPostViewModel extends BaseViewModel {
       }
 
       if (kDebugMode) {
-        print('💼 Posting job with category: $selectedCategory');
+        print('💼 Posting job with category: $_effectiveCategory (nav: $selectedCategory)');
         print('   User ID: $userId');
       }
+
+      final jobUrlForStore = JobUrlUtils.forFirestore(jobUrlController.text);
+      final categoryForFirestore = _effectiveCategory;
 
       // Create job post object
       currentJobPost = JobPost(
@@ -387,7 +290,8 @@ class FestivalsJobPostViewModel extends BaseViewModel {
         postedDate: DateTime.now(),
         isActive: true,
         userId: userId,
-        category: selectedCategory,
+        category: categoryForFirestore,
+        jobUrl: jobUrlForStore,
       );
 
       // Convert to Firestore format
@@ -396,18 +300,23 @@ class FestivalsJobPostViewModel extends BaseViewModel {
       jobData['postedDate'] = currentJobPost!.postedDate;
       jobData['createdAt'] = DateTime.now();
 
+      if (isEditing && _editingJobId != null) {
+        jobData['jobUrl'] =
+            jobUrlForStore ?? FieldValue.delete();
+      }
+
       // Save or update job in Firestore
       if (isEditing && _editingJobId != null) {
         // Update existing job
         if (kDebugMode) {
           print('💾 Updating job in Firestore');
           print('   JobId: $_editingJobId');
-          print('   Category: $selectedCategory');
+          print('   Category: $_effectiveCategory');
         }
-        
+
         await _firestoreService.updateJob(
           _editingJobId!,
-          selectedCategory!,
+          _effectiveCategory,
           jobData,
         );
 
@@ -418,13 +327,13 @@ class FestivalsJobPostViewModel extends BaseViewModel {
         // Save new job
         if (kDebugMode) {
           print('💾 Saving job to Firestore');
-          print('   Category: $selectedCategory');
+          print('   Category: $_effectiveCategory');
           print('   UserId: $userId');
         }
-        
+
         await _firestoreService.saveJob(
           jobData,
-          category: selectedCategory!,
+          category: _effectiveCategory,
         );
 
         if (kDebugMode) {
@@ -433,8 +342,8 @@ class FestivalsJobPostViewModel extends BaseViewModel {
       }
 
       _successMessage = isEditing ? 'Job updated successfully!' : 'Job posted successfully!';
+      _applyClearFormMutations();
       notifyListeners();
-      _clearForm();
 
       if (context != null && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -449,7 +358,7 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     }, errorMessage: 'Failed to post job. Please try again.');
   }
 
-  void _clearForm() {
+  void _applyClearFormMutations() {
     jobTitleController.clear();
     companyController.clear();
     locationController.clear();
@@ -457,11 +366,11 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     descriptionController.clear();
     requirementsController.clear();
     contactController.clear();
+    jobUrlController.clear();
     festivalDateController.clear();
     selectedJobType = 'Full-time';
     selectedCategory = null;
     _editingJobId = null; // Clear editing state
-    notifyListeners();
   }
 
   @override
@@ -474,6 +383,7 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     descriptionController.dispose();
     requirementsController.dispose();
     contactController.dispose();
+    jobUrlController.dispose();
     festivalDateController.dispose();
 
     // Dispose focus nodes
@@ -484,7 +394,9 @@ class FestivalsJobPostViewModel extends BaseViewModel {
     descriptionFocusNode.dispose();
     requirementsFocusNode.dispose();
     contactFocusNode.dispose();
+    jobUrlFocusNode.dispose();
     festivalDateFocusNode.dispose();
+    festivalDateDummyNextFocusNode.dispose();
 
     super.dispose();
   }
@@ -504,6 +416,7 @@ class JobPost {
   final bool isActive;
   final String? userId; // User ID who posted the job
   final String? category; // Job category (e.g., 'Festival Gizza', 'Festie Heroes')
+  final String? jobUrl; // Optional external listing / apply link
 
   JobPost({
     required this.title,
@@ -519,10 +432,11 @@ class JobPost {
     required this.isActive,
     this.userId,
     this.category,
+    this.jobUrl,
   });
 
   Map<String, dynamic> toJson() {
-    return {
+    final map = <String, dynamic>{
       'title': title,
       'company': company,
       'location': location,
@@ -537,6 +451,11 @@ class JobPost {
       'userId': userId,
       'category': category,
     };
+    final url = jobUrl;
+    if (url != null && url.isNotEmpty) {
+      map['jobUrl'] = url;
+    }
+    return map;
   }
 
   factory JobPost.fromJson(Map<String, dynamic> json) {
@@ -554,6 +473,7 @@ class JobPost {
       isActive: json['isActive'] ?? true,
       userId: json['userId'] as String?,
       category: json['category'] as String?,
+      jobUrl: json['jobUrl'] as String?,
     );
   }
 }

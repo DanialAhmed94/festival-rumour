@@ -5,6 +5,7 @@ import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/constants/app_assets.dart';
 import '../festival_model.dart';
+import '../festival_swipe_hint_session.dart';
 
 
 class FestivalCard extends StatefulWidget {
@@ -13,9 +14,14 @@ class FestivalCard extends StatefulWidget {
   final VoidCallback? onTap;
   final VoidCallback? onNext;
 
+  /// True only for the slide whose PageView index matches [FestivalViewModel.currentPage].
+  /// Prevents prefetch neighbours from stealing the one-per-launch swipe Lottie hint.
+  final bool swipeHintEligible;
+
   const FestivalCard({
     super.key,
     required this.festival,
+    this.swipeHintEligible = false,
     this.onBack,
     this.onTap,
     this.onNext,
@@ -27,30 +33,60 @@ class FestivalCard extends StatefulWidget {
 
 class _FestivalCardState extends State<FestivalCard>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  bool _hasPlayed = false;
+  /// Cap swipe-hint playback at 5s per session (slot still claimed once per app launch).
+  static const Duration _swipeHintPlayDuration = Duration(seconds: 5);
+
+  AnimationController? _lottieController;
+  late final bool _playsSwipeHint;
+  bool _showSwipeLottie = false;
+  bool _lottiePlaybackStarted = false;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(seconds: 10),
-      vsync: this,
-    );
-    // Play animation once when card is first displayed
-    _playAnimation();
-  }
-
-  void _playAnimation() {
-    if (!_hasPlayed && mounted) {
-      _hasPlayed = true;
-      _animationController.forward(from: 0.0);
+    _playsSwipeHint = widget.swipeHintEligible &&
+        !FestivalSwipeHintSession.hintConsumedForLaunch;
+    if (_playsSwipeHint) {
+      FestivalSwipeHintSession.consumeHintSlotForLaunch();
+      _showSwipeLottie = true;
+      _lottieController = AnimationController(vsync: this);
+      _lottieController!.addStatusListener(_onSwipeLottieStatus);
     }
   }
 
   @override
+  void didUpdateWidget(FestivalCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.swipeHintEligible && !widget.swipeHintEligible) {
+      final c = _lottieController;
+      if (c != null && c.isAnimating) {
+        c.stop();
+      }
+      if (_showSwipeLottie && mounted) {
+        setState(() => _showSwipeLottie = false);
+      }
+    }
+  }
+
+  void _onSwipeLottieStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && mounted) {
+      setState(() => _showSwipeLottie = false);
+    }
+  }
+
+  void _startSwipeLottieOnce(LottieComposition _) {
+    if (!_playsSwipeHint || _lottiePlaybackStarted || !mounted) return;
+    final c = _lottieController;
+    if (c == null) return;
+    _lottiePlaybackStarted = true;
+    c.duration = _swipeHintPlayDuration;
+    c.forward(from: 0);
+  }
+
+  @override
   void dispose() {
-    _animationController.dispose();
+    _lottieController?.removeStatusListener(_onSwipeLottieStatus);
+    _lottieController?.dispose();
     super.dispose();
   }
 
@@ -169,26 +205,20 @@ class _FestivalCardState extends State<FestivalCard>
                       ),
                     ),
 
-                    // Lottie Animation at center (plays for 2 seconds)
-                    AnimatedBuilder(
-                      animation: _animationController,
-                      builder: (context, child) {
-                        // Hide animation after 2 seconds
-                        if (_animationController.value >= 1.0) {
-                          return const SizedBox.shrink();
-                        }
-                        return Center(
-                          child: Lottie.asset(
-                            'assets/logos/anim_swipe.json',
-                            fit: BoxFit.contain,
-                            controller: _animationController,
-                            width: 200,
-                            height: 200,
-                            frameRate: FrameRate(60), // Optimize frame rate
-                          ),
-                        );
-                      },
-                    ),
+                    // Swipe hint: first card this app launch only; one playback, then hidden
+                    if (_playsSwipeHint && _showSwipeLottie)
+                      Center(
+                        child: Lottie.asset(
+                          'assets/logos/anim_swipe.json',
+                          fit: BoxFit.contain,
+                          controller: _lottieController,
+                          repeat: false,
+                          width: 200,
+                          height: 200,
+                          frameRate: FrameRate(60),
+                          onLoaded: _startSwipeLottieOnce,
+                        ),
+                      ),
 
                     // Bottom Info
                     Positioned(

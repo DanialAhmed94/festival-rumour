@@ -1,10 +1,11 @@
-import 'package:festival_rumour/core/router/app_router.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/navigation/apply_festival_navbar_gate_outcome.dart';
 import '../../../core/providers/festival_provider.dart';
+import '../../../core/services/profile_readiness_service.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/utils/custom_navbar.dart';
 import '../discover/discover_view.dart';
@@ -172,9 +173,20 @@ class _NavBarBodyState extends State<_NavBarBody> {
             initialTab: 2,
             Username: AppStrings.name,
             onBack: () => viewModel.setSubNavigation(null),
-            onFestivalSelected: (context, festival) {
-              Provider.of<FestivalProvider>(context, listen: false).setSelectedFestival(festival);
-              viewModel.goToDiscover(); // switches to Discover tab and clears sub-nav (no pop needed)
+            onFestivalSelected: (context, festival) async {
+              Provider.of<FestivalProvider>(context, listen: false)
+                  .setSelectedFestival(festival);
+              final gateOutcome =
+                  await locator<ProfileReadinessService>()
+                      .evaluateFestivalNavbarGate();
+              if (!context.mounted) return;
+              await applyFestivalNavbarGateOutcome(
+                context,
+                gateOutcome,
+                onAuthenticatedNavigate: () {
+                  viewModel.goToDiscover();
+                },
+              );
             },
           );
           break;
@@ -183,9 +195,20 @@ class _NavBarBodyState extends State<_NavBarBody> {
             initialTab: 3,
             Username: AppStrings.name,
             onBack: () => viewModel.setSubNavigation(null),
-            onFestivalSelected: (context, festival) {
-              Provider.of<FestivalProvider>(context, listen: false).setSelectedFestival(festival);
-              viewModel.goToDiscover(); // switches to Discover tab and clears sub-nav (no pop needed)
+            onFestivalSelected: (context, festival) async {
+              Provider.of<FestivalProvider>(context, listen: false)
+                  .setSelectedFestival(festival);
+              final gateOutcome =
+                  await locator<ProfileReadinessService>()
+                      .evaluateFestivalNavbarGate();
+              if (!context.mounted) return;
+              await applyFestivalNavbarGateOutcome(
+                context,
+                gateOutcome,
+                onAuthenticatedNavigate: () {
+                  viewModel.goToDiscover();
+                },
+              );
             },
           );
           break;

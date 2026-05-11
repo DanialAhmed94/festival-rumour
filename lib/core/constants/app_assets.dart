@@ -82,7 +82,11 @@ class AppAssets {
   static const String crapAdviserLogo = 'assets/logos/festivalToilet.png';
   static const String organiserLogo = 'assets/logos/festivalOrganiserLogo.png';
   static const String festieFoodieLogo = 'assets/logos/Festival Foodie logo design.png';
-  static const String festivalChatBanner = 'assets/images/festivalChat.png';
+  /// Horizontal CTA on festival screen → global feed (replaces legacy festivalChat artwork).
+  static const String festivalsGlobalFeedBanner =
+      'assets/images/festivals_global_feed_banner.png';
+  @Deprecated('Use festivalsGlobalFeedBanner')
+  static const String festivalChatBanner = festivalsGlobalFeedBanner;
   static const String forwardIcon = 'assets/logos/forwardIcon.png';
 
   static const String proback = 'assets/images/proback.png';

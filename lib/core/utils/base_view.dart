@@ -17,6 +17,12 @@ abstract class BaseView<T extends BaseViewModel> extends StatefulWidget {
   /// Build the UI with the ViewModel
   Widget buildView(BuildContext context, T viewModel);
 
+  /// When `true` (default), every [ChangeNotifier.notifyListeners] wraps [buildView] in a
+  /// [Consumer] and rebuilds the whole subtree. When `false`, [buildView] is not wrapped in
+  /// [Consumer]; use [Selector], [Consumer], or [ListenableBuilder] inside [buildView] for
+  /// granular updates instead.
+  bool get useWideProviderListen => true;
+
   /// Called when the ViewModel is initialized
   void onViewModelReady(T viewModel) {
     viewModel.init();
@@ -116,15 +122,23 @@ class _BaseViewState<T extends BaseViewModel> extends State<BaseView<T>> {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider<T>.value(
       value: _viewModel,
-      child: Consumer<T>(
-        builder: (context, viewModel, child) {
-          // If a custom builder is provided, use it; else call subclass buildView
-          if (widget.builder != null) {
-            return widget.builder!(context, viewModel, child);
-          }
-          return widget.buildView(context, viewModel);
-        },
-      ),
+      child: widget.useWideProviderListen
+          ? Consumer<T>(
+              builder: (context, viewModel, child) {
+                if (widget.builder != null) {
+                  return widget.builder!(context, viewModel, child);
+                }
+                return widget.buildView(context, viewModel);
+              },
+            )
+          : Builder(
+              builder: (context) {
+                if (widget.builder != null) {
+                  return widget.builder!(context, _viewModel, null);
+                }
+                return widget.buildView(context, _viewModel);
+              },
+            ),
     );
   }
 }

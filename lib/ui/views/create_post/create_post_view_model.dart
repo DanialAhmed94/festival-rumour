@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:metadata_fetch/metadata_fetch.dart';
@@ -24,12 +25,17 @@ class CreatePostViewModel extends BaseViewModel {
   final TextEditingController postTextController = TextEditingController();
   final TextEditingController postUrlController = TextEditingController();
 
+  CreatePostViewModel() {
+    postTextController.addListener(_onControllerChanged);
+    postUrlController.addListener(_onControllerChanged);
+  }
+
   // Store selected media files (images and videos)
   List<XFile> selectedMedia = [];
   List<bool> isVideo = []; // Track which items are videos
 
   String? _collectionName; // Festival collection name (if creating post in rumors context)
-  
+
   // Upload progress tracking
   double _uploadProgress = 0.0;
   int _currentUploadIndex = 0;
@@ -62,9 +68,16 @@ class CreatePostViewModel extends BaseViewModel {
 
   @override
   void dispose() {
+    postTextController.removeListener(_onControllerChanged);
+    postUrlController.removeListener(_onControllerChanged);
     postTextController.dispose();
     postUrlController.dispose();
     super.dispose();
+  }
+
+  void _onControllerChanged() {
+    // Lightweight: only notify so the upload button and canPost state refresh.
+    if (!isDisposed) notifyListeners();
   }
 
   /// Pick images from gallery (multiple selection)
@@ -199,23 +212,38 @@ class CreatePostViewModel extends BaseViewModel {
 
       // Upload file with progress tracking
       final uploadTask = ref.putFile(mediaFile, metadata);
-      
-      // Listen to upload progress
-      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        // Calculate overall progress
-        final itemProgress = progress / totalItems;
-        final previousItemsProgress = itemIndex / totalItems;
-        _uploadProgress = previousItemsProgress + itemProgress;
-        
-        if (kDebugMode) {
-          print('📤 Upload progress: ${(_uploadProgress * 100).toStringAsFixed(1)}% (Item ${itemIndex + 1}/$totalItems: ${(progress * 100).toStringAsFixed(1)}%)');
-        }
-        notifyListeners();
-      });
 
-      // Wait for upload to complete
-      final snapshot = await uploadTask;
+      // Cancel the subscription once the task resolves so it never leaks.
+      // An onError handler prevents an unhandled zone error if Firebase
+      // emits an error on the snapshot stream (e.g. mid-upload network drop).
+      final progressSub = uploadTask.snapshotEvents.listen(
+        (TaskSnapshot snapshot) {
+          if (snapshot.totalBytes == 0) return;
+          final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+          final itemProgress = progress / totalItems;
+          final previousItemsProgress = itemIndex / totalItems;
+          _uploadProgress = previousItemsProgress + itemProgress;
+          if (kDebugMode) {
+            print(
+              '📤 Upload progress: ${(_uploadProgress * 100).toStringAsFixed(1)}% '
+              '(Item ${itemIndex + 1}/$totalItems: ${(progress * 100).toStringAsFixed(1)}%)',
+            );
+          }
+          notifyListeners();
+        },
+        onError: (Object e) {
+          if (kDebugMode) print('⚠️ snapshotEvents error (non-fatal): $e');
+        },
+        cancelOnError: false,
+      );
+
+      // Wait for upload to complete, then always cancel the progress listener.
+      final TaskSnapshot snapshot;
+      try {
+        snapshot = await uploadTask;
+      } finally {
+        await progressSub.cancel();
+      }
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
       if (kDebugMode) {
@@ -238,6 +266,9 @@ class CreatePostViewModel extends BaseViewModel {
     if (!canPost) return;
 
     await handleAsync(() async {
+      SystemChannels.textInput.invokeMethod('TextInput.hide');
+      FocusManager.instance.primaryFocus?.unfocus();
+
       // Get post content
       final postContent = postTextController.text.trim();
       

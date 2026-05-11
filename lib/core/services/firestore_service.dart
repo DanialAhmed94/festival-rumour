@@ -247,9 +247,20 @@ class FirestoreService {
   }
 
   /// Get user data from Firestore
-  Future<Map<String, dynamic>?> getUserData(String userId) async {
+  ///
+  /// [source] — when supplied, forwards to [GetOptions] (e.g. [Source.server] for second try after race/cached miss).
+  Future<Map<String, dynamic>?> getUserData(
+    String userId, {
+    Source? source,
+  }) async {
     try {
-      final doc = await _firestore.collection('users').doc(userId).get();
+      final snapshotOptions =
+          source != null ? GetOptions(source: source) : const GetOptions();
+
+      final doc = await _firestore
+          .collection('users')
+          .doc(userId)
+          .get(snapshotOptions);
 
       if (doc.exists) {
         return doc.data();
@@ -2053,6 +2064,9 @@ class FirestoreService {
         query = query.startAfterDocument(lastDocument);
       }
 
+      // Tracks whether we fell back to a full-collection fetch (no index).
+      // Used later to compute hasMore correctly.
+      bool _fallback = false;
       QuerySnapshot querySnapshot;
       try {
         querySnapshot = await query.get();
@@ -2068,15 +2082,25 @@ class FirestoreService {
             e.toString().toLowerCase().contains('failed-precondition');
 
         if (isIndexError) {
-          // Silently fall back to querying without orderBy and sort in memory
-          // This is expected behavior when indexes don't exist yet
+          // Index missing — fallback: fetch without orderBy, sort in memory.
+          // ACTION REQUIRED: create a composite index in the Firebase console:
+          //   Collection: <collectionName>  Fields: userId ASC, createdAt DESC
+          // Until the index is built results are correct but pagination is degraded.
+          _fallback = true;
+          if (kDebugMode) {
+            print(
+              '⚠️ getUserPostsPaginated: missing index on "$collectionName" '
+              '(userId + createdAt). Falling back to in-memory sort. '
+              'Create the index to restore proper pagination.',
+            );
+          }
           querySnapshot =
               await _firestore
                   .collection(collectionName)
                   .where('userId', isEqualTo: userId)
                   .get();
         } else {
-          rethrow; // Re-throw if it's a different error
+          rethrow;
         }
       }
 
@@ -2107,46 +2131,61 @@ class FirestoreService {
         newLastDocument = doc; // Track last document for pagination
       }
 
-      // If we queried without orderBy, sort and limit in memory
-      if (posts.isNotEmpty && posts.first['createdAt'] != null) {
-        posts.sort((a, b) {
-          final aTime = a['createdAt'];
-          final bTime = b['createdAt'];
-          if (aTime == null && bTime == null) return 0;
-          if (aTime == null) return 1;
-          if (bTime == null) return -1;
+      // Fallback path: sort in memory (Firestore didn't order results).
+      // Primary path: docs are already ordered by the index; re-sort is harmless but skipped.
+      bool hasMore;
+      if (_fallback) {
+        if (posts.isNotEmpty) {
+          posts.sort((a, b) {
+            final aTime = a['createdAt'];
+            final bTime = b['createdAt'];
+            if (aTime == null && bTime == null) return 0;
+            if (aTime == null) return 1;
+            if (bTime == null) return -1;
 
-          DateTime aDate;
-          DateTime bDate;
+            DateTime aDate;
+            DateTime bDate;
 
-          if (aTime is Timestamp) {
-            aDate = aTime.toDate();
-          } else if (aTime is DateTime) {
-            aDate = aTime;
-          } else {
-            return 0;
-          }
+            if (aTime is Timestamp) {
+              aDate = aTime.toDate();
+            } else if (aTime is DateTime) {
+              aDate = aTime;
+            } else {
+              return 0;
+            }
 
-          if (bTime is Timestamp) {
-            bDate = bTime.toDate();
-          } else if (bTime is DateTime) {
-            bDate = bTime;
-          } else {
-            return 0;
-          }
+            if (bTime is Timestamp) {
+              bDate = bTime.toDate();
+            } else if (bTime is DateTime) {
+              bDate = bTime;
+            } else {
+              return 0;
+            }
 
-          return bDate.compareTo(aDate); // Descending order
-        });
-
-        // Apply limit if we queried without orderBy
-        if (querySnapshot.docs.length > limit) {
-          posts = posts.take(limit).toList();
-          newLastDocument = querySnapshot.docs[limit - 1];
+            return bDate.compareTo(aDate);
+          });
         }
-      }
 
-      // Check if there are more posts
-      final hasMore = querySnapshot.docs.length == limit;
+        // In the fallback path we fetched ALL user docs; hasMore = we had more
+        // filtered posts than the page limit (evaluated before truncation).
+        hasMore = posts.length > limit;
+        if (hasMore) {
+          posts = posts.sublist(0, limit);
+          // Re-sync the pagination cursor to the last post in the sorted+limited list
+          // so the next page starts at the correct Firestore position.
+          final lastPostId = posts.last['postId'] as String?;
+          if (lastPostId != null) {
+            newLastDocument = querySnapshot.docs.firstWhere(
+              (d) => d.id == lastPostId,
+              orElse: () => querySnapshot.docs.last,
+            );
+          }
+        }
+      } else {
+        // Primary path: Firestore enforced the limit via the index.
+        // A full page (== limit raw docs) indicates there may be more.
+        hasMore = querySnapshot.docs.length == limit;
+      }
 
       if (kDebugMode) {
         print(
@@ -2525,21 +2564,30 @@ class FirestoreService {
         if (cached != null) {
           final cacheTime = cached['timestamp'] as DateTime;
           if (DateTime.now().difference(cacheTime) < _cacheExpiry) {
-            if (kDebugMode) {
-              print('📦 Using cached images for user: $userId');
+            final cachedHasMore = cached['hasMore'] as bool? ?? false;
+            if (cachedHasMore) {
+              // The original fetch had more pages; skip the cache so the caller
+              // gets fresh Firestore data with valid pagination cursors.
+              // Without this, users with >limit images would always see hasMore:false
+              // from cache and load-more would be silently suppressed.
+              _profileCache.remove(cacheKey);
+            } else {
+              if (kDebugMode) {
+                print('📦 Using cached images for user: $userId');
+              }
+              return {
+                'images': List<String>.from(cached['data'] as List),
+                'postInfos':
+                    cached['postInfos'] != null
+                        ? List<Map<String, dynamic>>.from(
+                          cached['postInfos'] as List,
+                        )
+                        : <Map<String, dynamic>>[],
+                'lastDocuments': null,
+                'hasMore': false,
+                'cached': true,
+              };
             }
-            return {
-              'images': List<String>.from(cached['data'] as List),
-              'postInfos':
-                  cached['postInfos'] != null
-                      ? List<Map<String, dynamic>>.from(
-                        cached['postInfos'] as List,
-                      )
-                      : <Map<String, dynamic>>[],
-              'lastDocuments': null,
-              'hasMore': false,
-              'cached': true,
-            };
           } else {
             // Cache expired, remove it
             _profileCache.remove(cacheKey);
@@ -2704,13 +2752,15 @@ class FirestoreService {
         }
       }
 
-      // Cache first page results (both URLs and post info)
+      // Cache first page results (both URLs and post info).
+      // Store hasMore so subsequent cache reads can decide whether to serve stale data
+      // or bypass the cache and re-fetch from Firestore.
       if (lastDocuments == null && allImages.isNotEmpty) {
         _profileCache[cacheKey] = {
           'data': allImages,
-          'postInfos':
-              allPostInfos, // Store post metadata for fetching full details later
+          'postInfos': allPostInfos,
           'timestamp': DateTime.now(),
+          'hasMore': hasMore,
         };
       }
 
@@ -2852,21 +2902,28 @@ class FirestoreService {
         if (cached != null) {
           final cacheTime = cached['timestamp'] as DateTime;
           if (DateTime.now().difference(cacheTime) < _cacheExpiry) {
-            if (kDebugMode) {
-              print('📦 Using cached videos for user: $userId');
+            final cachedHasMore = cached['hasMore'] as bool? ?? false;
+            if (cachedHasMore) {
+              // The original fetch had more pages; skip the cache so the caller
+              // gets fresh Firestore data with valid pagination cursors.
+              _profileCache.remove(cacheKey);
+            } else {
+              if (kDebugMode) {
+                print('📦 Using cached videos for user: $userId');
+              }
+              return {
+                'videos': List<String>.from(cached['data'] as List),
+                'postInfos':
+                    cached['postInfos'] != null
+                        ? List<Map<String, dynamic>>.from(
+                          cached['postInfos'] as List,
+                        )
+                        : <Map<String, dynamic>>[],
+                'lastDocuments': null,
+                'hasMore': false,
+                'cached': true,
+              };
             }
-            return {
-              'videos': List<String>.from(cached['data'] as List),
-              'postInfos':
-                  cached['postInfos'] != null
-                      ? List<Map<String, dynamic>>.from(
-                        cached['postInfos'] as List,
-                      )
-                      : <Map<String, dynamic>>[],
-              'lastDocuments': null,
-              'hasMore': false,
-              'cached': true,
-            };
           } else {
             // Cache expired, remove it
             _profileCache.remove(cacheKey);
@@ -3033,13 +3090,15 @@ class FirestoreService {
         }
       }
 
-      // Cache first page results (both URLs and post info)
+      // Cache first page results (both URLs and post info).
+      // Store hasMore so subsequent cache reads can decide whether to serve stale data
+      // or bypass the cache and re-fetch from Firestore.
       if (lastDocuments == null && allVideos.isNotEmpty) {
         _profileCache[cacheKey] = {
           'data': allVideos,
-          'postInfos':
-              allPostInfos, // Store post metadata for fetching full details later
+          'postInfos': allPostInfos,
           'timestamp': DateTime.now(),
+          'hasMore': hasMore,
         };
       }
 
@@ -3231,13 +3290,17 @@ class FirestoreService {
       final querySnapshot = await query.get();
 
       final posts = <Map<String, dynamic>>[];
-      DocumentSnapshot? newLastDocument;
+      final docSnapshotsByPostId =
+          <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      DocumentSnapshot<Map<String, dynamic>>? newLastDocument;
 
       for (var doc in querySnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
         data['postId'] = doc.id; // Add document ID to data
         posts.add(data);
-        newLastDocument = doc; // Track the last document
+        final typed = doc as DocumentSnapshot<Map<String, dynamic>>;
+        docSnapshotsByPostId[doc.id] = typed;
+        newLastDocument = typed; // Track the last document
       }
 
       if (kDebugMode) {
@@ -3286,6 +3349,7 @@ class FirestoreService {
         'posts': posts,
         'lastDocument': newLastDocument,
         'hasMore': hasMore,
+        'docSnapshotsByPostId': docSnapshotsByPostId,
       };
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
@@ -3293,6 +3357,33 @@ class FirestoreService {
         exception,
         stackTrace,
         'FirestoreService.getPostsPaginated',
+      );
+      rethrow;
+    }
+  }
+
+  /// Single-document fetch for global-feed pagination cursor repair.
+  ///
+  /// Used when [allPosts] last item never received a [DocumentSnapshot] from a
+  /// paginated query (e.g. stream-only path). Rare; avoids misaligned cursors.
+  Future<DocumentSnapshot<Map<String, dynamic>>?> getGlobalFeedPostSnapshot(
+    String postId, {
+    String? collectionName,
+  }) async {
+    try {
+      final targetCollection = collectionName ?? defaultPostsCollection;
+      final doc = await _firestore
+          .collection(targetCollection)
+          .doc(postId)
+          .get();
+      if (!doc.exists) return null;
+      return doc;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.getGlobalFeedPostSnapshot',
       );
       rethrow;
     }
@@ -6118,6 +6209,35 @@ class FirestoreService {
     }
   }
 
+  /// Stable signature so merged private-room snapshots can skip redundant stream emits.
+  static int _signatureForPrivateChatRoomsList(List<Map<String, dynamic>> rooms) {
+    var h = rooms.length;
+    for (final r in rooms) {
+      final id = r['chatRoomId'] as String? ?? '';
+      final updated = r['updatedAt'];
+      final created = r['createdAt'];
+      final tu =
+          updated is Timestamp
+              ? updated.millisecondsSinceEpoch
+              : (created is Timestamp ? created.millisecondsSinceEpoch : 0);
+      final lt = r['lastMessageTime'];
+      final ltMs = lt is Timestamp ? lt.millisecondsSinceEpoch : 0;
+      final members =
+          ((r['members'] as List<dynamic>?) ?? []).map((e) => e.toString()).toList()
+            ..sort();
+      h = Object.hash(
+        h,
+        id,
+        tu,
+        ltMs,
+        (r['lastMessage'] ?? '').hashCode,
+        (r['name'] ?? '').hashCode,
+        Object.hashAll(members),
+      );
+    }
+    return h;
+  }
+
   /// Get private chat rooms for a user
   /// Returns chat rooms where user is the creator or a member
   ///
@@ -6203,11 +6323,18 @@ class FirestoreService {
       final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
       StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subCreated;
       StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subMember;
+      int? lastEmittedPrivateRoomsSig;
 
       void onEither() {
-        if (latestCreated != null && latestMember != null) {
-          controller.add(mergeSnapshots(latestCreated, latestMember));
+        if (latestCreated == null || latestMember == null) return;
+        final merged = mergeSnapshots(latestCreated, latestMember);
+        final sig = _signatureForPrivateChatRoomsList(merged);
+        if (lastEmittedPrivateRoomsSig != null &&
+            sig == lastEmittedPrivateRoomsSig) {
+          return;
         }
+        lastEmittedPrivateRoomsSig = sig;
+        controller.add(merged);
       }
 
       subCreated = createdRoomsStream.listen(
@@ -6222,6 +6349,7 @@ class FirestoreService {
             stackTrace,
             'FirestoreService.getPrivateChatRoomsForUser',
           );
+          lastEmittedPrivateRoomsSig = _signatureForPrivateChatRoomsList(const []);
           controller.add(<Map<String, dynamic>>[]);
         },
       );
@@ -6237,6 +6365,7 @@ class FirestoreService {
             stackTrace,
             'FirestoreService.getPrivateChatRoomsForUser',
           );
+          lastEmittedPrivateRoomsSig = _signatureForPrivateChatRoomsList(const []);
           controller.add(<Map<String, dynamic>>[]);
         },
       );

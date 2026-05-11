@@ -1046,13 +1046,18 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                           ),
                         ),
                         const SizedBox(width: AppDimensions.paddingL),
-                        const Expanded(
-                          child: ResponsiveTextWidget(
-                            AppStrings.camera,
-                            textType: TextType.body,
-                            fontSize: AppDimensions.textL,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.onPrimary,
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: ResponsiveTextWidget(
+                              AppStrings.camera,
+                              textType: TextType.body,
+                              fontSize: AppDimensions.textL,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.onPrimary,
+                              maxLines: 1,
+                            ),
                           ),
                         ),
                         const Icon(
@@ -1098,13 +1103,18 @@ class EditAccountView extends BaseView<EditAccountViewModel> {
                           ),
                         ),
                         const SizedBox(width: AppDimensions.paddingL),
-                        const Expanded(
-                          child: ResponsiveTextWidget(
-                            AppStrings.gallery,
-                            textType: TextType.body,
-                            fontSize: AppDimensions.textL,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.onPrimary,
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: ResponsiveTextWidget(
+                              AppStrings.gallery,
+                              textType: TextType.body,
+                              fontSize: AppDimensions.textL,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.onPrimary,
+                              maxLines: 1,
+                            ),
                           ),
                         ),
                         const Icon(

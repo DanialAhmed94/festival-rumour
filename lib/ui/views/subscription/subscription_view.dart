@@ -255,7 +255,7 @@ class _PrivacyText extends StatelessWidget {
         style: const TextStyle(color: AppColors.white),
         children: [
           TextSpan(
-            text: 'Privacy Policy.',
+            text: AppStrings.privacyPolicy,
             style: const TextStyle(
               decoration: TextDecoration.underline,
               decorationColor: AppColors.white,

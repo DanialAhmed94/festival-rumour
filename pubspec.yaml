@@ -4,7 +4,7 @@ description: "A new Flutter project."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 
-version: 1.0.0+3
+version: 1.0.0+4
 
 environment:
   sdk: ^3.7.2
@@ -44,6 +44,12 @@ dependencies:
   # Image Loading and Caching
   cached_network_image: ^3.3.1
   shimmer: ^3.0.0
+
+  # Feed: visibility-driven callbacks (pause off-screen video, O(1) per item not O(N))
+  visibility_detector: ^0.4.0+2
+
+  # Comment screen: O(1) indexed scroll-to-item for notification deep-links.
+  scrollable_positioned_list: ^0.3.8
 
   # Fonts
   google_fonts: ^6.1.0
@@ -139,10 +145,14 @@ dependencies:
 
   # Firebase App Check
   firebase_app_check: ^0.4.1+4
+  photo_view: ^0.15.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # One-off raster assets (notification icon silhouette from logo PNG)
+  image: ^4.5.4
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

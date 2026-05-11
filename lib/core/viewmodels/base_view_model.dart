@@ -199,6 +199,12 @@ abstract class BaseViewModel extends ChangeNotifier {
     _busy = val;
     notifyListeners();
   }
+
+  /// Updates [busy] without notifying. Use when the caller will call [notifyListeners]
+  /// once after coalescing other state (reduces duplicate rebuilds).
+  void setBusyQuiet(bool val) {
+    _busy = val;
+  }
 }
 
 

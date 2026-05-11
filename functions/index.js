@@ -1,10 +1,20 @@
-const functions = require("firebase-functions");
+// HTTPS via Cloud Functions 2nd gen (matches GCP GEN_2 + firebase-functions manifest).
+// Firestore comment push lives in `functions_comment/` (codebase comment_push).
+const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const cors = require("cors")({ origin: true });
 
 admin.initializeApp();
 
-exports.deleteAuthAccount = functions.https.onRequest((req, res) => {
+/** Match existing deployed sizing (Firestore + FCM workloads). */
+const httpOptions = {
+    region: "us-central1",
+    maxInstances: 3,
+    memory: "256MiB",
+    timeoutSeconds: 60,
+};
+
+exports.deleteAuthAccount = onRequest(httpOptions, (req, res) => {
     cors(req, res, async () => {
         try {
             // 🔒 Allow only POST
@@ -50,7 +60,7 @@ exports.deleteAuthAccount = functions.https.onRequest((req, res) => {
     });
 });
 
-exports.sendNotification = functions.https.onRequest((req, res) => {
+exports.sendNotification = onRequest(httpOptions, (req, res) => {
     cors(req, res, async () => {
         try {
             if (req.method !== "POST") {
@@ -77,12 +87,9 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 });
             }
 
-            // One notification per user: dedupe so same user is never processed twice (avoids duplicate pushes when client/room has duplicate member ids).
             const uniqueUserIds = [...new Set(userIds)];
-
             const tokens = [];
 
-            // 🔥 Fetch one token per user from Firestore (one FCM send per user)
             for (const uid of uniqueUserIds) {
                 const userDoc = await admin.firestore().collection("users").doc(uid).get();
 
@@ -90,10 +97,8 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
 
                 const userData = userDoc.data();
 
-                // ✅ Check correct app
                 if (userData.appIdentifier !== "festivalrumor") continue;
 
-                // ✅ Check token: fcmToken (string) or fcmTokens (array) — take at most one token per user
                 let token = userData.fcmToken;
                 if (!token && userData.fcmTokens && Array.isArray(userData.fcmTokens) && userData.fcmTokens.length > 0) {
                     token = userData.fcmTokens[0];
@@ -103,7 +108,6 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 }
             }
 
-            // Dedupe tokens so the same device never gets the same notification twice (e.g. same token stored in fcmToken and fcmTokens[0], or duplicate userIds before uniqueUserIds).
             const uniqueTokens = [...new Set(tokens)];
 
             if (uniqueTokens.length === 0) {
@@ -131,6 +135,8 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                         channelId: "chat_messages",
                         priority: "high",
                         sound: "default",
+                        icon: "ic_notification",
+                        color: "#FC2E95",
                     },
                 },
                 apns: {
@@ -149,7 +155,6 @@ exports.sendNotification = functions.https.onRequest((req, res) => {
                 },
             };
 
-            // 🔥 Send one message per token (each recipient gets exactly one notification)
             const response = await admin.messaging().sendEachForMulticast({
                 tokens: uniqueTokens,
                 ...payload,

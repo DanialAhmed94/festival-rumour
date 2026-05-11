@@ -19,6 +19,14 @@ class StorageService {
   static const String _keyFcmToken = 'fcm_token';
   static const String _keyNotificationsEnabled = 'notifications_enabled';
 
+  /// Local gate: persisted phone parity for festival → NavBar (see ProfileReadinessService).
+  static const String _keyGatePhoneProfileSchemaVersion =
+      'gate_phone_profile_schema_version';
+  static const String _keyGatePhoneVerifiedUid = 'gate_phone_verified_uid';
+  static const String _keyGatePhoneVerifiedAtIso =
+      'gate_phone_verified_at_iso';
+  static const int _gatePhoneProfileSchemaVersionCurrent = 1;
+
   Future<void> setNotificationsEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyNotificationsEnabled, value);
@@ -28,6 +36,57 @@ class StorageService {
   Future<bool?> getNotificationsEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_keyNotificationsEnabled);
+  }
+
+  Future<bool> isPhoneVerificationCachedForUser(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if ((prefs.getInt(_keyGatePhoneProfileSchemaVersion) ?? 0) !=
+          _gatePhoneProfileSchemaVersionCurrent) {
+        return false;
+      }
+      final storedUid = prefs.getString(_keyGatePhoneVerifiedUid);
+      return storedUid != null &&
+          storedUid.isNotEmpty &&
+          storedUid == userId;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> setPhoneVerificationGateCache(
+    String userId, {
+    DateTime? verifiedAtUtc,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _keyGatePhoneProfileSchemaVersion,
+        _gatePhoneProfileSchemaVersionCurrent,
+      );
+      await prefs.setString(_keyGatePhoneVerifiedUid, userId);
+      await prefs.setString(
+        _keyGatePhoneVerifiedAtIso,
+        (verifiedAtUtc ?? DateTime.now().toUtc()).toIso8601String(),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error saving phone verification gate cache: $e');
+      }
+    }
+  }
+
+  Future<void> clearPhoneVerificationGateCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyGatePhoneProfileSchemaVersion);
+      await prefs.remove(_keyGatePhoneVerifiedUid);
+      await prefs.remove(_keyGatePhoneVerifiedAtIso);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error clearing phone verification gate cache: $e');
+      }
+    }
   }
 
   Future<void> setFcmToken(String token) async {
@@ -325,6 +384,9 @@ class StorageService {
       await prefs.remove(_keyUserPhotoUrl);
       await prefs.remove(_keyRecentUserSearches);
       await prefs.remove(_keyNotificationsEnabled);
+      await prefs.remove(_keyGatePhoneProfileSchemaVersion);
+      await prefs.remove(_keyGatePhoneVerifiedUid);
+      await prefs.remove(_keyGatePhoneVerifiedAtIso);
       await clearSearchCache();
       if (kDebugMode) {
         print('All storage data cleared');

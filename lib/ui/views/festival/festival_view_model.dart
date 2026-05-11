@@ -4,37 +4,48 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_sizes.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/geocoding_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/utils/snackbar_util.dart';
 import '../../../core/constants/app_durations.dart';
 import '../../../core/api/festival_api_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/firestore_service.dart';
+import '../../../core/services/profile_readiness_service.dart';
+import '../../../core/navigation/apply_festival_navbar_gate_outcome.dart';
 import '../../../core/services/user_photo_cache_service.dart';
 import '../../../util/firebase_notification_service.dart';
 import 'festival_model.dart';
 
+/// Festival Organiser — App Store
 const String caAppStoreUrl =
     'https://apps.apple.com/us/app/organiser-toolkit/id6686404949';
+
+/// Festival Toilet App (store slug "crap-adviser")
 const String crapAdviserAppStoreUrl =
     'https://apps.apple.com/us/app/crap-adviser/id6738211790';
+
 const String festieFoodieAppStoreUrl =
     'https://apps.apple.com/us/app/festiefoodie/id6744639737';
+
+/// Play Store (Android) — same three apps as above
+const String crapAdviserPlayStoreUrl =
+    'https://play.google.com/store/apps/details?id=com.crapadviser.user';
+const String festivalOrganiserPlayStoreUrl =
+    'https://play.google.com/store/apps/details?id=com.crapadviser.orgnaizer';
+const String festieFoodiePlayStoreUrl =
+    'https://play.google.com/store/apps/details?id=com.festiefoodie.app';
 
 class FestivalViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FestivalApiService _festivalApiService = locator<FestivalApiService>();
   final GeocodingService _geocodingService = locator<GeocodingService>();
   final AuthService _authService = locator<AuthService>();
-  final FirestoreService _firestoreService = locator<FirestoreService>();
 
   final List<FestivalModel> festivals = [];
   final List<FestivalModel> allFestivals = []; // Store all festivals
@@ -45,6 +56,8 @@ class FestivalViewModel extends BaseViewModel {
   Timer? _searchDebounce;
   String? _searchError;
 
+  bool _navbarGateBusy = false;
+
   /// When search is active, returns API search results; otherwise festivals (for slider).
   List<FestivalModel> get filteredFestivals =>
       searchQuery.isNotEmpty ? _searchResults : festivals;
@@ -53,6 +66,9 @@ class FestivalViewModel extends BaseViewModel {
 
   /// User-facing error message when search API fails (e.g. no connection). Null when no error.
   String? get searchError => _searchError;
+
+  bool get navbarGateBusy => _navbarGateBusy;
+
   String currentFilter =
       'live'; // Current filter: live, upcoming, past (default Live)
   late FocusNode searchFocusNode; // Search field focus node
@@ -212,6 +228,11 @@ class FestivalViewModel extends BaseViewModel {
               '🎪 [FestivalViewModel] After _applyFilter: currentFilter=$currentFilter, festivals.length=${festivals.length}, allFestivals.length=${allFestivals.length}',
             );
           }
+
+          // Propagate to the locator singleton so any screen (profile, edit post, etc.)
+          // can access the festival list without needing a BuildContext or waiting for
+          // the user to explicitly navigate through the festival-selection flow.
+          locator<FestivalProvider>().setAllFestivals(allFestivals);
         } else {
           if (kDebugMode) {
             print('🎪 [FestivalViewModel] API failed or no data: throwing');
@@ -240,14 +261,110 @@ class FestivalViewModel extends BaseViewModel {
     }
   }
 
-  Future<void> openAppStoreIOS(String appStoreUrl) async {
-    if (!Platform.isIOS) return;
-
-    final uri = Uri.parse(appStoreUrl);
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+  /// Partner suite icons — opens the native store where possible with fallbacks and user feedback.
+  Future<void> openPartnerAppStore(
+    BuildContext context, {
+    required String iosAppStoreUrl,
+    required String androidPlayStoreUrl,
+  }) async {
+    void informUser(String message) {
+      if (!context.mounted) return;
+      SnackbarUtil.showErrorSnackBar(context, message);
     }
+
+    final String urlString = _resolvePartnerListingUrl(
+      iosAppStoreUrl: iosAppStoreUrl,
+      androidPlayStoreUrl: androidPlayStoreUrl,
+    );
+
+    final Uri? uri = Uri.tryParse(urlString.trim());
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      informUser(AppStrings.storeLinkInvalid);
+      return;
+    }
+
+    try {
+      final launched = await _launchPartnerStoreListing(uri);
+      if (!launched) {
+        if (context.mounted) {
+          informUser(AppStrings.couldNotOpenStoreListing);
+        }
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('openPartnerAppStore failed: $e\n$st');
+      }
+      if (context.mounted) {
+        informUser(AppStrings.couldNotOpenStoreListing);
+      }
+    }
+  }
+
+  String _resolvePartnerListingUrl({
+    required String iosAppStoreUrl,
+    required String androidPlayStoreUrl,
+  }) {
+    if (Platform.isIOS) return iosAppStoreUrl;
+    if (Platform.isAndroid) return androidPlayStoreUrl;
+    // Desktop (macOS / Windows / Linux) — Play listing opens in default browser reliably.
+    if (Platform.isMacOS) return iosAppStoreUrl;
+    return androidPlayStoreUrl;
+  }
+
+  Future<bool> _launchPartnerStoreListing(Uri uri) async {
+    Future<bool> tryLaunch(Uri target, LaunchMode mode) async {
+      try {
+        return await launchUrl(target, mode: mode);
+      } catch (_) {
+        return false;
+      }
+    }
+
+    final List<Uri> candidates = [..._partnerStoreFallbackUris(uri)];
+
+    for (final target in candidates) {
+      if (await tryLaunch(target, LaunchMode.externalApplication)) return true;
+    }
+
+    for (final target in candidates) {
+      if (await tryLaunch(target, LaunchMode.platformDefault)) return true;
+    }
+
+    return false;
+  }
+
+  List<Uri> _partnerStoreFallbackUris(Uri primary) {
+    final List<Uri> out = [primary];
+    if (Platform.isAndroid) {
+      final market = _marketUriFromPlayStoreHttps(primary);
+      if (market != null) out.add(market);
+    }
+    if (Platform.isIOS) {
+      final itms = _itmsAppsUriFromAppleStoreHttps(primary);
+      if (itms != null) out.add(itms);
+    }
+    return out;
+  }
+
+  Uri? _marketUriFromPlayStoreHttps(Uri uri) {
+    final host = uri.host.toLowerCase();
+    if (host != 'play.google.com' && !host.endsWith('.play.google.com')) {
+      return null;
+    }
+    final id = uri.queryParameters['id'];
+    if (id == null || id.isEmpty) return null;
+    return Uri.parse('market://details?id=$id');
+  }
+
+  /// Prefer native Store app (`itms-apps://`) when the https page handler fails on iOS.
+  Uri? _itmsAppsUriFromAppleStoreHttps(Uri uri) {
+    final host = uri.host.toLowerCase();
+    if (!host.contains('apps.apple.com')) return null;
+    final match =
+        RegExp(r'/id(\d{6,})').firstMatch('${uri.path} ${uri.fragment}');
+    final id = match?.group(1);
+    if (id == null) return null;
+    return Uri.parse('itms-apps://apps.apple.com/app/id$id');
   }
 
   void setPage(int index) {
@@ -287,25 +404,11 @@ class FestivalViewModel extends BaseViewModel {
     });
   }
 
-  /// Check if phone number exists in Firestore
-  Future<bool> isPhoneMissing() async {
-    final user = _authService.currentUser;
-    if (user == null) return true;
-
-    final data = await _firestoreService.getUserData(user.uid);
-    if (data == null) return true;
-
-    final phone = data["phoneNumber"];
-    return phone == null || phone.toString().isEmpty;
-  }
-
   /// Navigate to home and save selected festival to provider
-  /// Navigate to home and check if phone number exists
   Future<void> navigateToHome(
     BuildContext context,
     FestivalModel festival,
   ) async {
-    // Save selected festival and list
     final festivalProvider = Provider.of<FestivalProvider>(
       context,
       listen: false,
@@ -318,20 +421,28 @@ class FestivalViewModel extends BaseViewModel {
       print('🎪 Saved ${allFestivals.length} festivals to provider');
     }
 
-    // 1️⃣ Check if phone number is missing
-    final missing = await isPhoneMissing();
+    _navbarGateBusy = true;
+    notifyListeners();
+    try {
+      final outcome =
+          await locator<ProfileReadinessService>().evaluateFestivalNavbarGate();
+      if (!context.mounted) return;
 
-    if (missing) {
-      print("📱 Phone missing → redirecting to phone screen");
+      if (kDebugMode) {
+        print('🧭 [FestivalViewModel.navigateToHome] Gate outcome=${outcome.name}');
+      }
 
-      // Navigate to Signup Phone screen → NOW FIXED
-      _navigationService.navigateTo(AppRoutes.signup, arguments: true);
-
-      return;
+      await applyFestivalNavbarGateOutcome(
+        context,
+        outcome,
+        onAuthenticatedNavigate: () {
+          _navigationService.navigateTo(AppRoutes.navbaar);
+        },
+      );
+    } finally {
+      _navbarGateBusy = false;
+      if (!isDisposed) notifyListeners();
     }
-
-    // 2️⃣ Phone exists → proceed normally
-    _navigationService.navigateTo(AppRoutes.navbaar);
   }
 
   void goBack() {

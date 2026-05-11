@@ -13,6 +13,7 @@ import '../exceptions/app_exception.dart';
 import '../exceptions/exception_mapper.dart';
 import 'error_handler_service.dart';
 import 'firestore_service.dart';
+import 'storage_service.dart';
 
 /// Auth result class for handling authentication responses
 class AuthResult {
@@ -253,6 +254,7 @@ class AuthService {
   Future<void> signOut() async {
     try {
       await Future.wait([_auth.signOut(), _googleSignIn.signOut()]);
+      await StorageService().clearPhoneVerificationGateCache();
     } catch (e, stackTrace) {
       final exception = ExceptionMapper.mapToAppException(e, stackTrace);
       _errorHandler.handleError(exception, stackTrace, 'AuthService.signOut');

@@ -10,6 +10,7 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/viewmodels/base_view_model.dart';
+import '../../../services/notification_service.dart';
 
 class AddChatMembersViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
@@ -220,11 +221,53 @@ class AddChatMembersViewModel extends BaseViewModel {
       );
       if (success) {
         setError(null);
+        _sendAddedToGroupPushNotifications(newMemberIds);
         _navigationService.pop(true);
       } else {
         setError('Only the room creator can add members.');
       }
     }, errorMessage: 'Failed to add members');
+  }
+
+  Future<String> _currentUserShareName() async {
+    final authName = _authService.userDisplayName?.trim();
+    if (authName != null && authName.isNotEmpty) return authName;
+    final uid = _authService.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return 'Someone';
+    final data = await _firestoreService.getUserData(uid);
+    if (data != null) {
+      for (final key in ['username', 'displayName', 'name']) {
+        final v = data[key]?.toString().trim();
+        if (v != null && v.isNotEmpty) return v;
+      }
+    }
+    return 'Someone';
+  }
+
+  void _sendAddedToGroupPushNotifications(List<String> newMemberIds) {
+    final roomId = _chatRoomId;
+    if (roomId == null || roomId.isEmpty || newMemberIds.isEmpty) return;
+    () async {
+      try {
+        final room = await _firestoreService.getChatRoomDocument(roomId);
+        final roomName = room?['name'] as String? ?? 'Chat';
+        final fidRaw = room?['festivalId'];
+        final festivalId =
+            fidRaw == null ? null : fidRaw.toString().trim().isEmpty ? null : fidRaw.toString().trim();
+        final actor = await _currentUserShareName();
+        await NotificationServiceApi.notifyUsersAddedToPrivateGroup(
+          recipientUserIds: newMemberIds,
+          chatRoomId: roomId,
+          roomName: roomName,
+          addedByDisplayName: actor,
+          festivalId: festivalId,
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          print('[NOTIF] add members push failed: $e');
+        }
+      }
+    }();
   }
 
   @override

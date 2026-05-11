@@ -1,7 +1,6 @@
-import 'package:festival_rumour/core/services/storage_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
@@ -13,6 +12,8 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_durations.dart';
 import '../../../core/exceptions/app_exception.dart';
 import '../../../core/exceptions/exception_mapper.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../core/services/profile_readiness_service.dart';
 
 /// Error type for better error categorization and handling
 enum OtpErrorType {
@@ -47,6 +48,7 @@ class OtpViewModel extends BaseViewModel {
   final AuthService _authService = AuthService();
   final PhoneAuthService _phoneAuthService = PhoneAuthService();
   final SignupDataService _signupDataService = SignupDataService();
+  final FirestoreService _firestoreService = locator<FirestoreService>();
 
   String _otpCode = "";
   String? _errorText;
@@ -402,19 +404,51 @@ class OtpViewModel extends BaseViewModel {
     }
 
     if (fromFestival) {
-      // User stayed signed in (phone was linked). Save number to Firestore.
-      final StorageService storageService = locator<StorageService>();
-      final uid = await storageService.getUserId();
-
-      if (uid != null && _phoneNumber != null) {
-        try {
-          await _authService.savePhoneToFirestore(uid, _phoneNumber!);
-        } catch (e) {
-          if (kDebugMode) {
-            print('⚠️ [OTP] Could not save phone to Firestore: $e');
-          }
-        }
+      final uid = _authService.currentUser?.uid;
+      if (uid == null || _phoneNumber == null) {
+        _navigationService.showSnackbar(
+          AppStrings.couldNotCompletePhoneVerificationTryAgain,
+          isError: true,
+        );
+        return;
       }
+
+      try {
+        await _authService.savePhoneToFirestore(uid, _phoneNumber!);
+      } catch (e, st) {
+        if (kDebugMode) {
+          print('⚠️ [OTP] Could not save phone to Firestore: $e\n$st');
+        }
+        _navigationService.showSnackbar(
+          AppStrings.couldNotCompletePhoneVerificationTryAgain,
+          isError: true,
+        );
+        return;
+      }
+
+      Map<String, dynamic>? data;
+      try {
+        data = await _firestoreService.getUserData(uid, source: Source.server);
+      } catch (e, st) {
+        if (kDebugMode) {
+          print('⚠️ [OTP] Server read-back after save failed: $e\n$st');
+        }
+        data = null;
+      }
+
+      final phoneRemote = data?['phoneNumber'];
+      final synced =
+          phoneRemote != null && phoneRemote.toString().trim().isNotEmpty;
+      if (!synced) {
+        _navigationService.showSnackbar(
+          AppStrings.phoneSyncReadBackFailed,
+          isError: true,
+        );
+        return;
+      }
+
+      await locator<ProfileReadinessService>()
+          .persistPhoneVerificationForUser(uid);
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _navigationService.navigateTo(AppRoutes.festivals);
