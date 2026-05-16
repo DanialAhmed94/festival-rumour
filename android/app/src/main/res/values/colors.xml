@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accent tint for FCM/system notifications (header icon background on some OEMs). -->
+    <color name="notification_color">#FC2E95</color>
+</resources>
