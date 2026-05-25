@@ -40,9 +40,15 @@ class NavBaarViewModel extends BaseViewModel {
     setIndex(0); // Discover is first tab (index 0)
   }
 
-  /// When opened from profile list (Favourites/Attended), back goes to profile list. Otherwise go to Festival screen.
+  /// When opened from profile list (Favourites/Attended), back goes to profile list.
+  /// Otherwise: if NavBar was [pushed] on top (e.g. Festivals → View All → NavBar), pop once
+  /// so Discover back returns correctly. Only clear stack to festivals when nothing to pop.
   void navigateToFestival() {
     if (_fromProfileList) {
+      _navigationService.pop();
+      return;
+    }
+    if (_navigationService.canPop) {
       _navigationService.pop();
       return;
     }

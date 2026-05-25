@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/firestore_service.dart';
@@ -22,26 +22,52 @@ class CommentViewModel extends BaseViewModel {
   final ErrorHandlerService _errorHandler = ErrorHandlerService();
   final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
   TextEditingController commentController = TextEditingController();
-  final ScrollController scrollController = ScrollController();
+
+  /// Controls programmatic scrolling (jumpTo / scrollTo by index).
+  final ItemScrollController itemScrollController = ItemScrollController();
+
+  /// Reports which items are currently visible; used to detect user scroll direction.
+  final ItemPositionsListener itemPositionsListener =
+      ItemPositionsListener.create();
+
   bool _showEmojiGrid = false;
-  
+
+  // ── Notification deep-link scroll ─────────────────────────────────────────
+  /// O(1) lookup from commentId → list index.  Rebuilt after every comments load.
+  Map<String, int> _commentIndexMap = {};
+
+  // _pendingScrollCommentId is intentionally not stored as a field —
+  // the focusParentCommentId is passed directly through the call chain
+  // (initialize → loadInitialComments → _scrollToFocusComment) so no
+  // field is needed and there is no risk of stale state.
+
+  /// Currently highlighted comment (yellow fade, cleared after ~1.5 s).
+  String? _highlightedCommentId;
+
+  /// True while the target comment is highlighted.
+  bool isHighlighted(String? commentId) =>
+      commentId != null && commentId == _highlightedCommentId;
+  // ──────────────────────────────────────────────────────────────────────────
+
   CommentViewModel() {
-    // Listen to scroll position to detect if user scrolled up
-    scrollController.addListener(_onScrollChanged);
-    // Listen to text changes with debouncing
+    // Detect when user scrolls away from the bottom so auto-scroll is suppressed.
+    itemPositionsListener.itemPositions.addListener(_onScrollPositionsChanged);
     commentController.addListener(_onTextChanged);
   }
-  
-  void _onScrollChanged() {
-    if (!scrollController.hasClients) return;
-    
-    // Check if user is near bottom (within 100px)
-    final maxScroll = scrollController.position.maxScrollExtent;
-    final currentScroll = scrollController.position.pixels;
-    final distanceFromBottom = maxScroll - currentScroll;
-    
-    // If user is more than 100px from bottom, they scrolled up
-    _userScrolledUp = distanceFromBottom > 100;
+
+  void _onScrollPositionsChanged() {
+    final positions = itemPositionsListener.itemPositions.value;
+    if (positions.isEmpty) return;
+    final lastVisible = positions.map((p) => p.index).reduce(
+      (a, b) => a > b ? a : b,
+    );
+    // Compare against the last COMMENT index (comments.length - 1), not the
+    // footer index (comments.length).  When all comments fit in the viewport
+    // the footer is off-screen but the user has NOT scrolled up — comparing
+    // against comments.length would incorrectly flip _userScrolledUp to true
+    // and suppress every auto-scroll-to-bottom call.
+    final lastCommentIndex = (comments.length - 1).clamp(0, double.maxFinite).toInt();
+    _userScrolledUp = lastVisible < lastCommentIndex;
   }
   
   void _onTextChanged() {
@@ -55,6 +81,7 @@ class CommentViewModel extends BaseViewModel {
   }
   
   PostModel? _post;
+  String? _pendingFocusParentCommentId;
   List<CommentModel> comments = [];
   StreamSubscription<List<Map<String, dynamic>>>? _commentsSubscription;
   
@@ -162,9 +189,14 @@ class CommentViewModel extends BaseViewModel {
     if (!isDisposed) notifyListeners();
   }
 
-  void initialize(PostModel? post, {String? collectionName}) {
+  void initialize(
+    PostModel? post, {
+    String? collectionName,
+    String? focusParentCommentId,
+  }) {
     _post = post;
     _collectionName = collectionName;
+    _pendingFocusParentCommentId = focusParentCommentId;
     if (kDebugMode) {
       print('💬 [CommentVM] initialize: postId=${post?.postId}, '
           'collectionName=$collectionName, '
@@ -226,9 +258,27 @@ class CommentViewModel extends BaseViewModel {
       // Pre-fetch profile photos for all comment authors
       unawaited(_prefetchUserPhotos());
       
-      // Reset scroll state and scroll to bottom after initial load
+      // Build the O(1) index map for fast notification-scroll lookup.
+      _rebuildIndexMap();
+
+      // Reset scroll state.
       _userScrolledUp = false;
-      _scrollToBottom();
+
+      final focus = _pendingFocusParentCommentId;
+      _pendingFocusParentCommentId = null;
+
+      if (focus != null && focus.isNotEmpty) {
+        // Expand replies first, then scroll to the comment in one post-frame pass.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!isDisposed) {
+            ensureRepliesExpanded(focus);
+            _scrollToFocusComment(focus);
+          }
+        });
+      } else {
+        // No notification target — just jump to the bottom (normal behaviour).
+        _scrollToBottom();
+      }
     },
     errorMessage: 'Failed to load comments',
     minimumLoadingDuration: AppDurations.minimumLoadingDuration);
@@ -351,7 +401,8 @@ class CommentViewModel extends BaseViewModel {
             
             // Only notify listeners if data actually changed
             if (hasChanges) {
-              _updateLoadedCommentIds(); // Update cached IDs
+              _updateLoadedCommentIds();
+              _rebuildIndexMap(); // Keep O(1) scroll lookup current
               unawaited(_prefetchUserPhotos());
             notifyListeners();
             
@@ -586,7 +637,8 @@ class CommentViewModel extends BaseViewModel {
       } else {
         // Add new comments to existing list
         comments.addAll(newComments);
-        _updateLoadedCommentIds(); // Update cached IDs
+        _updateLoadedCommentIds();
+        _rebuildIndexMap(); // Keep O(1) scroll lookup current after pagination
       }
 
       // Restart real-time listener to include new comments
@@ -692,7 +744,8 @@ class CommentViewModel extends BaseViewModel {
       
       // Add to comments list immediately
       comments.add(optimisticComment);
-      _updateLoadedCommentIds(); // Update cached IDs
+      _updateLoadedCommentIds();
+      _rebuildIndexMap();
       notifyListeners(); // Update UI immediately
       
       // Reset scroll state and scroll to bottom to show the newly posted comment
@@ -728,6 +781,20 @@ class CommentViewModel extends BaseViewModel {
     }, 
     errorMessage: AppStrings.failedToPostComment,
     minimumLoadingDuration: AppDurations.buttonLoadingDuration);
+  }
+
+  /// Expand replies for [commentId] (idempotent). Used when opening from a reply notification.
+  void ensureRepliesExpanded(String commentId) {
+    if (commentId.isEmpty) return;
+    if (_repliesExpanded[commentId] == true) return;
+    _repliesExpanded[commentId] = true;
+    if (!_replySubscriptions.containsKey(commentId) || _repliesMap[commentId] == null) {
+      _loadRepliesImmediately(commentId);
+    }
+    if (!_replySubscriptions.containsKey(commentId)) {
+      _startRepliesListener(commentId);
+    }
+    notifyListeners();
   }
 
   /// Toggle replies visibility for a comment (loads replies if not loaded)
@@ -1062,26 +1129,59 @@ class CommentViewModel extends BaseViewModel {
     _navigationService.pop(true);
   }
 
-  /// Scroll to bottom of comments list (only if user is near bottom)
-  void _scrollToBottomSmoothly() {
-    if (!scrollController.hasClients || isDisposed) return;
-    
-    // Cancel any pending scroll
+  /// Builds the O(1) commentId → list-index map.  Cheap: one pass over [comments].
+  void _rebuildIndexMap() {
+    final map = <String, int>{};
+    for (var i = 0; i < comments.length; i++) {
+      final id = comments[i].commentId;
+      if (id != null && id.isNotEmpty) map[id] = i;
+    }
+    _commentIndexMap = map;
+  }
+
+  /// One-shot auto-scroll + highlight for notification deep-links.
+  /// Clears [_pendingScrollCommentId] immediately so rebuilds / stream
+  /// updates never re-trigger it.
+  Future<void> _scrollToFocusComment(String commentId) async {
+    final index = _commentIndexMap[commentId];
+    if (index == null || isDisposed) return;
+    if (!itemScrollController.isAttached) return;
+
+    // Scroll to the target comment with a smooth animation.
+    // alignment: 0.1 positions the item 10% from the top of the viewport
+    // so it is clearly visible and not hidden behind the app bar.
+    await itemScrollController.scrollTo(
+      index: index,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOut,
+      alignment: 0.1,
+    );
+
+    if (isDisposed) return;
+
+    // Highlight the comment with a yellow flash for ~1.5 s (Instagram/Reddit style).
+    _highlightedCommentId = commentId;
+    notifyListeners();
+
     _scrollCheckTimer?.cancel();
-    
-    // Use a small delay to ensure the list has been built
+    _scrollCheckTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (!isDisposed) {
+        _highlightedCommentId = null;
+        notifyListeners();
+      }
+    });
+  }
+
+  /// Smooth scroll to bottom — only runs when user is already near the bottom
+  /// (prevents interrupting someone reading older comments).
+  void _scrollToBottomSmoothly() {
+    if (!itemScrollController.isAttached || isDisposed) return;
+    _scrollCheckTimer?.cancel();
     _scrollCheckTimer = Timer(const Duration(milliseconds: 150), () {
-      if (!scrollController.hasClients || isDisposed) return;
-      
-      // Only scroll if user is already near bottom (within 200px)
-      // This prevents interrupting user if they're reading older comments
-      final maxScroll = scrollController.position.maxScrollExtent;
-      final currentScroll = scrollController.position.pixels;
-      final distanceFromBottom = maxScroll - currentScroll;
-      
-      if (distanceFromBottom <= 200 || !_userScrolledUp) {
-        scrollController.animateTo(
-          scrollController.position.maxScrollExtent,
+      if (!itemScrollController.isAttached || isDisposed) return;
+      if (!_userScrolledUp) {
+        itemScrollController.scrollTo(
+          index: comments.length, // footer row
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -1090,14 +1190,19 @@ class CommentViewModel extends BaseViewModel {
       }
     });
   }
-  
-  /// Scroll to bottom immediately (for initial load)
+
+  /// Instant jump to bottom — used after initial load when there is no
+  /// notification target to scroll to.
+  ///
+  /// NOTE: do NOT add an isAttached guard here.  This is called from inside
+  /// loadInitialComments() while the view is still showing LoadingWidget, so
+  /// the controller is not attached yet.  The 200 ms delay is enough time for
+  /// the rebuild (LoadingWidget → list) to complete and attach the controller.
   void _scrollToBottom() {
-    if (!scrollController.hasClients || isDisposed) return;
-    
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (scrollController.hasClients && !isDisposed) {
-        scrollController.jumpTo(scrollController.position.maxScrollExtent);
+    if (isDisposed) return;
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (itemScrollController.isAttached && !isDisposed) {
+        itemScrollController.jumpTo(index: comments.length);
       }
     });
   }
@@ -1108,8 +1213,8 @@ class CommentViewModel extends BaseViewModel {
     _textDebounceTimer?.cancel();
     _scrollCheckTimer?.cancel();
     
-    // Remove scroll listener
-    scrollController.removeListener(_onScrollChanged);
+    // Remove scroll position listener
+    itemPositionsListener.itemPositions.removeListener(_onScrollPositionsChanged);
     commentController.removeListener(_onTextChanged);
     
     // Cancel the real-time listener when view is disposed
@@ -1132,10 +1237,15 @@ class CommentViewModel extends BaseViewModel {
     _lastCommentDocument = null;
     _replyingToCommentId = null;
     
+    // Clear index map and highlight state
+    _commentIndexMap = {};
+    _highlightedCommentId = null;
+
     // Dispose controllers
     commentController.dispose();
     replyController.dispose();
-    scrollController.dispose();
+    // ItemScrollController and ItemPositionsListener have no dispose() —
+    // they are managed by the ScrollablePositionedList widget.
     
     super.onDispose();
   }

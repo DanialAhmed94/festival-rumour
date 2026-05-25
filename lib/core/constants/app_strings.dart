@@ -63,6 +63,16 @@ class AppStrings {
       "Name must be at least 4 characters long.";
   static const String nameInvalidError = "Name can only contain letters.";
 
+  /// Festival navigation gate / OTP persistence (silent Firestore failures are not allowed).
+  static const String couldNotCompletePhoneVerificationTryAgain =
+      'Could not complete verification. Please try again.';
+  static const String sessionNotReadyYetTryAgain =
+      'Could not verify your session yet. Please try again.';
+  static const String couldNotLoadProfileTryAgain =
+      'Could not load your profile. Check your connection and try again.';
+  static const String phoneSyncReadBackFailed =
+      'Could not verify your phone was saved. Please try again.';
+
   // Authentication
   static const String signIn = 'Sign In';
   static const String signUp = 'Sign Up';
@@ -228,13 +238,37 @@ class AppStrings {
   static const String scheduleForLater = "Schedule For Later";
   static const String time = "Time";
   static const String date = "Date";
-  /// Festival Foodie on the App Store (invite / share app flows).
-  static const String festivalFoodieAppStoreUrl =
-      'https://apps.apple.com/app/festiefoodie/id6744639737';
+  static const String festivalRumourPlayStoreUrl =
+      'https://play.google.com/store/apps/details?id=com.festival_rumour';
+  /// Marketing name in share / invite text (not necessarily [appName]).
+  static const String shareAppProductName = 'The Festival App';
+  static const String shareDownloadNow = 'Download now';
+  /// Body text for in-app “share the app” flows (Discover fallback, Settings).
   static const String shareMessage =
-      "Let's enjoy the vibe together 🌙🔥 Download Festival App now\n\n" +
-      festivalFoodieAppStoreUrl;
-  static const String shareSubject = "Download Festival App";
+      '$shareAppProductName helps you discover festivals, see lineups and updates, '
+      'follow community rumours, and chat with other attendees.\n\n'
+      '$shareDownloadNow:\n'
+      '$festivalRumourPlayStoreUrl';
+  static const String shareSubject =
+      '$shareAppProductName — discover festivals, rumours, and chat';
+
+  /// Discover “Invite your festie bestie” — includes [festivalName] when set.
+  /// When null/empty, falls back to [shareMessage] / [shareSubject].
+  static String shareDiscoverInviteMessage(String? festivalName) {
+    final name = festivalName?.trim();
+    if (name == null || name.isEmpty) return shareMessage;
+    return 'If $name is on your list, $shareAppProductName is handy for lineups, '
+        'live buzz, and messaging other festival-goers.\n\n'
+        '$shareDownloadNow:\n'
+        '$festivalRumourPlayStoreUrl';
+  }
+
+  static String shareDiscoverInviteSubject(String? festivalName) {
+    final name = festivalName?.trim();
+    if (name == null || name.isEmpty) return shareSubject;
+    return '$shareAppProductName — $name';
+  }
+
   static const String shareLocation = "Share Location";
   static const String shareMyLocation = "Share My Location";
   static const String shareWithEveryone = "Share with everyone";
@@ -281,6 +315,10 @@ class AppStrings {
   static const String noUpcomingFestivals = "No upcoming festivals";
   static const String noPastFestivals = "No past festivals";
   static const String exploreText = "Explore Festivals";
+  static const String couldNotOpenStoreListing =
+      "Could not open the store. Check your connection and try again.";
+  static const String storeLinkInvalid =
+      "This download link isn't available right now. Please try again later.";
   static const String failedToLoadFestivals = "Failed to load festival";
   static const String failedToLoadNews = "Failed to load news";
   static const String failedToLoadToilets = "Failed to load toilets";
@@ -310,7 +348,7 @@ class AppStrings {
 
   static const String privacyAgreementText =
       "By continuing you agree with the ";
-  static const String privacyPolicy = "Privacy Policy.";
+  static const String privacyPolicy = "Privacy Policy";
 
   // Festival Related
   static const String innerMap = 'INNER MAP';

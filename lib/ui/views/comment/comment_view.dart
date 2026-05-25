@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
@@ -16,8 +17,14 @@ import 'comment_model.dart';
 class CommentView extends BaseView<CommentViewModel> {
   final dynamic post; // PostModel passed from navigation
   final String? collectionName; // Optional collection name (for festival-specific posts)
-  
-  const CommentView({super.key, this.post, this.collectionName});
+  final String? focusCommentId; // Expand this thread when opened from a reply notification
+
+  const CommentView({
+    super.key,
+    this.post,
+    this.collectionName,
+    this.focusCommentId,
+  });
 
   @override
   CommentViewModel createViewModel() {
@@ -25,6 +32,7 @@ class CommentView extends BaseView<CommentViewModel> {
     viewModel.initialize(
       post is PostModel ? post : null,
       collectionName: collectionName,
+      focusParentCommentId: focusCommentId,
     );
     return viewModel;
   }
@@ -99,6 +107,7 @@ class CommentView extends BaseView<CommentViewModel> {
                                         enabled: isNotReplying,
                                         maxLines: calculatedMaxLines,
                             minLines: 1,
+                            cursorColor: AppColors.black,
                             textAlignVertical: TextAlignVertical.top,
                                         decoration: InputDecoration(
                               hintText: AppStrings.commentHint,
@@ -253,21 +262,21 @@ class CommentView extends BaseView<CommentViewModel> {
       );
     }
 
-    return ListView.builder(
-      controller: viewModel.scrollController, // Add scroll controller
+    return ScrollablePositionedList.builder(
+      itemScrollController: viewModel.itemScrollController,
+      itemPositionsListener: viewModel.itemPositionsListener,
       padding: EdgeInsets.only(
         left: AppDimensions.paddingM,
         right: AppDimensions.paddingM,
         top: AppDimensions.paddingM,
-        bottom: AppDimensions.paddingXL, // Extra bottom padding to prevent overlap with input area
+        bottom: AppDimensions.paddingXL,
       ),
-      itemCount: viewModel.comments.length + 1, // Always add 1 for load more button or "no more comments" message
+      // +1 for the load-more / no-more-comments footer row.
+      itemCount: viewModel.comments.length + 1,
       itemBuilder: (context, index) {
-        // Show load more button or "no more comments" message at the end
         if (index == viewModel.comments.length) {
           return _buildLoadMoreButton(context, viewModel);
         }
-
         final comment = viewModel.comments[index];
         return _buildCommentItem(context, comment);
       },
@@ -341,10 +350,32 @@ class CommentView extends BaseView<CommentViewModel> {
   }
 
   Widget _buildCommentItem(BuildContext context, CommentModel comment, {Key? key}) {
-    // Use RepaintBoundary to isolate repaints and improve performance
     return RepaintBoundary(
-      key: key, // Use key for better Flutter diffing
+      key: key,
       child: Consumer<CommentViewModel>(
+        // Outer Consumer: reads only the highlight state so the yellow flash
+        // doesn't force a full rebuild of every comment on every unrelated change.
+        builder: (context, vm, _) {
+          final highlighted = vm.isHighlighted(comment.commentId);
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              color: highlighted
+                  ? Colors.yellow.withOpacity(0.25)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+            ),
+            child: _buildCommentItemContent(context, comment),
+          );
+        },
+      ),
+    );
+  }
+
+  // Extracted inner builder so the highlight wrapper above stays lightweight.
+  Widget _buildCommentItemContent(BuildContext context, CommentModel comment, {Key? key}) {
+    return Consumer<CommentViewModel>(
         builder: (context, viewModel, child) {
           final replies = viewModel.getReplies(comment.commentId ?? '');
           final isExpanded = viewModel.areRepliesExpanded(comment.commentId ?? '');
@@ -496,7 +527,6 @@ class CommentView extends BaseView<CommentViewModel> {
             ],
           );
         },
-      ),
     );
   }
   
@@ -524,6 +554,7 @@ class CommentView extends BaseView<CommentViewModel> {
             controller: viewModel.replyController,
             maxLines: 3,
             minLines: 1,
+            cursorColor: AppColors.black,
             textAlignVertical: TextAlignVertical.top,
             decoration: InputDecoration(
               hintText: 'Write a reply...',

@@ -1,6 +1,7 @@
-import 'dart:async';
 import 'package:festival_rumour/ui/views/homeview/widgets/post_widget.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
@@ -13,7 +14,10 @@ import '../../../shared/widgets/responsive_widget.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/loading_widget.dart';
 import '../../../shared/extensions/context_extensions.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/services/navigation_service.dart';
 import 'home_viewmodel.dart';
+import 'post_model.dart';
 
 class HomeView extends BaseView<HomeViewModel> {
   const HomeView({super.key});
@@ -43,11 +47,19 @@ class _HomeViewContent extends StatefulWidget {
   State<_HomeViewContent> createState() => _HomeViewContentState();
 }
 
-class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAliveClientMixin {
+class _HomeViewContentState extends State<_HomeViewContent>
+    with
+        AutomaticKeepAliveClientMixin,
+        WidgetsBindingObserver,
+        RouteAware {
   final ScrollController _scrollController = ScrollController();
-  final Map<int, GlobalKey<State<PostWidget>>> _postKeys = {};
-  Timer? _scrollDebounceTimer;
+  /// Keys by [PostModel.postId] so list inserts/reorders don't mix up [GlobalKey] ↔ widget identity.
+  final Map<String, GlobalKey<State<PostWidget>>> _postKeysByPostId = {};
+  bool _prefetchFrameScheduled = false;
   bool _isInitialized = false;
+  bool _routeAwareSubscribed = false;
+  /// Triggers short-list top-up when `posts.length` changes (not every frame).
+  int _lastShortListTopUpForLength = -1;
 
   @override
   bool get wantKeepAlive => true; // Keep alive when switching tabs
@@ -55,6 +67,7 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     // Initialize only once
     if (!_isInitialized) {
@@ -68,60 +81,180 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeAwareSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      locator<NavigationService>().routeObserver.subscribe(this, route);
+      _routeAwareSubscribed = true;
+    }
+  }
+
+  @override
   void dispose() {
-    _scrollDebounceTimer?.cancel();
+    if (_routeAwareSubscribed) {
+      locator<NavigationService>().routeObserver.unsubscribe(this);
+      _routeAwareSubscribed = false;
+    }
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
 
+  @override
+  void didPushNext() => _pauseAllFeedVideos();
+
+  @override
+  void didPopNext() {
+    // Playback resumes only when rows become visible (VisibilityDetector / user).
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        _pauseAllFeedVideos();
+      case AppLifecycleState.resumed:
+        break;
+    }
+  }
+
+  void _pauseAllFeedVideos() {
+    for (final key in _postKeysByPostId.values) {
+      PostWidget.pauseVideosIfNeeded(key.currentState);
+    }
+  }
+
+  /// Viewport-based cache: tighter on phones (less off-screen work / RAM) vs tablets.
+  double _feedListCacheExtent(BuildContext context) {
+    final mq = MediaQuery.maybeOf(context);
+    final h = mq?.size.height ?? context.screenHeight;
+    if (h <= 1) return 2000;
+
+    final shortest =
+        mq?.size.shortestSide ?? (context.screenWidth < context.screenHeight ? context.screenWidth : context.screenHeight);
+
+    if (shortest < 600) {
+      return (h * 1.25).clamp(560.0, 1500.0);
+    }
+    if (shortest < 900) {
+      return (h * 1.75).clamp(900.0, 2400.0);
+    }
+    return (h * 2.2).clamp(1400.0, 3200.0);
+  }
+
   void _onScroll() {
-    // Debounce scroll events to avoid checking too frequently
-    _scrollDebounceTimer?.cancel();
-    _scrollDebounceTimer = Timer(const Duration(milliseconds: 150), () {
-      // Check visibility and pause videos for posts not in viewport
-      _checkVisibilityAndPauseVideos();
+    _schedulePrefetchNearEnd(widget.viewModel);
+  }
+
+  /// One coalesced post-frame check (avoids timer races + reads scroll after layout).
+  void _schedulePrefetchNearEnd(HomeViewModel viewModel) {
+    if (_prefetchFrameScheduled) return;
+    _prefetchFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _prefetchFrameScheduled = false;
+      if (!mounted) return;
+      _maybePrefetchMoreFeed(viewModel);
     });
   }
 
-  void _checkVisibilityAndPauseVideos() {
-    if (!_scrollController.hasClients) return;
-
-    final viewportTop = _scrollController.offset;
-    final viewportBottom = viewportTop + MediaQuery.of(context).size.height;
-
-    for (var entry in _postKeys.entries) {
-      final key = entry.value;
-      final renderObject = key.currentContext?.findRenderObject();
-      
-      if (renderObject is RenderBox) {
-        final position = renderObject.localToGlobal(Offset.zero);
-        final size = renderObject.size;
-        final postTop = position.dy;
-        final postBottom = postTop + size.height;
-
-        // Check if post is visible in viewport (with some margin)
-        final isVisible = postBottom > viewportTop - 100 && postTop < viewportBottom + 100;
-
-        if (!isVisible) {
-          // Pause videos for posts not visible using the static method
-          final postState = key.currentState;
-          PostWidget.pauseVideosIfNeeded(postState);
-        }
+  /// Prefer loading the next Firestore page when available. Only use the in-memory
+  /// detached buffer after pagination reports no more posts — otherwise a non-empty
+  /// buffer always "wins" and [restoreDetachedOlderPosts] runs (e.g. with no room
+  /// when the feed is at the memory cap), blocking [loadMorePosts].
+  void _prefetchOlderFeedContent(HomeViewModel viewModel) {
+    if (viewModel.hasMorePosts) {
+      if (kDebugMode) {
+        print(
+          '[GlobalFeed] prefetch -> loadMore (detachedBuffer=${viewModel.detachedBufferLength})',
+        );
       }
+      viewModel.loadMorePosts();
+    } else if (viewModel.hasDetachedOlderChunk) {
+      if (kDebugMode) {
+        print('[GlobalFeed] prefetch -> restoreDetachedOlderPosts');
+      }
+      viewModel.restoreDetachedOlderPosts();
     }
   }
 
-  GlobalKey<State<PostWidget>> _getOrCreateKey(int index) {
-    if (!_postKeys.containsKey(index)) {
-      _postKeys[index] = GlobalKey<State<PostWidget>>();
+  /// Fetch the next page when the user nears the bottom (before the last items).
+  void _maybePrefetchMoreFeed(HomeViewModel viewModel) {
+    if (!mounted || viewModel.isLoadingMore) return;
+    if (!viewModel.hasMorePosts && !viewModel.hasDetachedOlderChunk) return;
+    try {
+      if (!_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (!position.hasViewportDimension || !position.hasPixels) return;
+
+      final viewportH = position.viewportDimension;
+      final prefetchLead = viewportH * 1.5;
+      if (position.maxScrollExtent <= 0) {
+        _prefetchOlderFeedContent(viewModel);
+        return;
+      }
+      if (position.pixels >= position.maxScrollExtent - prefetchLead) {
+        _prefetchOlderFeedContent(viewModel);
+      }
+    } catch (_) {
+      // ScrollController unattached / multiple positions during tree churn — skip this tick.
     }
-    return _postKeys[index]!;
+  }
+
+  /// When content is shorter than the viewport, scroll-based prefetch never runs; load until filled or exhausted.
+  void _topUpShortFeedIfNeeded(HomeViewModel viewModel) {
+    if (!mounted) return;
+    if ((!viewModel.hasMorePosts && !viewModel.hasDetachedOlderChunk) ||
+        viewModel.isLoadingMore ||
+        viewModel.posts.isEmpty) return;
+    try {
+      if (!_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (!position.hasViewportDimension) return;
+      if (position.maxScrollExtent > 0) return;
+      _prefetchOlderFeedContent(viewModel);
+    } catch (_) {}
+  }
+
+  /// Drop stale [GlobalKey]s when the feed list changes (no longer O(N) scroll scan).
+  void _prunePostKeysForFeed(List<PostModel> feedPosts) {
+    final activeKeys = <String>{};
+    for (var i = 0; i < feedPosts.length; i++) {
+      final p = feedPosts[i];
+      activeKeys.add(
+        (p.postId != null && p.postId!.isNotEmpty) ? p.postId! : '__idx_$i',
+      );
+    }
+    _postKeysByPostId.removeWhere((id, _) => !activeKeys.contains(id));
+  }
+
+  GlobalKey<State<PostWidget>> _globalKeyForPost(PostModel post, int index) {
+    final id = (post.postId != null && post.postId!.isNotEmpty)
+        ? post.postId!
+        : '__idx_$index';
+    return _postKeysByPostId.putIfAbsent(
+      id,
+      () => GlobalKey<State<PostWidget>>(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
+    final vm = widget.viewModel;
+    final feedCount = vm.posts.length;
+    if (feedCount > 0 && feedCount != _lastShortListTopUpForLength) {
+      _lastShortListTopUpForLength = feedCount;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _topUpShortFeedIfNeeded(widget.viewModel);
+      });
+    }
     return GestureDetector(
       onTap: () {
         // Dismiss keyboard when tapping outside
@@ -257,60 +390,116 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
       );
     }
 
+    final showFooter = viewModel.isLoadingMore ||
+        !viewModel.hasMorePosts ||
+        viewModel.hasDetachedOlderChunk;
+
+    _prunePostKeysForFeed(viewModel.posts);
+
     return ListView.builder(
       controller: _scrollController,
       padding: EdgeInsets.symmetric(vertical: AppDimensions.paddingXS),
-      cacheExtent: 500, // Cache 500px worth of items for smoother scrolling
-      itemCount: viewModel.posts.length + 1, // Always add 1 for load more button or "no more posts" message
+      // Build/decode rows ahead of the viewport (Phase 6: adaptive by breakpoint).
+      cacheExtent: _feedListCacheExtent(context),
+      itemCount: viewModel.posts.length + (showFooter ? 1 : 0),
       itemBuilder: (context, index) {
-        // Show load more button or "no more posts" message at the end
         if (index == viewModel.posts.length) {
-          return _buildLoadMoreButton(context, viewModel);
+          return _buildFeedFooter(context, viewModel);
         }
 
         final post = viewModel.posts[index];
-        final postKey = _getOrCreateKey(index);
+        final postKey = _globalKeyForPost(post, index);
         final postBackgroundColor =
             (index % 2 == 0) ? AppColors.postPinkPurple50 : AppColors.postYellow50;
-        
-        return Column(
-          key: ValueKey('post_column_${post.postId}'),
-          children: [
-            PostWidget(
-              key: postKey,
-              post: post,
-              backgroundColor: postBackgroundColor,
-              onReactionSelected: (emotion) {
-                // Update reaction in ViewModel
-                if (emotion.isEmpty) {
-                  viewModel.removePostReaction(index);
-                } else {
-                  viewModel.updatePostReaction(index, emotion);
-                }
-              },
-              onCommentsUpdated: () {
-                // Refresh posts to update comment counts
-                viewModel.refreshPostsAfterComment();
-              },
-              onDeletePost: (postId) {
-                viewModel.deletePost(postId, context);
-              },
-              onEditPost: (postModel) {
-                viewModel.navigateToEditPost(context, postModel);
-              },
-            ),
-            // Conditional spacing between posts
-            if (index != viewModel.posts.length - 1)
-              SizedBox(height: context.responsiveSpaceS),
-          ],
+        final vdKey = (post.postId != null && post.postId!.isNotEmpty)
+            ? post.postId!
+            : '__idx_$index';
+
+        return RepaintBoundary(
+          child: VisibilityDetector(
+            key: Key('globe_feed_vd_$vdKey'),
+            onVisibilityChanged: (VisibilityInfo info) {
+              // Pause when almost off-screen; avoids O(N) scroll work (Phase 3).
+              if (info.visibleFraction < 0.12) {
+                PostWidget.pauseVideosIfNeeded(postKey.currentState);
+              }
+            },
+            child: Column(
+              key: ValueKey('post_column_${post.postId}'),
+              children: [
+              PostWidget(
+                key: postKey,
+                post: post,
+                backgroundColor: postBackgroundColor,
+                onReactionSelected: (emotion) {
+                  // Update reaction in ViewModel
+                  if (emotion.isEmpty) {
+                    viewModel.removePostReaction(index);
+                  } else {
+                    viewModel.updatePostReaction(index, emotion);
+                  }
+                },
+                onCommentsUpdated: () {
+                  // Refresh posts to update comment counts
+                  viewModel.refreshPostsAfterComment();
+                },
+                onDeletePost: (postId) {
+                  viewModel.deletePost(postId, context);
+                },
+                onEditPost: (postModel) {
+                  viewModel.navigateToEditPost(context, postModel);
+                },
+              ),
+              // Conditional spacing between posts
+              if (index != viewModel.posts.length - 1)
+                SizedBox(height: context.responsiveSpaceS),
+            ],
+          ),
+          ),
         );
       },
     );
   }
 
-  Widget _buildLoadMoreButton(BuildContext context, HomeViewModel viewModel) {
-    // Show "No more posts" message if we've loaded all posts
-    if (!viewModel.hasMorePosts && !viewModel.isLoadingMore) {
+  /// End-of-feed: spinner while fetching next page, or a short "caught up" line when done.
+  Widget _buildFeedFooter(BuildContext context, HomeViewModel viewModel) {
+    if (viewModel.isLoadingMore) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: AppDimensions.paddingL,
+        ),
+        child: const Center(
+          child: SizedBox(
+            height: 28,
+            width: 28,
+            child: CircularProgressIndicator(
+              color: AppColors.accent,
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (viewModel.hasDetachedOlderChunk && !viewModel.hasMorePosts) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: AppDimensions.paddingM,
+          vertical: AppDimensions.paddingL,
+        ),
+        child: Center(
+          child: ResponsiveTextWidget(
+            'Scroll down for earlier posts',
+            textType: TextType.body,
+            color: AppColors.black,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    if (!viewModel.hasMorePosts) {
       return Padding(
         padding: EdgeInsets.symmetric(
           horizontal: AppDimensions.paddingM,
@@ -320,58 +509,14 @@ class _HomeViewContentState extends State<_HomeViewContent> with AutomaticKeepAl
           child: ResponsiveTextWidget(
             'No more posts available',
             textType: TextType.body,
-            color: AppColors.white,
+            color: AppColors.black,
             textAlign: TextAlign.center,
           ),
         ),
       );
     }
 
-    // Show loading indicator while loading more
-    if (viewModel.isLoadingMore) {
-      return Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: AppDimensions.paddingM,
-          vertical: AppDimensions.paddingL,
-        ),
-        child: const Center(
-          child: CircularProgressIndicator(
-            color: AppColors.accent,
-          ),
-        ),
-      );
-    }
-
-    // Show "Load More" button if there are more posts
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: AppDimensions.paddingM,
-        vertical: AppDimensions.paddingL,
-      ),
-      child: Center(
-        child: ElevatedButton(
-          onPressed: viewModel.loadMorePosts,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: AppColors.black,
-            padding: EdgeInsets.symmetric(
-              horizontal: AppDimensions.paddingXL,
-              vertical: AppDimensions.paddingM,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-            ),
-            elevation: 4,
-          ),
-          child: ResponsiveTextWidget(
-            'Load More',
-            textType: TextType.body,
-            fontWeight: FontWeight.bold,
-            color: AppColors.black,
-          ),
-        ),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   void _showPostBottomSheet(BuildContext context) {

@@ -9,12 +9,15 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_sizes.dart';
 import '../../../../core/constants/app_strings.dart';
-import '../../../../core/constants/app_assets.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/di/locator.dart';
 import '../../../../core/services/auth_service.dart';
 import '../../../../shared/extensions/context_extensions.dart';
 import '../post_model.dart';
+import 'feed_video_init_budget.dart';
+import 'feed_profile_avatar.dart';
+import 'post_media_fullscreen_page.dart';
+import 'post_widget_list_header.dart';
 
 class PostWidget extends StatefulWidget {
   final PostModel post;
@@ -50,10 +53,14 @@ class PostWidget extends StatefulWidget {
 class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMixin {
   final AuthService _authService = locator<AuthService>();
   bool _showReactions = false;
+  bool _isContentExpanded = false;
   String? _selectedReaction; // stores emoji / icon selected
   Color _reactionColor = AppColors.white; // default Like color
   PageController? _pageController;
   int _currentPage = 0;
+
+  /// Lines shown before "Show more" appears.
+  static const int _kCollapsedMaxLines = 4;
   /// Check if the current user owns this post
   bool get _isOwnPost {
     final currentUser = _authService.currentUser;
@@ -104,28 +111,34 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
 
   void _initializeVideo(int index) async {
     if ((_isVideoInitialized[index] ?? false) || (_isInitializingVideo[index] ?? false)) return;
-    
+
+    final mediaPaths = widget.post.allMediaPaths;
+    if (index >= mediaPaths.length) return;
+
+    final videoPath = mediaPaths[index];
+    final usesNetworkBudget = _isNetworkUrl(videoPath);
+
+    if (usesNetworkBudget) {
+      await FeedVideoInitBudget.acquire();
+    }
+    if (!mounted) {
+      if (usesNetworkBudget) FeedVideoInitBudget.release();
+      return;
+    }
+
     setState(() {
       _isInitializingVideo[index] = true;
     });
 
     try {
-      final mediaPaths = widget.post.allMediaPaths;
-      if (index >= mediaPaths.length) return;
-      
-      final videoPath = mediaPaths[index];
-      
-      // Check if it's a network URL or local file
-      if (_isNetworkUrl(videoPath)) {
-        // Network video URL from Firebase Storage
+      if (usesNetworkBudget) {
         _videoControllers[index] = VideoPlayerController.network(videoPath);
       } else {
-        // Local file path
         _videoControllers[index] = VideoPlayerController.file(File(videoPath));
       }
-      
+
       await _videoControllers[index]!.initialize();
-      
+
       if (mounted) {
         _chewieControllers[index] = ChewieController(
           videoPlayerController: _videoControllers[index]!,
@@ -151,6 +164,10 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
         setState(() {
           _isInitializingVideo[index] = false;
         });
+      }
+    } finally {
+      if (usesNetworkBudget) {
+        FeedVideoInitBudget.release();
       }
     }
   }
@@ -285,8 +302,9 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
 
   /// Check if any video is currently playing
   bool get hasPlayingVideo {
-    return _chewieControllers.values.any((controller) => 
-      controller != null && controller!.videoPlayerController.value.isPlaying
+    return _chewieControllers.values.any(
+      (controller) =>
+          controller != null && controller.videoPlayerController.value.isPlaying,
     );
   }
 
@@ -305,15 +323,27 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     final bool contentIsJustUrl = hasUrlOnlyNoPreview &&
         post.postUrl != null &&
         contentTrimmed == post.postUrl!.trim();
+
+    // Height for the media section (image / video / link-preview thumbnail).
+    // Same proportion as the old fixed container height so media looks identical.
+    final double mediaHeight = context.isLargeScreen
+        ? MediaQuery.sizeOf(context).height * 0.6
+        : context.isMediumScreen
+            ? MediaQuery.sizeOf(context).height * 0.5
+            : MediaQuery.sizeOf(context).height * 0.6;
+
+    // When text is collapsed (or there is no media), keep the original
+    // fixed-height layout so the card looks exactly as before.
+    // When text is expanded AND there is media, switch to a dynamic-height
+    // layout: the container grows freely and the media gets a defined
+    // SizedBox height so it stays full-size below the expanded text.
+    final bool useFixedLayout = showLargeArea && !_isContentExpanded;
+
     return Container(
-      height: showLargeArea
-          ? (context.isLargeScreen
-              ? MediaQuery.of(context).size.height * 0.6
-              : context.isMediumScreen
-                  ? MediaQuery.of(context).size.height * 0.5
-                  : MediaQuery.of(context).size.height * 0.6)
-          : null,
-      constraints: showLargeArea ? null : const BoxConstraints(minHeight: 200),
+      height: useFixedLayout ? mediaHeight : null,
+      constraints: useFixedLayout
+          ? null
+          : BoxConstraints(minHeight: showLargeArea ? mediaHeight : 200),
       decoration: BoxDecoration(
         color: widget.backgroundColor,
         borderRadius: const BorderRadius.only(
@@ -329,74 +359,22 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
         ],
       ),
       child: Column(
-        mainAxisSize: showLargeArea ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisSize: useFixedLayout ? MainAxisSize.max : MainAxisSize.min,
         children: [
 //          Header
-          Container(
-            width: double.infinity,
-            color: Colors.transparent,
-            child: ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  color: AppColors.white,
-                  shape: BoxShape.circle,
-                ),
-                child: _buildProfileAvatar(post),
+          PostWidgetListHeader(
+            post: post,
+            leading: FeedProfileAvatar(
+              key: ValueKey<String>(
+                'avatar_${post.userId ?? ''}_${post.userPhotoUrl ?? ''}',
               ),
-              title: Text(
-                post.username,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.white,
-                ),
-              ),
-              subtitle: Text(post.timeAgo
-                    , style: const TextStyle(fontWeight: FontWeight.bold,color: AppColors.primary),
-              ),
-              trailing: _isOwnPost
-                  ? PopupMenuButton<String>(
-                      icon: const Icon(
-                        Icons.more_horiz,
-                        color: AppColors.white,
-                        size: 24,
-                      ),
-                      color: AppColors.screenBackground,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-                      ),
-                      onSelected: (value) {
-                        if (value == 'edit' && widget.onEditPost != null) {
-                          widget.onEditPost!(widget.post);
-                        } else if (value == 'delete') {
-                          _showDeleteConfirmation(context);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem<String>(
-                          value: 'edit',
-                          child: Row(
-                            children: [
-                              Icon(Icons.edit_outlined, size: 20),
-                              SizedBox(width: 12),
-                              Text('Edit'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem<String>(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete_outline, size: 20, color: Colors.red),
-                              SizedBox(width: 12),
-                              Text('Delete', style: TextStyle(color: Colors.red)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    )
-                  : const SizedBox.shrink(), // Hide for other users' posts
+              userId: post.userId ?? '',
+              imageUrl: post.userPhotoUrl,
             ),
+            showOwnerMenu: _isOwnPost,
+            onEditSelected:
+                widget.onEditPost != null ? () => widget.onEditPost!(widget.post) : null,
+            onDeleteSelected: () => _showDeleteConfirmation(context),
           ),
 
           // Post Content: hide when only URL is posted and no preview (avoid showing URL twice)
@@ -407,15 +385,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
               ),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: DefaultTextStyle(
-                  style: const TextStyle(color: AppColors.black),
-                  child: Text(
-                    post.content,
-                    textAlign: TextAlign.left,
-                    maxLines: hasMedia ? null : 5,
-                    overflow: hasMedia ? null : TextOverflow.ellipsis,
-                  ),
-                ),
+                child: _buildExpandableContent(context, post.content),
               ),
             ),
           // URL in description: when post has (URL + media) OR (URL but no preview data)
@@ -431,7 +401,12 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
           const SizedBox(height: AppDimensions.reactionIconSpacing),
 
           if (hasMedia) ...[
-            Expanded(
+            // useFixedLayout: Expanded fills remaining space in fixed-height card.
+            // !useFixedLayout (text expanded): SizedBox keeps media at full height
+            // so both the full text above and the full media are visible.
+            _mediaWrapper(
+              useFixedLayout: useFixedLayout,
+              height: mediaHeight,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(AppDimensions.postBorderRadius),
                 child: Stack(
@@ -515,7 +490,9 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
               ),
             ),
           ] else if (hasLinkPreviewAsMedia) ...[
-            Expanded(
+            _mediaWrapper(
+              useFixedLayout: useFixedLayout,
+              height: mediaHeight,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(AppDimensions.postBorderRadius),
                 child: Stack(
@@ -605,6 +582,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
           ] else ...[
             const SizedBox(height: AppDimensions.paddingL),
             _buildNoMediaLikeCommentRow(context, post),
+
           ],
 
           const SizedBox(height: AppDimensions.paddingL),
@@ -648,6 +626,73 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
           ],
         ],
       ));
+  }
+
+  /// Wraps media in [Expanded] when the card uses a fixed-height layout
+  /// (text collapsed), or in a [SizedBox] with a defined height when the
+  /// card is dynamic (text expanded) — keeps media full-size in both states.
+  Widget _mediaWrapper({
+    required bool useFixedLayout,
+    required double height,
+    required Widget child,
+  }) {
+    if (useFixedLayout) return Expanded(child: child);
+    return SizedBox(height: height, child: child);
+  }
+
+  /// Instagram/Facebook-style expandable post text.
+  ///
+  /// Uses [LayoutBuilder] + [TextPainter] to detect real overflow at
+  /// [_kCollapsedMaxLines] without any extra network/IO work. When the text
+  /// fits in 4 lines it renders as a plain [Text] with zero overhead.
+  ///
+  /// Overflow is handled at the **card level** (see [useFixedLayout] in
+  /// [build]): when expanded the card switches to a dynamic height so both
+  /// the full text and the full media are visible — no cropping of either.
+  Widget _buildExpandableContent(BuildContext context, String content) {
+    const TextStyle contentStyle = TextStyle(color: AppColors.black, height: 1.4);
+    const TextStyle toggleStyle = TextStyle(
+      color: AppColors.black,
+      fontWeight: FontWeight.w700,
+      fontSize: 13,
+    );
+
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final tp = TextPainter(
+          text: TextSpan(text: content, style: contentStyle),
+          maxLines: _kCollapsedMaxLines,
+          textDirection: TextDirection.ltr,
+          textScaler: MediaQuery.textScalerOf(ctx),
+        )..layout(maxWidth: constraints.maxWidth);
+
+        // Short text — render as-is, no toggle needed.
+        if (!tp.didExceedMaxLines) {
+          return Text(content, style: contentStyle);
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              content,
+              style: contentStyle,
+              maxLines: _isContentExpanded ? null : _kCollapsedMaxLines,
+              overflow: _isContentExpanded ? null : TextOverflow.clip,
+            ),
+            const SizedBox(height: 2),
+            GestureDetector(
+              onTap: () => setState(() => _isContentExpanded = !_isContentExpanded),
+              child: Text(
+                _isContentExpanded ? 'Show less' : 'Show more',
+                style: toggleStyle,
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildReactionsPopup() {
@@ -1266,6 +1311,30 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     return path.startsWith('http://') || path.startsWith('https://');
   }
 
+  void _openPostMediaFullscreen(BuildContext context, int initialIndex) {
+    final paths = widget.post.allMediaPaths;
+    if (paths.isEmpty || !paths.any((p) => p.trim().isNotEmpty)) return;
+    final idx = initialIndex.clamp(0, paths.length - 1);
+    pauseAllVideos();
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => PostMediaFullscreenPage(
+          post: widget.post,
+          initialIndex: idx,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTappableImage(String mediaPath, int mediaIndex) {
+    return GestureDetector(
+      onTap: () => _openPostMediaFullscreen(context, mediaIndex),
+      behavior: HitTestBehavior.opaque,
+      child: _buildImageWidget(mediaPath),
+    );
+  }
+
   /// Build image widget based on path type (asset, network, or local file)
   /// Uses CachedNetworkImage for network images to improve performance
   Widget _buildImageWidget(String mediaPath) {
@@ -1350,8 +1419,8 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
       // Use allMediaPaths to support both old and new formats
       final mediaPaths = widget.post.allMediaPaths;
       final mediaPath = mediaPaths.isNotEmpty ? mediaPaths[0] : widget.post.imagePath;
-      
-      return _buildImageWidget(mediaPath);
+
+      return _buildTappableImage(mediaPath, 0);
     }
   }
 
@@ -1364,7 +1433,7 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
     if (isVideo) {
       return _buildVideoThumbnailOrPlayer(index);
     } else {
-      return _buildImageWidget(mediaPath);
+      return _buildTappableImage(mediaPath, index);
     }
   }
 
@@ -1395,32 +1464,67 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
   /// Build video thumbnail with play button or video player
   Widget _buildVideoThumbnailOrPlayer(int index) {
     if ((_isVideoInitialized[index] ?? false) && _chewieControllers[index] != null) {
-      return Chewie(controller: _chewieControllers[index]!);
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Chewie(controller: _chewieControllers[index]!),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Material(
+              color: AppColors.black.withOpacity(0.45),
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: IconButton(
+                icon: const Icon(Icons.fullscreen, color: AppColors.white, size: 22),
+                tooltip: 'Full screen',
+                onPressed: () => _openPostMediaFullscreen(context, index),
+              ),
+            ),
+          ),
+        ],
+      );
     } else {
-      // Show thumbnail with play button - lazy load video on tap
-      return GestureDetector(
-        onTap: () => _initializeVideo(index),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Background placeholder/thumbnail
-            _buildVideoThumbnail(index),
-            // Dark overlay
-            Container(
-              color: AppColors.black.withOpacity(0.3),
+      // Show thumbnail with play button - lazy load video on tap; fullscreen opens the same carousel (mixed posts).
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          GestureDetector(
+            onTap: () => _initializeVideo(index),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _buildVideoThumbnail(index),
+                Container(
+                  color: AppColors.black.withOpacity(0.3),
+                ),
+                Center(
+                  child: (_isInitializingVideo[index] ?? false)
+                      ? const CircularProgressIndicator(color: AppColors.primary)
+                      : const Icon(
+                          Icons.play_circle_filled,
+                          color: AppColors.white,
+                          size: 64,
+                        ),
+                ),
+              ],
             ),
-            // Loading indicator or play button
-            Center(
-              child: (_isInitializingVideo[index] ?? false)
-                  ? const CircularProgressIndicator(color: AppColors.primary)
-                  : const Icon(
-                      Icons.play_circle_filled,
-                      color: AppColors.white,
-                      size: 64,
-                    ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Material(
+              color: AppColors.black.withOpacity(0.45),
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: IconButton(
+                icon: const Icon(Icons.fullscreen, color: AppColors.white),
+                tooltip: 'Full screen',
+                onPressed: () => _openPostMediaFullscreen(context, index),
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
   }
@@ -1631,29 +1735,6 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
 //   }
 // }
 
-  /// Build profile avatar with network image and asset fallback
-  Widget _buildProfileAvatar(PostModel post) {
-    if (kDebugMode) {
-      print('🖼️ Building profile avatar for post: ${post.postId}');
-      print('   - userPhotoUrl: ${post.userPhotoUrl}');
-      print('   - userId: ${post.userId}');
-      print('   - username: ${post.username}');
-    }
-
-    // If we have a valid userPhotoUrl, use it with a custom widget that handles errors
-    if (post.userPhotoUrl != null && post.userPhotoUrl!.isNotEmpty) {
-      return _NetworkImageAvatar(
-        imageUrl: post.userPhotoUrl!,
-        fallbackAsset: AppAssets.profile,
-      );
-    }
-
-    // Fallback to asset image if no userPhotoUrl
-    return CircleAvatar(
-      backgroundColor: AppColors.primary,
-      backgroundImage: const AssetImage(AppAssets.profile),
-    );
-  }
 
 
 
@@ -1684,51 +1765,3 @@ class _PostWidgetState extends State<PostWidget> with AutomaticKeepAliveClientMi
 
 
 
-
-/// Custom widget to handle network image with proper error fallback
-class _NetworkImageAvatar extends StatelessWidget {
-  final String imageUrl;
-  final String fallbackAsset;
-
-  const _NetworkImageAvatar({
-    required this.imageUrl,
-    required this.fallbackAsset,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return CircleAvatar(
-      backgroundColor: AppColors.primary,
-      child: ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: imageUrl,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          placeholder: (context, url) => Shimmer.fromColors(
-                baseColor: AppColors.grey300,
-                highlightColor: AppColors.grey100,
-                child: Container(
-                  color: AppColors.grey300,
-                  width: double.infinity,
-                  height: double.infinity,
-                ),
-              ),
-          errorWidget: (context, url, error) {
-            // Fallback to asset image if network image fails
-            if (kDebugMode) {
-              print('❌ Error loading network image: $error');
-              print('   - URL: $imageUrl');
-            }
-            return Image.asset(
-              fallbackAsset,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
-            );
-          },
-        ),
-      ),
-    );
-  }
-}

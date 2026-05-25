@@ -17,12 +17,14 @@ import '../services/current_chat_list_service.dart';
 import '../services/chat_badge_service.dart';
 import '../services/notification_storage_service.dart';
 import '../services/user_photo_cache_service.dart';
+import '../services/profile_readiness_service.dart';
 import '../api/api_config.dart';
 import '../api/festival_api_service.dart';
 import '../api/news_api_service.dart';
 import '../api/toilet_api_service.dart';
 import '../api/event_api_service.dart';
 import '../api/performance_api_service.dart';
+import '../providers/festival_provider.dart';
 
 final GetIt locator = GetIt.instance;
 
@@ -39,6 +41,9 @@ Future<void> setupLocator() async {
   locator.registerLazySingleton<AuthService>(() => AuthService());
   locator.registerLazySingleton<FirestoreService>(() => FirestoreService());
   locator.registerLazySingleton<StorageService>(() => StorageService());
+  locator.registerLazySingleton<ProfileReadinessService>(
+    () => ProfileReadinessService(),
+  );
   locator.registerLazySingleton<GeocodingService>(() => GeocodingService());
   locator.registerLazySingleton<PostDataService>(() => PostDataService());
   locator.registerLazySingleton<CurrentChatRoomService>(() => CurrentChatRoomService());
@@ -48,6 +53,12 @@ Future<void> setupLocator() async {
   locator.registerLazySingleton<UserPhotoCacheService>(() => UserPhotoCacheService());
 
   locator.registerLazySingleton<SignupDataService>(() => SignupDataService());
+
+  // FestivalProvider is a ChangeNotifier registered here as a singleton so that
+  // FestivalViewModel can update it from loadFestivals() without needing a BuildContext.
+  // main.dart uses ChangeNotifierProvider.value(locator<FestivalProvider>()) to share
+  // the same instance with the widget tree.
+  locator.registerLazySingleton<FestivalProvider>(() => FestivalProvider());
 
   // Initialize NetworkService with API base URL
   locator<NetworkService>().initialize(

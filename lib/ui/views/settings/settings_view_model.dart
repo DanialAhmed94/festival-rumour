@@ -414,7 +414,8 @@ class SettingsViewModel extends BaseViewModel {
         // Android Play Store URL
         url = 'https://play.google.com/store/apps/details?id=$packageName';
       } else if (Platform.isIOS) {
-        url = AppStrings.festivalFoodieAppStoreUrl;
+        // Same listing as Android until a dedicated App Store URL is configured.
+        url = AppStrings.festivalRumourPlayStoreUrl;
       } else {
         if (kDebugMode) {
           print('⚠️ Rate app not supported on this platform');
@@ -440,12 +441,10 @@ class SettingsViewModel extends BaseViewModel {
   /// Share the app - opens native share dialog
   Future<void> shareApp() async {
     try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      final appName = packageInfo.appName;
-      final shareUrl = AppStrings.festivalFoodieAppStoreUrl;
-      final shareText = 'Check out $appName!\n$shareUrl';
-
-      await Share.share(shareText, subject: 'Check out $appName');
+      await Share.share(
+        AppStrings.shareMessage,
+        subject: AppStrings.shareSubject,
+      );
     } catch (e) {
       if (kDebugMode) {
         print('❌ Error sharing app: $e');
@@ -458,10 +457,6 @@ class SettingsViewModel extends BaseViewModel {
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
-  }
-
-  void openTerms() {
-    // TODO: Navigate to Terms & Conditions page
   }
 
   /// Logout user with proper error handling

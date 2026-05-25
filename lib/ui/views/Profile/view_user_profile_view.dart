@@ -124,15 +124,20 @@ class ViewUserProfileView extends BaseView<ProfileViewModel> {
 
           SizedBox(width: context.getConditionalSpacing()),
 
-          /// Profile title
+          /// Profile title (match Chat / Discover pink app bars)
           Expanded(
-            child: ResponsiveTextWidget(
-              AppStrings.profile,
-              textType: TextType.title,
-              color: AppColors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: context.getConditionalMainFont(),
-              textAlign: TextAlign.center,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 0),
+              child: ResponsiveTextWidget(
+                AppStrings.profile,
+                textAlign: TextAlign.center,
+                textType: TextType.title,
+                fontSize: context.getConditionalMainFont(),
+                color: AppColors.white,
+                fontWeight: FontWeight.w700,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
 

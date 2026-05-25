@@ -10,6 +10,7 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/viewmodels/base_view_model.dart';
+import '../../../services/notification_service.dart';
 
 class CreateChatRoomViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
@@ -237,9 +238,56 @@ class CreateChatRoomViewModel extends BaseViewModel {
         print('   Members: ${selectedMemberIds.length}');
       }
 
+      _sendInvitedToGroupPushNotifications(
+        memberIds: selectedMemberIds,
+        chatRoomId: chatRoomId,
+        roomName: chatRoomName,
+        festivalId: festivalId,
+      );
+
       setError(null);
       _navigationService.pop();
     }, errorMessage: 'Failed to create chat room');
+  }
+
+  Future<String> _currentUserShareName() async {
+    final authName = _authService.userDisplayName?.trim();
+    if (authName != null && authName.isNotEmpty) return authName;
+    final uid = _authService.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return 'Someone';
+    final data = await _firestoreService.getUserData(uid);
+    if (data != null) {
+      for (final key in ['username', 'displayName', 'name']) {
+        final v = data[key]?.toString().trim();
+        if (v != null && v.isNotEmpty) return v;
+      }
+    }
+    return 'Someone';
+  }
+
+  void _sendInvitedToGroupPushNotifications({
+    required List<String> memberIds,
+    required String chatRoomId,
+    required String roomName,
+    String? festivalId,
+  }) {
+    if (memberIds.isEmpty) return;
+    () async {
+      try {
+        final actor = await _currentUserShareName();
+        await NotificationServiceApi.notifyUsersAddedToPrivateGroup(
+          recipientUserIds: memberIds,
+          chatRoomId: chatRoomId,
+          roomName: roomName,
+          addedByDisplayName: actor,
+          festivalId: festivalId,
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          print('[NOTIF] create room push failed: $e');
+        }
+      }
+    }();
   }
 
   @override

@@ -16,6 +16,7 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/services/profile_readiness_service.dart';
 import '../../../core/exceptions/app_exception.dart';
 import '../../../core/exceptions/exception_mapper.dart';
 
@@ -422,6 +423,12 @@ class InterestsViewModel extends BaseViewModel {
       interests: interests,
       photoUrl: photoUrl,
     );
+
+    final pn = phoneNumber?.trim();
+    if (pn != null && pn.isNotEmpty) {
+      await locator<ProfileReadinessService>()
+          .persistPhoneVerificationForUser(user.uid);
+    }
 
     // Add user to all existing public chat rooms
     // This is non-blocking - if it fails, signup still succeeds

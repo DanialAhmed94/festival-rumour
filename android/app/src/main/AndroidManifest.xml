@@ -26,8 +26,11 @@ android:roundIcon="@mipmap/launcher_icon" android:enableOnBackInvokedCallback="t
         <!-- Google Maps API Key -->
         <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyCbVkm49HQB7DLEDai7wbujMrjimuhNwhU"/>
         <meta-data
-    android:name="com.google.firebase.messaging.default_notification_icon"
-    android:resource="@drawable/background"/>
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_color" />
 
     </application>
     <!-- Required to query activities that can process text, see:

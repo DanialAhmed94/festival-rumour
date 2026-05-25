@@ -10,6 +10,7 @@ import '../../../core/utils/backbutton.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/shimmer_avatar.dart';
+import '../../../shared/widgets/chat_message_appear_animation.dart';
 import 'chat_message_model.dart';
 import 'chat_view_model.dart';
 
@@ -182,91 +183,100 @@ class DirectChatView extends BaseView<ChatViewModel> {
   ) {
     final isCurrentUser = viewModel.isMessageFromCurrentUser(message);
 
-    return GestureDetector(
+    final playEntry =
+        viewModel.shouldAnimateMessageEntry(message.messageId);
+
+    final bubble = GestureDetector(
       onLongPress: () {
         _showDeleteOptions(context, viewModel, message, isCurrentUser);
       },
       child: Padding(
-        padding: const EdgeInsets.only(bottom: AppDimensions.spaceM),
-        child: Row(
-        mainAxisAlignment:
-            isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!isCurrentUser) ...[
-            _buildMessageAvatar(viewModel, message),
-            const SizedBox(width: AppDimensions.spaceS),
-          ],
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimensions.paddingM,
-                vertical: AppDimensions.paddingS,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.white.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!isCurrentUser)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: AppDimensions.spaceXS,
-                      ),
-                      child: ResponsiveTextWidget(
-                        viewModel.getUserDisplayName(message.userId) ?? message.username,
-                        textType: TextType.caption,
-                        fontSize: 12,
-                        color: Colors.black,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ResponsiveTextWidget(
-                    message.content,
-                    textType: TextType.body,
-                    fontSize: 14,
-                    color: AppColors.black,
+          padding: const EdgeInsets.only(bottom: AppDimensions.spaceM),
+          child: Row(
+            mainAxisAlignment:
+                isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (!isCurrentUser) ...[
+                _buildMessageAvatar(viewModel, message),
+                const SizedBox(width: AppDimensions.spaceS),
+              ],
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.paddingM,
+                    vertical: AppDimensions.paddingS,
                   ),
-                  if (message.isLocationMessage && message.lat != null && message.lng != null) ...[
-                    const SizedBox(height: AppDimensions.spaceXS),
-                    GestureDetector(
-                      onTap: () => _openMap(message.lat!, message.lng!),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.map_outlined, size: 18, color: AppColors.accent),
-                          const SizedBox(width: 6),
-                          ResponsiveTextWidget(
-                            'View on map',
+                  decoration: BoxDecoration(
+                    color: AppColors.white.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!isCurrentUser)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: AppDimensions.spaceXS,
+                          ),
+                          child: ResponsiveTextWidget(
+                            viewModel.getUserDisplayName(message.userId) ?? message.username,
                             textType: TextType.caption,
-                            fontSize: 13,
-                            color: AppColors.accent,
+                            fontSize: 12,
+                            color: Colors.black,
                             fontWeight: FontWeight.w600,
                           ),
-                        ],
+                        ),
+                      ResponsiveTextWidget(
+                        message.content,
+                        textType: TextType.body,
+                        fontSize: 14,
+                        color: AppColors.black,
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: AppDimensions.spaceXS),
-                  ResponsiveTextWidget(
-                    message.timeAgo,
-                    textType: TextType.caption,
-                    fontSize: 10,
-                    color: AppColors.grey600,
+                      if (message.isLocationMessage && message.lat != null && message.lng != null) ...[
+                        const SizedBox(height: AppDimensions.spaceXS),
+                        GestureDetector(
+                          onTap: () => _openMap(message.lat!, message.lng!),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.map_outlined, size: 18, color: AppColors.accent),
+                              const SizedBox(width: 6),
+                              ResponsiveTextWidget(
+                                'View on map',
+                                textType: TextType.caption,
+                                fontSize: 13,
+                                color: AppColors.accent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: AppDimensions.spaceXS),
+                      ResponsiveTextWidget(
+                        message.timeAgo,
+                        textType: TextType.caption,
+                        fontSize: 10,
+                        color: AppColors.grey600,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+              if (isCurrentUser) ...[
+                const SizedBox(width: AppDimensions.spaceS),
+                _buildMessageAvatar(viewModel, message),
+              ],
+            ],
           ),
-          if (isCurrentUser) ...[
-            const SizedBox(width: AppDimensions.spaceS),
-            _buildMessageAvatar(viewModel, message),
-          ],
-        ],
-      ),
-    ),
+        ),
+    );
+
+    if (!playEntry) return bubble;
+    return ChatMessageAppearAnimation(
+      alignEnd: isCurrentUser,
+      child: bubble,
     );
   }
 
@@ -414,26 +424,35 @@ class DirectChatView extends BaseView<ChatViewModel> {
     return Container(
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
             child: Container(
-              height: AppDimensions.imageS,
-              padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spaceM),
+              constraints: const BoxConstraints(minHeight: AppDimensions.imageS),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceM,
+                vertical: AppDimensions.paddingS,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.white,
                 borderRadius: BorderRadius.circular(AppDimensions.radiusL),
               ),
+              alignment: Alignment.centerLeft,
               child: TextField(
                 controller: viewModel.messageController,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+                minLines: 1,
+                maxLines: 8,
                 cursorColor: AppColors.black,
                 decoration: const InputDecoration(
                   hintText: AppStrings.typeSomething,
                   hintStyle: TextStyle(color: AppColors.grey600),
                   border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
                 ),
                 style: const TextStyle(color: AppColors.black),
                 enabled: !viewModel.isSendingMessage,
-                onSubmitted: (_) => _handleSendMessage(context, viewModel),
               ),
             ),
           ),

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import '../../../core/constants/app_numbers.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
@@ -12,7 +11,6 @@ import '../../../core/services/error_handler_service.dart';
 import '../../../core/exceptions/exception_mapper.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/constants/app_strings.dart';
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_durations.dart';
 import 'post_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -43,39 +41,90 @@ class HomeViewModel extends BaseViewModel {
   bool _isLoadingMore = false; // Whether we're currently loading more posts
   static const int _initialLimit = 10; // Initial number of posts to load
   static const int _loadMoreLimit = 10; // Number of posts to load per "load more"
+  /// In-memory cap: when exceeded, drop the oldest [_feedMemoryTrimChunk] into [_detachedOlderTail]
+  /// so the list stays bounded; user can restore from the buffer via [restoreDetachedOlderPosts].
+  /// If [_maxLoadedFeedPosts] is too small (e.g. ≤ [_initialLimit]), the first "load more"
+  /// fills over the cap and trim removes the newly loaded tail; the visible list stays at the
+  /// initial length even though Firestore returned more documents.
+  static const int _maxLoadedFeedPosts = 100;
+  static const int _feedMemoryTrimChunk = 50;
+  /// Posts removed from the tail (oldest) kept for re-attach when user scrolls near the bottom again.
+  final List<PostModel> _detachedOlderTail = [];
+  /// Firestore [DocumentSnapshot]s from paginated queries, keyed by post id — used to set [_lastDocument]
+  /// without an extra `doc(id).get()` after trim/restore.
+  final Map<String, DocumentSnapshot<Map<String, dynamic>>> _feedCursorDocByPostId = {};
+  static const int _maxDetachedOlderPosts = 200;
+  /// Fixed Firestore limit for the global feed snapshot stream (newest-first).
+  /// Does not grow with pagination — see Phase 2 / docs. Older paginated rows may
+  /// not receive live metadata updates until refresh.
+  static const int _realtimeStreamPostLimit = 80;
   
   bool get hasMorePosts => _hasMorePosts;
   bool get isLoadingMore => _isLoadingMore;
-  
+  bool get hasDetachedOlderChunk => _detachedOlderTail.isNotEmpty;
+
+  /// Detached-tail buffer size (trim stash); for diagnostics / debug logs only.
+  int get detachedBufferLength => _detachedOlderTail.length;
+
   HomeViewModel() {
     searchFocusNode = FocusNode();
-    // Listen to search controller changes
     searchController.addListener(() {
       if (searchController.text != searchQuery) {
         setSearchQuery(searchController.text);
       }
     });
+    // Re-enrich feed posts immediately when a user's photo/name is updated
+    // in the cache (e.g. after the user edits their profile in Settings).
+    _userPhotoCacheService.addListener(_onUserPhotoCacheUpdated);
+  }
+
+  /// Synchronous pass: update any allPosts entries whose cached photo/name
+  /// differs from what the PostModel currently holds.
+  void _onUserPhotoCacheUpdated() {
+    if (isDisposed) return;
+    bool changed = false;
+    for (int i = 0; i < allPosts.length; i++) {
+      final post = allPosts[i];
+      final uid = post.userId;
+      if (uid == null || uid.isEmpty) continue;
+      final cachedPhoto = _userPhotoCacheService.getCachedPhotoUrl(uid);
+      final cachedName = _userPhotoCacheService.getCachedDisplayName(uid);
+      String? newPhoto;
+      String? newName;
+      if (cachedPhoto != null && cachedPhoto.isNotEmpty && post.userPhotoUrl != cachedPhoto) {
+        newPhoto = cachedPhoto;
+      }
+      if (cachedName != null && cachedName.isNotEmpty && post.username != cachedName) {
+        newName = cachedName;
+      }
+      if (newPhoto != null || newName != null) {
+        allPosts[i] = post.copyWith(userPhotoUrl: newPhoto, username: newName);
+        changed = true;
+      }
+    }
+    if (changed) _applyFilterNotifyIfChanged();
   }
 
   @override
   void onDispose() {
-    // Cancel the real-time listener when view is disposed
+    _userPhotoCacheService.removeListener(_onUserPhotoCacheUpdated);
     _postsSubscription?.cancel();
     _postsSubscription = null;
-    
-    // Clear references to prevent memory leaks
+
     posts.clear();
     allPosts.clear();
-    
-    // Dispose controllers and focus nodes
+    _detachedOlderTail.clear();
+    _feedCursorDocByPostId.clear();
+
     searchFocusNode.dispose();
     searchController.dispose();
     
     super.onDispose();
   }
 
-  /// Start listening to real-time posts updates
-  /// This stream updates existing posts AND detects new posts created by other users
+  /// Real-time updates for the newest posts only, capped at [_realtimeStreamPostLimit].
+  /// Pagination adds older posts that are outside this window — they update on
+  /// pull-refresh / re-entry, not every snapshot (see product doc).
   void _startPostsListener() {
     if (isDisposed) return;
 
@@ -83,13 +132,8 @@ class HomeViewModel extends BaseViewModel {
     _postsSubscription?.cancel();
     _postsSubscription = null;
 
-    // Listen to real-time updates for posts
-    // Use a limit that includes loaded posts + buffer to detect new posts
-    // We need enough buffer to catch new posts at the top
-    final streamLimit = allPosts.isEmpty ? _initialLimit : (allPosts.length + 10);
-    
     _postsSubscription = _firestoreService
-        .getPostsStream(limit: streamLimit)
+        .getPostsStream(limit: _realtimeStreamPostLimit)
         .listen(
           (postsData) async {
             // Check if disposed before processing
@@ -151,12 +195,19 @@ class HomeViewModel extends BaseViewModel {
                   return bTime.compareTo(aTime);
                 });
                 allPosts.insertAll(0, newPosts);
-                
-                // Enrich new posts with user photos
-                await _enrichPostsWithUserPhotos();
-                
-                // Load user reactions for new posts
-                await _loadUserReactions();
+
+                // Enrich only the prepended rows (indices 0..newCount-1 after insert)
+                await _enrichPostsWithUserPhotos(
+                  indices: List<int>.generate(newPosts.length, (i) => i),
+                );
+
+                await _loadUserReactions(
+                  postIds: newPosts
+                      .map((p) => p.postId)
+                      .whereType<String>()
+                      .where((id) => id.isNotEmpty)
+                      .toList(),
+                );
                 
                 if (kDebugMode) {
                   print('✅ Added ${newPosts.length} new post(s) to list. Total posts: ${allPosts.length}');
@@ -195,9 +246,16 @@ class HomeViewModel extends BaseViewModel {
                     _createDocumentSnapshot(data),
                   );
                   
-                  // Preserve user reaction from old post (it's loaded separately)
+                  // Preserve user reaction from old post (it's loaded separately).
+                  // Also preserve the cache-enriched photo/username: post documents store
+                  // these at creation time and are never retroactively updated when a user
+                  // changes their profile — the in-memory enriched values are always fresher.
                   final postWithReaction = updatedPost.copyWith(
                     userReaction: oldPost.userReaction,
+                    userPhotoUrl: oldPost.userPhotoUrl ?? updatedPost.userPhotoUrl,
+                    username: oldPost.username.isNotEmpty
+                        ? oldPost.username
+                        : updatedPost.username,
                   );
                   
                   // Check if comment count or reaction counts changed
@@ -220,28 +278,29 @@ class HomeViewModel extends BaseViewModel {
             }
 
             // Update allPosts with updated posts (preserve order)
-            bool reactionsChanged = false;
+            var reactionsChanged = false;
+            final idsForReactionRefresh = <String>{};
             allPosts = allPosts.map((post) {
               if (post.postId != null && updatedPostsMap.containsKey(post.postId)) {
                 final updatedPost = updatedPostsMap[post.postId]!;
                 // Check if reaction counts changed
                 if (post.reactionCounts != updatedPost.reactionCounts) {
                   reactionsChanged = true;
+                  idsForReactionRefresh.add(post.postId!);
                 }
                 return updatedPost;
               }
               return post;
             }).toList();
 
-            // Only reload reactions if reaction counts actually changed
-            // This avoids unnecessary Firestore reads on every stream update
-            if (reactionsChanged) {
-              await _loadUserReactions();
+            // Only reload the current user's reaction for posts whose counts changed
+            if (reactionsChanged && idsForReactionRefresh.isNotEmpty) {
+              await _loadUserReactions(postIds: idsForReactionRefresh.toList());
             }
             
             // Apply filter to update displayed posts
             if (!isDisposed) {
-              _applyFilter();
+              _applyFilterNotifyIfChanged();
             }
           },
           onError: (error, stackTrace) {
@@ -287,8 +346,8 @@ class HomeViewModel extends BaseViewModel {
       await _loadUserReactions();
       
       // Apply initial filter
-      _applyFilter();
-    }, 
+      _applyFilterNotifyIfChanged();
+    },
     errorMessage: AppStrings.failedToLoadPosts,
     minimumLoadingDuration: AppDurations.minimumLoadingDuration);
   }
@@ -309,12 +368,16 @@ class HomeViewModel extends BaseViewModel {
       _lastDocument = null;
       _hasMorePosts = true;
       allPosts.clear();
+      _detachedOlderTail.clear();
+      _feedCursorDocByPostId.clear();
 
       // Load initial batch (10 posts)
       final result = await _firestoreService.getPostsPaginated(
         limit: _initialLimit,
         lastDocument: _lastDocument,
       );
+
+      _mergeDocSnapshotsFromPaginatedResult(result);
 
       final postsData = result['posts'] as List<Map<String, dynamic>>;
       _lastDocument = result['lastDocument'];
@@ -331,8 +394,15 @@ class HomeViewModel extends BaseViewModel {
         }
       }).whereType<PostModel>().toList();
 
+      _pruneFeedCursorDocsToStoredPosts();
+
       if (kDebugMode) {
-        print('📥 Loaded initial ${allPosts.length} posts. Has more: $_hasMorePosts');
+        print(
+          '[GlobalFeed] initialLoad: parsed=${allPosts.length} '
+          'hasMore=$_hasMorePosts initialLimit=$_initialLimit '
+          'cursorDocCacheSize=${_feedCursorDocByPostId.length} '
+          'detachedBuffer=${_detachedOlderTail.length}',
+        );
       }
 
       // Enrich posts with userPhotoUrl from Firestore if missing
@@ -342,7 +412,7 @@ class HomeViewModel extends BaseViewModel {
       await _loadUserReactions();
 
       // Apply initial filter
-      _applyFilter();
+      _applyFilterNotifyIfChanged();
 
       // Start real-time listener to detect new posts and updates
       _startPostsListener();
@@ -351,19 +421,284 @@ class HomeViewModel extends BaseViewModel {
     minimumLoadingDuration: AppDurations.minimumLoadingDuration);
   }
 
-  /// Load more posts (next batch)
-  Future<void> loadMorePosts() async {
-    if (isDisposed || _isLoadingMore || !_hasMorePosts) return;
+  void _mergeDocSnapshotsFromPaginatedResult(Map<String, dynamic> result) {
+    final raw = result['docSnapshotsByPostId'];
+    if (raw == null || raw is! Map) return;
+    var n = 0;
+    raw.forEach((k, v) {
+      if (k is String && v is DocumentSnapshot<Map<String, dynamic>>) {
+        _feedCursorDocByPostId[k] = v;
+        n++;
+      }
+    });
+    if (kDebugMode && n > 0) {
+      print('[GlobalFeed] cursorCacheMerge: merged $n snapshots (map size ${_feedCursorDocByPostId.length})');
+    }
+  }
+
+  void _pruneFeedCursorDocsToStoredPosts() {
+    final before = _feedCursorDocByPostId.length;
+    final keep = <String>{};
+    for (final p in allPosts) {
+      final id = p.postId;
+      if (id != null && id.isNotEmpty) keep.add(id);
+    }
+    for (final p in _detachedOlderTail) {
+      final id = p.postId;
+      if (id != null && id.isNotEmpty) keep.add(id);
+    }
+    _feedCursorDocByPostId.removeWhere((k, _) => !keep.contains(k));
+    if (kDebugMode && before != _feedCursorDocByPostId.length) {
+      print(
+        '[GlobalFeed] cursorCachePrune: $before -> ${_feedCursorDocByPostId.length} '
+        '(keepIds=${keep.length})',
+      );
+    }
+  }
+
+  /// Sets [_lastDocument] from the paginated-query cache, with a rare one-doc
+  /// [getGlobalFeedPostSnapshot] fallback when the tail post has no cached snapshot.
+  Future<void> _syncPaginationCursorFromCachedDoc() async {
+    if (allPosts.isEmpty) return;
+    final id = allPosts.last.postId;
+    if (id == null || id.isEmpty) return;
+    var snap = _feedCursorDocByPostId[id];
+    if (snap == null) {
+      if (kDebugMode) {
+        print('[GlobalFeed] cursorSync: cache MISS lastPostId=$id -> fetching doc snapshot');
+      }
+      try {
+        snap = await _firestoreService.getGlobalFeedPostSnapshot(id);
+        if (snap != null) {
+          _feedCursorDocByPostId[id] = snap;
+          if (kDebugMode) {
+            print('[GlobalFeed] cursorSync: fallback GET ok for $id');
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('[GlobalFeed] cursorSync: fallback GET failed id=$id: $e');
+        }
+      }
+    }
+    if (snap != null) {
+      _lastDocument = snap;
+    } else if (kDebugMode) {
+      print(
+        '[GlobalFeed] cursorSync: no snapshot for last post id=$id',
+      );
+    }
+  }
+
+  /// Drops oldest detached rows and their cursor cache entries (bounded memory).
+  void _capDetachedOlderTail() {
+    if (_detachedOlderTail.length <= _maxDetachedOlderPosts) return;
+    final dropped = _detachedOlderTail.length - _maxDetachedOlderPosts;
+    for (var i = _maxDetachedOlderPosts; i < _detachedOlderTail.length; i++) {
+      final id = _detachedOlderTail[i].postId;
+      if (id != null && id.isNotEmpty) {
+        _feedCursorDocByPostId.remove(id);
+      }
+    }
+    _detachedOlderTail.removeRange(
+      _maxDetachedOlderPosts,
+      _detachedOlderTail.length,
+    );
+    if (kDebugMode) {
+      print(
+        '[GlobalFeed] bufferCap: dropped $dropped oldest detached rows '
+        '(cap=$_maxDetachedOlderPosts, remaining=${_detachedOlderTail.length})',
+      );
+    }
+  }
+
+  /// Drops the oldest [_feedMemoryTrimChunk] rows into [_detachedOlderTail] while over [_maxLoadedFeedPosts].
+  bool _trimAllPostsIfOverMemoryCap() {
+    var trimmed = false;
+    while (allPosts.length > _maxLoadedFeedPosts) {
+      if (allPosts.length < _feedMemoryTrimChunk) break;
+      final start = allPosts.length - _feedMemoryTrimChunk;
+      final removed = List<PostModel>.from(allPosts.sublist(start));
+      allPosts.removeRange(start, allPosts.length);
+      _detachedOlderTail.insertAll(0, removed);
+      _capDetachedOlderTail();
+      trimmed = true;
+      if (kDebugMode) {
+        final ids =
+            removed.map((p) => p.postId ?? '?').join(',');
+        print(
+          '[GlobalFeed] trimToCap: moved ${_feedMemoryTrimChunk} tail posts to detached buffer '
+          'allPosts=${allPosts.length} detached=${_detachedOlderTail.length} '
+          'maxCap=$_maxLoadedFeedPosts removedIds=[$ids]',
+        );
+      }
+    }
+    return trimmed;
+  }
+
+  /// Re-attaches posts previously trimmed into [_detachedOlderTail] (same Firestore order).
+  Future<void> restoreDetachedOlderPosts() async {
+    if (isDisposed) return;
+    if (_isLoadingMore) {
+      if (kDebugMode) {
+        print('[GlobalFeed] restore: skip (isLoadingMore=true)');
+      }
+      return;
+    }
+    if (_detachedOlderTail.isEmpty) {
+      if (kDebugMode) {
+        print('[GlobalFeed] restore: skip (buffer empty)');
+      }
+      return;
+    }
 
     _isLoadingMore = true;
     notifyListeners();
 
     try {
+      if (kDebugMode) {
+        print(
+          '[GlobalFeed] restore: start bufferSize=${_detachedOlderTail.length} '
+          'allPosts=${allPosts.length} hasMore=$_hasMorePosts',
+        );
+      }
+      final chunk = List<PostModel>.from(_detachedOlderTail);
+      _detachedOlderTail.clear();
+
+      final room = _maxLoadedFeedPosts - allPosts.length;
+      if (room <= 0) {
+        if (kDebugMode) {
+          print(
+            '[GlobalFeed] restore: no room (room=$room max=$_maxLoadedFeedPosts) '
+            '-> re-queue chunk len=${chunk.length}',
+          );
+        }
+        _detachedOlderTail.insertAll(0, chunk);
+        return;
+      }
+
+      final existingIds = <String>{
+        for (final p in allPosts)
+          if (p.postId != null && p.postId!.isNotEmpty) p.postId!,
+      };
+      final deduped = <PostModel>[];
+      for (final p in chunk) {
+        final id = p.postId;
+        if (id == null || id.isEmpty) continue;
+        if (existingIds.contains(id)) continue;
+        existingIds.add(id);
+        deduped.add(p);
+      }
+
+      final takeCount =
+          deduped.length < room ? deduped.length : room;
+      final attach = deduped.sublist(0, takeCount);
+      final remainder = deduped.sublist(takeCount);
+      if (remainder.isNotEmpty) {
+        _detachedOlderTail.insertAll(0, remainder);
+        _capDetachedOlderTail();
+      }
+
+      if (attach.isEmpty) {
+        if (kDebugMode) {
+          print(
+            '[GlobalFeed] restore: attach empty (chunk=${chunk.length} deduped=${deduped.length}) '
+            '-> re-queue full chunk',
+          );
+        }
+        _detachedOlderTail.insertAll(0, chunk);
+        await _syncPaginationCursorFromCachedDoc();
+        if (!isDisposed) {
+          _pruneFeedCursorDocsToStoredPosts();
+          _applyFilterNotifyIfChanged();
+        }
+        return;
+      }
+
+      if (kDebugMode) {
+        print(
+          '[GlobalFeed] restore: attach=${attach.length} remainder=${remainder.length} '
+          'room=$room bufferAfter=${_detachedOlderTail.length}',
+        );
+      }
+
+      final enrichStart = allPosts.length;
+      allPosts.addAll(attach);
+
+      await _enrichPostsWithUserPhotos(
+        indices: List<int>.generate(attach.length, (i) => i + enrichStart),
+      );
+      await _loadUserReactions(
+        postIds: attach
+            .map((p) => p.postId)
+            .whereType<String>()
+            .where((id) => id.isNotEmpty)
+            .toList(),
+      );
+
+      _pruneFeedCursorDocsToStoredPosts();
+      await _syncPaginationCursorFromCachedDoc();
+
+      if (kDebugMode) {
+        print(
+          '[GlobalFeed] restore: done allPosts=${allPosts.length} '
+          'detached=${_detachedOlderTail.length}',
+        );
+      }
+
+      if (!isDisposed) {
+        _applyFilterNotifyIfChanged();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[GlobalFeed] restore: ERROR $e');
+      }
+    } finally {
+      if (!isDisposed) {
+        _isLoadingMore = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Load more posts (next batch)
+  Future<void> loadMorePosts() async {
+    if (isDisposed) return;
+    if (_isLoadingMore) {
+      if (kDebugMode) {
+        print('[GlobalFeed] loadMore: skip (isLoadingMore=true)');
+      }
+      return;
+    }
+    if (!_hasMorePosts) {
+      if (kDebugMode) {
+        print(
+          '[GlobalFeed] loadMore: skip (hasMore=false) '
+          'detachedBuffer=${_detachedOlderTail.length}',
+        );
+      }
+      return;
+    }
+
+    _isLoadingMore = true;
+    notifyListeners();
+
+    try {
+      if (kDebugMode) {
+        print(
+          '[GlobalFeed] loadMore: start allPosts=${allPosts.length} '
+          'detached=${_detachedOlderTail.length} limit=$_loadMoreLimit',
+        );
+      }
+      await _syncPaginationCursorFromCachedDoc();
+
       // Load next batch
       final result = await _firestoreService.getPostsPaginated(
         limit: _loadMoreLimit,
         lastDocument: _lastDocument,
       );
+
+      _mergeDocSnapshotsFromPaginatedResult(result);
 
       final postsData = result['posts'] as List<Map<String, dynamic>>;
       _lastDocument = result['lastDocument'];
@@ -380,8 +715,25 @@ class HomeViewModel extends BaseViewModel {
         }
       }).whereType<PostModel>().toList();
 
+      final existingIds = <String>{
+        for (final p in allPosts)
+          if (p.postId != null && p.postId!.isNotEmpty) p.postId!,
+      };
+      final uniqueNewPosts = <PostModel>[];
+      for (final p in newPosts) {
+        final id = p.postId;
+        if (id == null || id.isEmpty) continue;
+        if (existingIds.contains(id)) continue;
+        existingIds.add(id);
+        uniqueNewPosts.add(p);
+      }
+
       if (kDebugMode) {
-        print('Loaded ${newPosts.length} more posts. Has more: $_hasMorePosts. Total posts now: ${allPosts.length + newPosts.length}');
+        print(
+          '[GlobalFeed] loadMore: raw page posts=${postsData.length} '
+          'parsedOk=${newPosts.length} uniqueNew=${uniqueNewPosts.length} '
+          'hasMore=$_hasMorePosts cursorCache=${_feedCursorDocByPostId.length}',
+        );
       }
 
       // Check if disposed after async operation
@@ -391,27 +743,55 @@ class HomeViewModel extends BaseViewModel {
       if (newPosts.isEmpty) {
         _hasMorePosts = false;
         if (kDebugMode) {
-          print('No new posts loaded, setting hasMorePosts to false');
+          print('[GlobalFeed] loadMore: empty Firestore page -> hasMore=false');
         }
+      } else if (uniqueNewPosts.isEmpty) {
+        if (kDebugMode) {
+          print(
+            '[GlobalFeed] loadMore: duplicate-only page (cursor advanced via API lastDocument, '
+            'no list append)',
+          );
+        }
+        _pruneFeedCursorDocsToStoredPosts();
       } else {
-        // Add new posts to existing list
-        allPosts.addAll(newPosts);
+        final enrichStart = allPosts.length;
+        allPosts.addAll(uniqueNewPosts);
+        await _enrichPostsWithUserPhotos(
+          indices:
+              List<int>.generate(uniqueNewPosts.length, (i) => i + enrichStart),
+        );
+        await _loadUserReactions(
+          postIds: uniqueNewPosts
+              .map((p) => p.postId)
+              .whereType<String>()
+              .where((id) => id.isNotEmpty)
+              .toList(),
+        );
+        final didTrim = _trimAllPostsIfOverMemoryCap();
+        if (didTrim) {
+          if (kDebugMode) {
+            print('[GlobalFeed] loadMore: ran trim -> re-sync cursor');
+          }
+          await _syncPaginationCursorFromCachedDoc();
+        }
+        _pruneFeedCursorDocsToStoredPosts();
+
+        if (kDebugMode) {
+          print(
+            '[GlobalFeed] loadMore: done allPosts=${allPosts.length} '
+            'detached=${_detachedOlderTail.length} hasMore=$_hasMorePosts',
+          );
+        }
       }
 
-      // Enrich new posts with userPhotoUrl if missing
-      await _enrichPostsWithUserPhotos();
+      // Apply filter to include new posts (or refresh if nothing appended)
+      _applyFilterNotifyIfChanged();
 
-      // Load user reactions for new posts
-      await _loadUserReactions();
-
-      // Apply filter to include new posts
-      _applyFilter();
-
-      // Restart real-time listener to include new posts
-      _startPostsListener();
+      // Realtime listener uses a fixed limit (Phase 2); do not resubscribe here —
+      // avoids cancel/recreate churn on every page and keeps Firestore work bounded.
     } catch (e) {
       if (kDebugMode) {
-        print('Error loading more posts: $e');
+        print('[GlobalFeed] loadMore: ERROR $e');
       }
       // Don't show error to user for load more failures
     } finally {
@@ -422,15 +802,19 @@ class HomeViewModel extends BaseViewModel {
     }
   }
 
-  /// Enrich ALL posts with the latest userPhotoUrl from Firestore via cache.
-  /// Always overwrites the denormalized snapshot to ensure single source of truth.
-  Future<void> _enrichPostsWithUserPhotos() async {
+  /// Enrich posts with userPhotoUrl/displayName via cache.
+  /// Pass [indices] to only process those rows (e.g. after prepend or pagination).
+  /// Omit [indices] to process every loaded post (initial load / legacy [loadPosts]).
+  Future<void> _enrichPostsWithUserPhotos({List<int>? indices}) async {
     if (isDisposed) return;
 
     try {
-      // Collect all posts that have a userId
       final postsToEnrich = <int, String>{}; // index -> userId
-      for (int i = 0; i < allPosts.length; i++) {
+      final idxList = indices ??
+          List<int>.generate(allPosts.length, (i) => i);
+
+      for (final i in idxList) {
+        if (i < 0 || i >= allPosts.length) continue;
         final post = allPosts[i];
         if (post.userId != null && post.userId!.isNotEmpty) {
           postsToEnrich[i] = post.userId!;
@@ -478,8 +862,7 @@ class HomeViewModel extends BaseViewModel {
       }
 
       if (enrichedCount > 0) {
-        _applyFilter();
-        notifyListeners();
+        _applyFilterNotifyIfChanged();
       }
     } catch (e) {
       if (kDebugMode) {
@@ -488,33 +871,30 @@ class HomeViewModel extends BaseViewModel {
     }
   }
 
-  /// Load user reactions for all posts
-  Future<void> _loadUserReactions() async {
-    // Check if disposed before processing
+  /// Load the current user's reactions. Pass [postIds] to merge reactions only for those posts
+  /// (smaller fallback fan-out). Omit [postIds] to refresh all loaded posts.
+  Future<void> _loadUserReactions({List<String>? postIds}) async {
     if (isDisposed) return;
-    
+
     final currentUser = _authService.currentUser;
-    if (currentUser == null) return; // User not logged in
+    if (currentUser == null) return;
 
     try {
-      // Get all post IDs
-      final postIds = allPosts
-          .where((post) => post.postId != null)
-          .map((post) => post.postId!)
-          .toList();
+      final ids = postIds ??
+          allPosts
+              .where((post) => post.postId != null)
+              .map((post) => post.postId!)
+              .toList();
 
-      if (postIds.isEmpty) return;
+      if (ids.isEmpty) return;
 
-      // Fetch user reactions in batch
       final userReactions = await _firestoreService.getUserReactions(
-        postIds,
+        ids,
         currentUser.uid,
       );
 
-      // Check again if disposed after async operation
       if (isDisposed) return;
 
-      // Update posts with user reactions
       for (int i = 0; i < allPosts.length; i++) {
         final post = allPosts[i];
         if (post.postId != null && userReactions.containsKey(post.postId)) {
@@ -525,13 +905,12 @@ class HomeViewModel extends BaseViewModel {
       }
 
       if (kDebugMode) {
-        print('Loaded ${userReactions.length} user reactions');
+        print('Merged ${userReactions.length} user reaction(s) for ${ids.length} post id(s) requested');
       }
     } catch (e) {
       if (kDebugMode) {
         print('Error loading user reactions: $e');
       }
-      // Don't throw - reactions are optional
     }
   }
 
@@ -628,53 +1007,120 @@ class HomeViewModel extends BaseViewModel {
   // Filter methods
   void setFilter(String filter) {
     selectedFilter = filter;
-    _applyFilter();
+    posts = _computeFilteredPosts();
     notifyListeners();
   }
 
-  void _applyFilter() {
-    // Single pass: userId, status, and search in one iteration (no extra loops)
+  /// Filtered slice of [allPosts] for the home feed (search + status filter).
+  List<PostModel> _computeFilteredPosts() {
     final searchLower = searchQuery.toLowerCase();
     final hasSearch = searchQuery.isNotEmpty;
 
-    posts = allPosts.where((post) {
+    return allPosts.where((post) {
       if (post.userId == null || post.userId!.isEmpty) return false;
 
-      // Apply status filter
       if (selectedFilter == AppStrings.live && post.status != AppStrings.live) {
         return false;
       } else if (selectedFilter == AppStrings.upcoming && post.status != AppStrings.upcoming) {
         return false;
       } else if (selectedFilter == AppStrings.past && post.status != AppStrings.past) {
         return false;
-    }
+      }
 
-      // Apply search filter in same pass
       if (hasSearch) {
         final usernameLower = post.username.toLowerCase();
         final contentLower = post.content.toLowerCase();
         if (!usernameLower.contains(searchLower) && !contentLower.contains(searchLower)) {
           return false;
-    }
+        }
       }
 
       return true;
     }).toList();
+  }
 
-    notifyListeners(); // Notify UI of changes (comment counts, reaction counts, etc.)
+  /// True when two filtered rows would render the same feed row state (Phase 4).
+  static bool _feedRowsVisuallyEqual(PostModel a, PostModel b) {
+    if (identical(a, b)) return true;
+    return a.postId == b.postId &&
+        a.comments == b.comments &&
+        a.likes == b.likes &&
+        a.totalReactions == b.totalReactions &&
+        a.userReaction == b.userReaction &&
+        a.username == b.username &&
+        a.userPhotoUrl == b.userPhotoUrl &&
+        a.content == b.content &&
+        a.status == b.status &&
+        a.timeAgo == b.timeAgo &&
+        a.imagePath == b.imagePath &&
+        a.isVideo == b.isVideo &&
+        a.postUrl == b.postUrl &&
+        a.linkPreviewImageUrl == b.linkPreviewImageUrl &&
+        a.linkPreviewTitle == b.linkPreviewTitle &&
+        _reactionMapsEqual(a.reactionCounts, b.reactionCounts) &&
+        _stringListsEqual(a.mediaPaths, b.mediaPaths) &&
+        _boolListsEqual(a.isVideoList, b.isVideoList);
+  }
+
+  static bool _reactionMapsEqual(Map<String, int>? a, Map<String, int>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return a == null && b == null;
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (b[e.key] != e.value) return false;
+    }
+    return true;
+  }
+
+  static bool _stringListsEqual(List<String>? a, List<String>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return a == null && b == null;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static bool _boolListsEqual(List<bool>? a, List<bool>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return a == null && b == null;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static bool _filteredSnapshotsEqual(List<PostModel> a, List<PostModel> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!_feedRowsVisuallyEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  /// Rebuilds [posts] from filters and notifies only when the visible list actually changes.
+  void _applyFilterNotifyIfChanged() {
+    if (isDisposed) return;
+    final next = _computeFilteredPosts();
+    if (_filteredSnapshotsEqual(posts, next)) return;
+    posts = next;
+    notifyListeners();
   }
 
   // Search methods
   void setSearchQuery(String query) {
     searchQuery = query;
-    _applyFilter();
+    posts = _computeFilteredPosts();
     notifyListeners();
   }
 
   void clearSearch() {
     searchQuery = '';
     searchController.clear();
-    _applyFilter();
+    posts = _computeFilteredPosts();
     notifyListeners();
   }
 
@@ -973,6 +1419,14 @@ class HomeViewModel extends BaseViewModel {
       if (allPostsIndex >= 0) {
         allPosts.removeAt(allPostsIndex);
       }
+      _feedCursorDocByPostId.remove(postId);
+      if (kDebugMode) {
+        print(
+          '[GlobalFeed] deletePost: removed postId=$postId '
+          'allPosts=${allPosts.length} cursorCache=${_feedCursorDocByPostId.length} '
+          'detached=${_detachedOlderTail.length}',
+        );
+      }
       notifyListeners();
 
       // Close loading dialog
@@ -990,7 +1444,7 @@ class HomeViewModel extends BaseViewModel {
       }
 
       if (kDebugMode) {
-        print('✅ Post deleted successfully: $postId');
+        print('[GlobalFeed] deletePost: Firestore ok postId=$postId');
       }
     } on TimeoutException catch (e) {
       // Handle timeout specifically

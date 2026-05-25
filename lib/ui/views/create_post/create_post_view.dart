@@ -27,21 +27,23 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
 
   @override
   Widget buildView(BuildContext context, CreatePostViewModel viewModel) {
-    // Get collection name from navigation arguments if provided (from rumors context)
-    final route = ModalRoute.of(context);
-    final collectionName = route?.settings.arguments as String?;
+    // Initialize with the festival collection name passed as route argument
+    // (from RumorsViewModel.goToCreatePost). The guard ensures this only runs
+    // once even though buildView re-runs on every notifyListeners() call.
+    final collectionName = ModalRoute.of(context)?.settings.arguments as String?;
     if (collectionName != null && viewModel.collectionName == null) {
       viewModel.initialize(collectionName);
     }
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
+
+    // AnnotatedRegion is declarative: applied once when the route is on-screen,
+    // not re-applied as a side-effect on every notifyListeners() rebuild.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
       ),
-    );
-
-    return Scaffold(
+      child: Scaffold(
       backgroundColor: AppColors.screenBackground,
       body: SafeArea(
         child: Column(
@@ -89,7 +91,8 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
           ],
         ),
       ),
-    );
+    ), // Scaffold
+    ); // AnnotatedRegion
   }
 
   Widget _buildAppBar(BuildContext context) {
@@ -203,7 +206,6 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                   fontSize: 16,
                 ),
                 cursorColor: Colors.black,
-                onChanged: (_) => viewModel.notifyListeners(),
               ),
             ),
           ],
@@ -476,7 +478,13 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
     final canPost = viewModel.canPost && !viewModel.isLoading;
 
     return FilledButton(
-      onPressed: canPost ? () => viewModel.uploadPost() : null,
+      onPressed: canPost
+          ? () {
+              FocusScope.of(context).unfocus();
+              SystemChannels.textInput.invokeMethod('TextInput.hide');
+              viewModel.uploadPost();
+            }
+          : null,
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.performanceGreen,
         padding: const EdgeInsets.symmetric(vertical: 16),

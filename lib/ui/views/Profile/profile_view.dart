@@ -70,15 +70,24 @@ class _ProfileViewContent extends StatefulWidget {
 class _ProfileViewContentState extends State<_ProfileViewContent> with AutomaticKeepAliveClientMixin {
   bool _isInitialized = false;
   String? _lastUserId;
-  
+
+  // Step 5: prevents scheduling refreshUserProfileInfo more than once per
+  // rebuild burst. Cleared when the PostFrameCallback actually fires.
+  bool _profileRefreshScheduled = false;
+
+  // Phase 3: scroll prefetch
+  final ScrollController _scrollController = ScrollController();
+  bool _prefetchFrameScheduled = false;
+  int _lastGridTopUpLength = -1; // track grid length for short-list top-up
+
   @override
-  bool get wantKeepAlive => true; // Keep alive when switching tabs
-  
+  bool get wantKeepAlive => true;
+
   @override
   void initState() {
     super.initState();
     _lastUserId = widget.userId;
-    // Initialize only once or when userId changes
+    _scrollController.addListener(_onScroll);
     if (!_isInitialized || _lastUserId != widget.userId) {
       _isInitialized = true;
       _lastUserId = widget.userId;
@@ -103,39 +112,114 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
         }
       });
     }
-    // Refresh profile info when returning to own profile
-    else if (widget.viewModel.isInitialized && widget.userId == null && oldWidget.userId == null) {
+    // Refresh profile info when returning to own profile.
+    // Guard: only schedule one PostFrameCallback per rebuild burst; the flag
+    // is cleared when the callback fires so the next genuine navigation event
+    // (e.g. return from edit-profile) can schedule again.
+    else if (widget.viewModel.isInitialized &&
+        widget.userId == null &&
+        oldWidget.userId == null &&
+        !_profileRefreshScheduled) {
+      _profileRefreshScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        _profileRefreshScheduled = false;
         if (mounted) {
           widget.viewModel.refreshUserProfileInfo();
         }
       });
     }
   }
-  
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // ── Scroll prefetch (Phase 3) ────────────────────────────────────────────
+
+  void _onScroll() {
+    _schedulePrefetchNearEnd();
+  }
+
+  void _schedulePrefetchNearEnd() {
+    if (_prefetchFrameScheduled) return;
+    _prefetchFrameScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _prefetchFrameScheduled = false;
+      if (!mounted) return;
+      _maybePrefetchMoreGrid();
+    });
+  }
+
+  void _maybePrefetchMoreGrid() {
+    final vm = widget.viewModel;
+    if (vm.isLoadingMoreImages || vm.isLoadingMoreVideos) return;
+    final tab = vm.selectedTab;
+    final hasMore = tab == 0 ? vm.hasMoreImages : vm.hasMoreVideos;
+    if (!hasMore) return;
+    try {
+      if (!_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (!position.hasViewportDimension || !position.hasPixels) return;
+      final prefetchLead = position.viewportDimension * 1.5;
+      if (position.maxScrollExtent <= 0) {
+        _loadMoreForCurrentTab(vm);
+        return;
+      }
+      if (position.pixels >= position.maxScrollExtent - prefetchLead) {
+        _loadMoreForCurrentTab(vm);
+      }
+    } catch (_) {}
+  }
+
+  void _topUpShortGridIfNeeded() {
+    final vm = widget.viewModel;
+    final tab = vm.selectedTab;
+    final hasMore = tab == 0 ? vm.hasMoreImages : vm.hasMoreVideos;
+    if (!hasMore) return;
+    if (vm.isLoadingMoreImages || vm.isLoadingMoreVideos) return;
+    try {
+      if (!_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (!position.hasViewportDimension) return;
+      if (position.maxScrollExtent > 0) return;
+      _loadMoreForCurrentTab(vm);
+    } catch (_) {}
+  }
+
+  void _loadMoreForCurrentTab(ProfileViewModel vm) {
+    if (vm.selectedTab == 0) {
+      vm.loadMoreImages(context);
+    } else {
+      vm.loadMoreVideos(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-    return WillPopScope(
-      onWillPop: () async {
-        print("🔙 Profile screen back button pressed (userId: ${widget.userId}, fromRoute: ${widget.fromRoute})");
-        if (widget.onBack != null) {
-          widget.onBack!(); // Navigate to home tab
-          return false; // Prevent default back behavior
+    // PopScope replaces deprecated WillPopScope (Flutter 3.12+).
+    // canPop = false when we intercept back navigation ourselves;
+    // onPopInvokedWithResult handles the custom logic when didPop is false.
+    return PopScope(
+      canPop: widget.onBack == null &&
+          !(widget.fromRoute != null && widget.userId != null),
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) return; // default pop already happened — nothing to do
+        if (kDebugMode) {
+          print('🔙 Profile back intercepted (userId: ${widget.userId}, fromRoute: ${widget.fromRoute})');
         }
-        // If we have a fromRoute and are viewing another user's profile, pop until we reach it
+        if (widget.onBack != null) {
+          widget.onBack!();
+          return;
+        }
         if (widget.fromRoute != null && widget.userId != null) {
           Navigator.popUntil(context, (route) {
-            final routeName = route.settings.name;
-            final matches = routeName == widget.fromRoute;
-            if (matches || route.isFirst) {
-              return true; // Stop at matching route or first route
-            }
-            return false; // Continue popping
+            return route.settings.name == widget.fromRoute || route.isFirst;
           });
-          return false; // Prevent default back behavior
         }
-        return true; // Default: allow normal back navigation
       },
       child: Scaffold(
         backgroundColor: AppColors.screenBackground,
@@ -147,52 +231,69 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                 color: const Color(0xFFFC2E95),
                 child: _profileTopBarWidget(context, widget.viewModel),
               ),
+              // Consumer rebuilds only the scroll view on ViewModel notifications.
+              // SliverGrid is viewport-culled — O(visible) layout, not O(N).
               Expanded(
-                child: CustomScrollView(
-                  slivers: [
-                    /// 🔹 Profile Header (Collapsible)
-                    SliverAppBar(
-                      expandedHeight: context.isSmallScreen
-                          ? context.screenHeight * 0.25
-                          : context.isMediumScreen
-                          ? context.screenHeight * 0.24
-                          : context.screenHeight * 0.24,
-                      floating: false,
-                      pinned: false,
-                      backgroundColor: Colors.transparent,
-                      elevation: 0,
-                      automaticallyImplyLeading: false,
-                      flexibleSpace: FlexibleSpaceBar(
-                        background: _buildProfileHeader(context, widget.viewModel),
-                      ),
-                    ),
-
-                    /// 🔹 Profile Tabs (Pinned)
-                    SliverPersistentHeader(
-                      pinned: true,
-                      delegate: _ProfileTabsDelegate(
-                        child: Container(
-                          height: AppDimensions.buttonHeightXL,
-                          color: AppColors.white,
-                          child: _profileTabs(context, widget.viewModel),
-                        ),
-                      ),
-                    ),
-
-                    /// 🔹 Dynamic Content
-                    SliverToBoxAdapter(
-                      child: Container(
-                        color: AppColors.white,
-                        child: _buildDynamicContent(context, widget.viewModel),
-                      ),
-                    ),
-                  ],
+                child: Consumer<ProfileViewModel>(
+                  builder: (ctx, vm, _) {
+                    // Trigger short-list top-up when grid length changes.
+                    final gridLen = vm.selectedTab == 0
+                        ? vm.userImages.length
+                        : vm.userVideos.length;
+                    if (gridLen > 0 && gridLen != _lastGridTopUpLength) {
+                      _lastGridTopUpLength = gridLen;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _topUpShortGridIfNeeded();
+                      });
+                    }
+                    return _buildScrollView(ctx, vm);
+                  },
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  CustomScrollView _buildScrollView(BuildContext context, ProfileViewModel vm) {
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
+        /// Profile Header (collapsible)
+        SliverAppBar(
+          expandedHeight: context.isSmallScreen
+              ? context.screenHeight * 0.25
+              : context.screenHeight * 0.24,
+          floating: false,
+          pinned: false,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          automaticallyImplyLeading: false,
+          flexibleSpace: FlexibleSpaceBar(
+            background: _buildProfileHeader(context, vm),
+          ),
+        ),
+
+        /// Tabs (pinned)
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _ProfileTabsDelegate(
+            child: Container(
+              height: AppDimensions.buttonHeightXL,
+              color: AppColors.white,
+              child: _profileTabs(context, vm),
+            ),
+          ),
+        ),
+
+        /// Grid content — viewport-culled slivers (no shrinkWrap)
+        if (vm.selectedTab == 0)
+          ..._buildImageSlivers(context, vm)
+        else
+          ..._buildVideoSlivers(context, vm),
+      ],
     );
   }
   // Widget _buildFloatingButton(BuildContext context) {
@@ -420,25 +521,7 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
     );
   }
 
-  /// ---------------- DYNAMIC CONTENT ---------------- 
-  Widget _buildDynamicContent(BuildContext context, ProfileViewModel viewModel) {
-    return Consumer<ProfileViewModel>(
-      builder: (context, vm, child) {
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: (Widget child, Animation<double> animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: child,
-            );
-          },
-          child: vm.selectedTab == 0
-              ? _profileGridWidget(context, key: const ValueKey('posts'))
-              : _profileReelsWidget(context, key: const ValueKey('reels')),
-        );
-      },
-    );
-  }
+  // _buildDynamicContent replaced by _buildImageSlivers / _buildVideoSlivers below.
   /// ---------------- TOP BAR ---------------- 
   Widget _profileTopBarWidget(BuildContext context, ProfileViewModel viewModel) {
     return ResponsivePadding(
@@ -489,15 +572,20 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
 
           SizedBox(width: context.getConditionalSpacing()),
 
-          /// Profile title
+          /// Profile title (match Chat / Discover pink app bars: title type + ellipsis)
           Expanded(
-            child: ResponsiveTextWidget(
-              AppStrings.profile,
-              textType: TextType.title,
-              color: AppColors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: context.getConditionalMainFont(),
-              textAlign: TextAlign.center,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 0),
+              child: ResponsiveTextWidget(
+                AppStrings.profile,
+                textAlign: TextAlign.center,
+                textType: TextType.title,
+                fontSize: context.getConditionalMainFont(),
+                color: AppColors.white,
+                fontWeight: FontWeight.w700,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
 
@@ -683,41 +771,38 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
     );
   }
 
-  /// ---------------- GRID / REELS / REPOSTS ---------------- 
-  Widget _profileGridWidget(BuildContext context, {Key? key}) {
-    return Consumer<ProfileViewModel>(
-      key: key,
-      builder: (context, viewModel, child) {
-        final images = viewModel.userImages;
-        final hasMore = viewModel.hasMoreImages;
-        final isLoadingMore = viewModel.isLoadingMoreImages;
+  /// ---------------- SLIVER GRID BUILDERS ----------------
+  /// Returns viewport-culled SliverGrid slivers for the images tab.
+  /// No shrinkWrap — only visible cells are laid out.
+  List<Widget> _buildImageSlivers(BuildContext context, ProfileViewModel vm) {
+    final images = vm.userImages;
 
-        // Show loading indicator when initially loading
-        if (images.isEmpty && viewModel.isLoading) {
-          return Padding(
-            padding: EdgeInsets.all(context.responsivePadding.top * 2),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(
-                    color: AppColors.black,
-                  ),
-                  SizedBox(height: context.responsivePadding.top),
-                  ResponsiveTextWidget(
-                    'Loading posts...',
-                    color: AppColors.black.withOpacity(0.7),
-                    fontSize: AppDimensions.textM,
-                  ),
-                ],
-              ),
+    if (images.isEmpty && vm.isLoading) {
+      return [
+        SliverFillRemaining(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(color: AppColors.black),
+                SizedBox(height: context.responsivePadding.top),
+                ResponsiveTextWidget(
+                  'Loading posts...',
+                  color: AppColors.black.withOpacity(0.7),
+                  fontSize: AppDimensions.textM,
+                ),
+              ],
             ),
-          );
-        }
+          ),
+        ),
+      ];
+    }
 
-        // Show empty state when not loading and no images
-        if (images.isEmpty && !viewModel.isLoading) {
-          return Padding(
+    if (images.isEmpty) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Padding(
             padding: EdgeInsets.all(context.responsivePadding.top),
             child: Center(
               child: ResponsiveTextWidget(
@@ -726,432 +811,284 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                 fontSize: AppDimensions.textM,
               ),
             ),
-          );
-        }
+          ),
+        ),
+      ];
+    }
 
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: context.isLargeScreen ? 4 : context.isMediumScreen ? 3 : 3,
-                mainAxisSpacing: context.isLargeScreen ? 4 : 2,
-                crossAxisSpacing: context.isLargeScreen ? 4 : 2,
-              ),
-              itemCount: images.length,
-              itemBuilder: (context, index) {
-                final postInfo = index < viewModel.imagePostInfos.length
-                    ? viewModel.imagePostInfos[index]
-                    : null;
-                
-                return GestureDetector(
-                  onTap: () async {
-                    // Fetch only the tapped post with full details
-                    final postInfo = index < viewModel.imagePostInfos.length
-                        ? viewModel.imagePostInfos[index]
-                        : null;
-                    
-                    if (kDebugMode) {
-                      print('🖱️ User tapped on post at index $index');
-                      if (postInfo != null) {
-                        print('   Post ID: ${postInfo['postId']}');
-                        print('   Collection: ${postInfo['collectionName']}');
-                      } else {
-                        print('   ⚠️ No post info available for this index');
-                      }
-                    }
+    return [
+      SliverGrid.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: context.isLargeScreen ? 4 : 3,
+          mainAxisSpacing: context.isLargeScreen ? 4 : 2,
+          crossAxisSpacing: context.isLargeScreen ? 4 : 2,
+        ),
+        itemCount: images.length,
+        itemBuilder: (ctx, index) => _buildImageGridCell(ctx, vm, index),
+      ),
+      SliverToBoxAdapter(
+        child: _buildImagesFooter(context, vm),
+      ),
+    ];
+  }
 
-                    if (postInfo == null) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Post information not available'),
-                            backgroundColor: AppColors.error,
-                          ),
-                        );
-                      }
-                      return;
-                    }
-                    
-                    // Show loading indicator
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.black,
-                        ),
-                      ),
-                    );
-
-                    // Fetch only the tapped post with full details
-                    final fullPost = await viewModel.fetchSinglePost(postInfo);
-                    
-                    // Close loading dialog
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                    }
-
-                    if (fullPost != null && context.mounted) {
-                      if (widget.onNavigateToSub != null) {
-                        if (kDebugMode) {
-                          print('🚀 Using onNavigateToSub callback');
-                        }
-                        widget.onNavigateToSub!('posts');
-                      } else {
-                        final collectionName = postInfo['collectionName'] as String?;
-                        if (kDebugMode) {
-                          print('🚀 Navigating to PostsView with single post');
-                          print('   Collection: $collectionName');
-                        }
-                        final result = await Navigator.pushNamed(
-                          context,
-                          AppRoutes.posts,
-                          arguments: {
-                            'posts': [fullPost],
-                            'collectionName': collectionName,
-                          },
-                        );
-                        if (context.mounted && result is Map<String, dynamic>) {
-                          final deletedIds = result['deletedPostIds'] as List<String>?;
-                          final wasEdited = result['wasEdited'] as bool? ?? false;
-                          if (deletedIds != null && deletedIds.isNotEmpty) {
-                            viewModel.removeDeletedPosts(deletedIds);
-                          }
-                          if (wasEdited) {
-                            viewModel.refreshPostsOnly(context);
-                          }
-                        }
-                      }
-                    } else if (context.mounted) {
-                      if (kDebugMode) {
-                        print('❌ Post not found or failed to load');
-                      }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Failed to load post. Please try again.'),
-                          backgroundColor: AppColors.error,
-                        ),
-                      );
-                    }
-                  },
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _SafeCachedNetworkImage(
-                        imageUrl: images[index],
-                        fit: BoxFit.cover,
-                        placeholder: Container(
-                          color: AppColors.black.withOpacity(0.3),
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.black,
-                            ),
-                          ),
-                        ),
-                        errorWidget: Container(
-                          color: AppColors.screenBackground.withOpacity(0.5),
-                          child: const Icon(Icons.broken_image_outlined, color: AppColors.grey600, size: 32),
-                        ),
-                      ),
-                      // Show icon overlay if post has multiple media
-                      if (postInfo != null && (postInfo['hasMultipleMedia'] as bool? ?? false))
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Container(
-                            padding: EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: AppColors.black.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Icon(
-                              Icons.collections,
-                              color: AppColors.accent, // Yellow color
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              },
+  Widget _buildImageGridCell(BuildContext context, ProfileViewModel vm, int index) {
+    final images = vm.userImages;
+    final postInfo = index < vm.imagePostInfos.length ? vm.imagePostInfos[index] : null;
+    return GestureDetector(
+      onTap: () => _onImageGridTap(context, vm, index, postInfo),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _SafeCachedNetworkImage(
+            imageUrl: images[index],
+            fit: BoxFit.cover,
+            placeholder: Container(
+              color: AppColors.black.withOpacity(0.3),
+              child: const Center(child: CircularProgressIndicator(color: AppColors.black)),
             ),
-            // Load More button
-            if (hasMore)
-              Padding(
-                padding: EdgeInsets.symmetric(
-                  vertical: context.responsivePadding.top,
-                  horizontal: context.responsivePadding.left,
+            errorWidget: Container(
+              color: AppColors.screenBackground.withOpacity(0.5),
+              child: const Icon(Icons.broken_image_outlined, color: AppColors.grey600, size: 32),
+            ),
+          ),
+          if (postInfo != null && (postInfo['hasMultipleMedia'] as bool? ?? false))
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppColors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(4),
                 ),
-                child: ElevatedButton(
-                  onPressed: isLoadingMore
-                      ? null
-                      : () => viewModel.loadMoreImages(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.white,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: context.responsivePadding.left * 2,
-                      vertical: context.responsivePadding.top,
-                    ),
-                  ),
-                  child: isLoadingMore
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
-                          ),
-                        )
-                      : ResponsiveTextWidget(
-                          'Load More',
-                          color: AppColors.black,
-                          fontSize: AppDimensions.textM,
-                        ),
-                ),
+                child: const Icon(Icons.collections, color: AppColors.accent, size: 16),
               ),
-          ],
-        );
-      },
+            ),
+        ],
+      ),
     );
   }
 
-
-  Widget _profileReelsWidget(BuildContext context, {Key? key}) {
-    return Consumer<ProfileViewModel>(
-      key: key,
-      builder: (context, viewModel, child) {
-        final videos = viewModel.userVideos;
-        final hasMore = viewModel.hasMoreVideos;
-        final isLoadingMore = viewModel.isLoadingMoreVideos;
-
-        // Show loading indicator when initially loading
-        if (videos.isEmpty && viewModel.isLoading) {
-          return Padding(
-            padding: EdgeInsets.all(context.responsivePadding.top * 2),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(
-                    color: AppColors.black,
-                  ),
-                  SizedBox(height: context.responsivePadding.top),
-                  ResponsiveTextWidget(
-                    'Loading reels...',
-                    color: AppColors.black.withOpacity(0.7),
-                    fontSize: AppDimensions.textM,
-                  ),
-                ],
-              ),
-            ),
-          );
+  Future<void> _onImageGridTap(
+    BuildContext context,
+    ProfileViewModel vm,
+    int index,
+    Map<String, dynamic>? postInfo,
+  ) async {
+    if (kDebugMode) {
+      print('🖱️ Tapped image at index $index — postId=${postInfo?['postId']}, collection=${postInfo?['collectionName']}');
+    }
+    if (postInfo == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Post information not available'), backgroundColor: AppColors.error),
+        );
+      }
+      return;
+    }
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.black)),
+      );
+    }
+    final fullPost = await vm.fetchSinglePost(postInfo);
+    if (context.mounted) Navigator.pop(context);
+    if (fullPost != null && context.mounted) {
+      if (widget.onNavigateToSub != null) {
+        widget.onNavigateToSub!('posts');
+      } else {
+        final collectionName = postInfo['collectionName'] as String?;
+        final result = await Navigator.pushNamed(
+          context,
+          AppRoutes.posts,
+          arguments: {'posts': [fullPost], 'collectionName': collectionName},
+        );
+        if (context.mounted && result is Map<String, dynamic>) {
+          final deletedIds = result['deletedPostIds'] as List<String>?;
+          if (deletedIds != null && deletedIds.isNotEmpty) vm.removeDeletedPosts(deletedIds);
+          if (result['wasEdited'] == true) vm.refreshPostsOnly(context);
         }
+      }
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load post. Please try again.'), backgroundColor: AppColors.error),
+      );
+    }
+  }
 
-        // Show empty state when not loading and no videos
-        if (videos.isEmpty && !viewModel.isLoading) {
-          return Padding(
+  Widget _buildImagesFooter(BuildContext context, ProfileViewModel vm) {
+    if (vm.isLoadingMoreImages) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: context.responsivePadding.top),
+        child: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.black),
+          ),
+        ),
+      );
+    }
+    // hasMore: prefetch fires automatically — no button needed.
+    // !hasMore: grid is exhausted.
+    return const SizedBox.shrink();
+  }
+
+
+  /// Returns viewport-culled SliverGrid slivers for the videos tab.
+  List<Widget> _buildVideoSlivers(BuildContext context, ProfileViewModel vm) {
+    final videos = vm.userVideos;
+
+    if (videos.isEmpty && vm.isLoading) {
+      return [
+        SliverFillRemaining(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(color: AppColors.black),
+                SizedBox(height: context.responsivePadding.top),
+                ResponsiveTextWidget(
+                  'Loading reels...',
+                  color: AppColors.black.withOpacity(0.7),
+                  fontSize: AppDimensions.textM,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ];
+    }
+
+    if (videos.isEmpty) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Padding(
             padding: EdgeInsets.all(context.responsivePadding.top),
             child: Center(
-              child: ResponsiveTextWidget(
-                'No reels yet',
-                color: AppColors.black,
-                fontSize: AppDimensions.textM,
+              child: ResponsiveTextWidget('No reels yet', color: AppColors.black, fontSize: AppDimensions.textM),
+            ),
+          ),
+        ),
+      ];
+    }
+
+    return [
+      SliverGrid.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: context.isLargeScreen ? 4 : 3,
+          mainAxisSpacing: context.isLargeScreen ? 4 : 2,
+          crossAxisSpacing: context.isLargeScreen ? 4 : 2,
+        ),
+        itemCount: videos.length,
+        itemBuilder: (ctx, index) => _buildVideoGridCell(ctx, vm, index),
+      ),
+      SliverToBoxAdapter(
+        child: _buildVideosFooter(context, vm),
+      ),
+    ];
+  }
+
+  Widget _buildVideoGridCell(BuildContext context, ProfileViewModel vm, int index) {
+    final postInfo = index < vm.videoPostInfos.length ? vm.videoPostInfos[index] : null;
+    return GestureDetector(
+      onTap: () => _onVideoGridTap(context, vm, index, postInfo),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(
+            color: AppColors.black.withOpacity(0.5),
+            child: Center(
+              child: Icon(Icons.play_circle_outline, color: AppColors.black, size: context.responsiveIconXL),
+            ),
+          ),
+          if (postInfo != null && (postInfo['hasMultipleMedia'] as bool? ?? false))
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: AppColors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(4)),
+                child: const Icon(Icons.collections, color: AppColors.accent, size: 16),
               ),
             ),
-          );
-        }
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: context.isLargeScreen ? 4 : context.isMediumScreen ? 3 : 3,
-                mainAxisSpacing: context.isLargeScreen ? 4 : 2,
-                crossAxisSpacing: context.isLargeScreen ? 4 : 2,
-              ),
-              itemCount: videos.length,
-              itemBuilder: (context, index) {
-                final postInfo = index < viewModel.videoPostInfos.length
-                    ? viewModel.videoPostInfos[index]
-                    : null;
-                
-                return GestureDetector(
-                  onTap: () async {
-                    // Fetch only the tapped video post with full details
-                    if (kDebugMode) {
-                      print('🖱️ User tapped on video at index $index');
-                      if (postInfo != null) {
-                        print('   Post ID: ${postInfo['postId']}');
-                        print('   Collection: ${postInfo['collectionName']}');
-                      } else {
-                        print('   ⚠️ No post info available for this index');
-                      }
-                    }
-
-                    if (postInfo == null) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Post information not available'),
-                            backgroundColor: AppColors.error,
-                          ),
-                        );
-                      }
-                      return;
-                    }
-                    
-                    // Show loading indicator
-                    showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.black,
-                        ),
-                      ),
-                    );
-
-                    // Fetch only the tapped post with full details
-                    final fullPost = await viewModel.fetchSinglePost(postInfo);
-                    
-                    // Close loading dialog
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                    }
-
-                    if (fullPost != null && context.mounted) {
-                      if (widget.onNavigateToSub != null) {
-                        widget.onNavigateToSub!('posts');
-                      } else {
-                        final collectionName = postInfo['collectionName'] as String?;
-                        if (kDebugMode) {
-                          print('🚀 Navigating to PostsView with single video post');
-                          print('   Collection: $collectionName');
-                        }
-                        final result = await Navigator.pushNamed(
-                          context,
-                          AppRoutes.posts,
-                          arguments: {
-                            'posts': [fullPost],
-                            'collectionName': collectionName,
-                          },
-                        );
-                        if (context.mounted && result is Map<String, dynamic>) {
-                          final deletedIds = result['deletedPostIds'] as List<String>?;
-                          final wasEdited = result['wasEdited'] as bool? ?? false;
-                          if (deletedIds != null && deletedIds.isNotEmpty) {
-                            viewModel.removeDeletedPosts(deletedIds);
-                          }
-                          if (wasEdited) {
-                            viewModel.refreshPostsOnly(context);
-                          }
-                        }
-                      }
-                    } else if (context.mounted) {
-                      if (kDebugMode) {
-                        print('❌ Post not found or failed to load');
-                      }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Failed to load post. Please try again.'),
-                          backgroundColor: AppColors.error,
-                        ),
-                      );
-                    }
-                  },
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Container(
-                        color: AppColors.black.withOpacity(0.5),
-                        child: Center(
-                          child: Icon(
-                            Icons.play_circle_outline,
-                            color: AppColors.black,
-                            size: context.responsiveIconXL,
-                          ),
-                        ),
-                      ),
-                      // Show icon overlay if post has multiple videos
-                      if (postInfo != null && (postInfo['hasMultipleMedia'] as bool? ?? false))
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: Container(
-                            padding: EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: AppColors.black.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Icon(
-                              Icons.collections,
-                              color: AppColors.accent, // Yellow color
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      // Video indicator
-                      Positioned(
-                        bottom: 4,
-                        right: 4,
-                        child: Icon(
-                          Icons.videocam,
-                          color: AppColors.black,
-                          size: context.responsiveIconM,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            // Load More button
-            if (hasMore)
-              Padding(
-                padding: EdgeInsets.symmetric(
-                  vertical: context.responsivePadding.top,
-                  horizontal: context.responsivePadding.left,
-                ),
-                child: ElevatedButton(
-                  onPressed: isLoadingMore
-                      ? null
-                      : () => viewModel.loadMoreVideos(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.white,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: context.responsivePadding.left * 2,
-                      vertical: context.responsivePadding.top,
-                    ),
-                  ),
-                  child: isLoadingMore
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
-                          ),
-                        )
-                      : ResponsiveTextWidget(
-                          'Load More',
-                          color: AppColors.black,
-                          fontSize: AppDimensions.textM,
-                        ),
-                ),
-              ),
-          ],
-        );
-      },
+          Positioned(
+            bottom: 4,
+            right: 4,
+            child: Icon(Icons.videocam, color: AppColors.black, size: context.responsiveIconM),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _onVideoGridTap(
+    BuildContext context,
+    ProfileViewModel vm,
+    int index,
+    Map<String, dynamic>? postInfo,
+  ) async {
+    if (kDebugMode) {
+      print('🖱️ Tapped video at index $index — postId=${postInfo?['postId']}, collection=${postInfo?['collectionName']}');
+    }
+    if (postInfo == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Post information not available'), backgroundColor: AppColors.error),
+        );
+      }
+      return;
+    }
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.black)),
+      );
+    }
+    final fullPost = await vm.fetchSinglePost(postInfo);
+    if (context.mounted) Navigator.pop(context);
+    if (fullPost != null && context.mounted) {
+      if (widget.onNavigateToSub != null) {
+        widget.onNavigateToSub!('posts');
+      } else {
+        final collectionName = postInfo['collectionName'] as String?;
+        final result = await Navigator.pushNamed(
+          context,
+          AppRoutes.posts,
+          arguments: {'posts': [fullPost], 'collectionName': collectionName},
+        );
+        if (context.mounted && result is Map<String, dynamic>) {
+          final deletedIds = result['deletedPostIds'] as List<String>?;
+          if (deletedIds != null && deletedIds.isNotEmpty) vm.removeDeletedPosts(deletedIds);
+          if (result['wasEdited'] == true) vm.refreshPostsOnly(context);
+        }
+      }
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load post. Please try again.'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  Widget _buildVideosFooter(BuildContext context, ProfileViewModel vm) {
+    if (vm.isLoadingMoreVideos) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: context.responsivePadding.top),
+        child: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.black),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   /// ---------------- HELPERS ---------------- 

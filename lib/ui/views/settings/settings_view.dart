@@ -198,12 +198,6 @@ class SettingsView extends BaseView<SettingsViewModel> {
                       title: AppStrings.privacyPolicy,
                       onTap: viewModel.openPrivacyPolicy,
                     ),
-                    _buildTile(
-                      icon: Icons.article_outlined,
-                      iconColor: AppColors.deepOrange,
-                      title: AppStrings.termsAndConditions,
-                      onTap: viewModel.openTerms,
-                    ),
                   ],
                 ),
               ),

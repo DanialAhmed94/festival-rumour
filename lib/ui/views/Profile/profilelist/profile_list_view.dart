@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/attended_festivals_tab.dart';
 import 'package:festival_rumour/ui/views/Profile/profilelist/widgets/festivals_tab.dart';
@@ -16,8 +18,9 @@ import '../../../../shared/widgets/responsive_text_widget.dart';
 import '../../../../shared/widgets/responsive_widget.dart';
 import 'profile_list_view_model.dart';
 
-/// Called when user taps a festival in Favourite or Attended list: (context, festival).
-typedef OnFestivalSelected = void Function(BuildContext context, FestivalModel festival);
+/// Called when user taps a festival in Favourite or Attended list (async navigation allowed).
+typedef OnFestivalSelected =
+    Future<void> Function(BuildContext context, FestivalModel festival);
 
 class ProfileListView extends BaseView<ProfileListViewModel> {
   final int initialTab; // 0 = Followers, 1 = Following, 2 = Favourite Festivals, 3 = Attended festivals
@@ -203,7 +206,7 @@ class ProfileListView extends BaseView<ProfileListViewModel> {
     final onFestivalTap = onFestivalSelected != null
         ? (BuildContext ctx, Map<String, dynamic> item) {
             final festival = FestivalModel.fromMap(item);
-            onFestivalSelected!(ctx, festival);
+            unawaited(onFestivalSelected!(ctx, festival));
           }
         : null;
     switch (viewModel.currentTab) {

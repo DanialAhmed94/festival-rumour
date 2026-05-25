@@ -47,6 +47,11 @@ class ProfileViewModel extends BaseViewModel {
   bool get isInitialized => _isInitialized;
   bool _isRefreshingProfile = false; // Prevent multiple simultaneous refreshes
   bool _hasRefreshedProfile = false; // Track if we've already refreshed in this lifecycle
+
+  // FestivalProvider race-condition guard (Bug 1).
+  // _pendingFestivalProvider is non-null while the one-shot listener is active
+  // (i.e. the profile loaded while FestivalProvider had no festivals yet).
+  FestivalProvider? _pendingFestivalProvider;
   
   // Follow state
   bool _isFollowing = false;
@@ -58,7 +63,7 @@ class ProfileViewModel extends BaseViewModel {
   
   // Favorite festivals state
   int _favoriteFestivalsCount = 0;
-  StreamSubscription<DocumentSnapshot>? _favoriteFestivalsSubscription;
+  // Note: _startUserDataListener already tracks favoriteFestivals — no second subscription needed.
 
   // Attended festivals count (default 0)
   int _attendedFestivalsCount = 0;
@@ -284,8 +289,9 @@ class ProfileViewModel extends BaseViewModel {
       // Cancel any existing listeners
       _userDataSubscription?.cancel();
       _userDataSubscription = null;
-      _favoriteFestivalsSubscription?.cancel();
-      _favoriteFestivalsSubscription = null;
+      // Remove any pending festival-race listener
+      _pendingFestivalProvider?.removeListener(_onFestivalsReady);
+      _pendingFestivalProvider = null;
     }
     
     if (_isInitialized) return; // Prevent multiple initializations with same userId
@@ -341,6 +347,17 @@ class ProfileViewModel extends BaseViewModel {
                 festival.title,
               ))
           .toList();
+
+      // Bug 1 guard: if FestivalProvider hasn't loaded its festivals yet, register
+      // a one-shot listener so we can reload posts once they arrive.
+      // Only register once (_pendingFestivalProvider == null) to avoid duplicates.
+      if (festivalCollectionNames.isEmpty && _pendingFestivalProvider == null && !isDisposed) {
+        _pendingFestivalProvider = festivalProvider;
+        festivalProvider.addListener(_onFestivalsReady);
+        if (kDebugMode) {
+          print('[Profile] FestivalProvider empty at init — registered reload listener');
+        }
+      }
 
       if (hasInternet) {
         // Online: Try to fetch fresh data, but cache will be checked first anyway
@@ -549,8 +566,7 @@ class ProfileViewModel extends BaseViewModel {
             print('📊 Post count: $_postCount (using existing value - not cached separately)');
             print('🔄 Starting real-time listener for user (offline mode): ${currentUser!.uid}');
           }
-          _startUserDataListener(currentUser!.uid);
-          _startFavoriteFestivalsListener(currentUser!.uid);
+          _startUserDataListener(currentUser!.uid); // covers favoriteFestivals count too
         }
       }
 
@@ -726,11 +742,50 @@ class ProfileViewModel extends BaseViewModel {
     if (changed) notifyListeners();
   }
 
+  /// Reload the post grid (images + videos) using the current festival list from context.
   Future<void> refreshPostsOnly(BuildContext context) async {
-    final targetUserId = _targetUserId;
-    if (targetUserId == null) return;
+    final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
+    final festivalCollectionNames = festivalProvider.allFestivals
+        .map((festival) => FirestoreService.getFestivalCollectionName(
+              festival.id,
+              festival.title,
+            ))
+        .toList();
+    await _refreshPostsWithCollections(festivalCollectionNames);
+  }
 
-    // Clear only posts data
+  /// Called when FestivalProvider fires after the profile was initialised with an
+  /// empty festival list (Bug 1 — FestivalProvider race condition).
+  void _onFestivalsReady() {
+    if (isDisposed) return;
+    final provider = _pendingFestivalProvider;
+    if (provider == null) return;
+    if (provider.allFestivals.isEmpty) return;
+
+    // Remove listener immediately to prevent re-entrant / duplicate calls.
+    provider.removeListener(_onFestivalsReady);
+    _pendingFestivalProvider = null;
+
+    final names = provider.allFestivals
+        .map((f) => FirestoreService.getFestivalCollectionName(f.id, f.title))
+        .toList();
+
+    if (kDebugMode) {
+      print('[Profile] FestivalProvider ready (${names.length} collections) — reloading posts');
+    }
+
+    // Fire-and-forget: async call from a synchronous listener callback is safe.
+    _refreshPostsWithCollections(names);
+  }
+
+  /// Internal post-grid reload that accepts an already-resolved [festivalCollectionNames]
+  /// list. Used by both [refreshPostsOnly] (from view, via context) and [_onFestivalsReady]
+  /// (from the festival-race listener, no context available).
+  Future<void> _refreshPostsWithCollections(List<String> festivalCollectionNames) async {
+    final targetUserId = _targetUserId;
+    if (targetUserId == null || isDisposed) return;
+
+    // Clear only posts data, keep profile info (bio, counts, photo) intact.
     _userImages.clear();
     _userVideos.clear();
     _imagePostInfos.clear();
@@ -740,18 +795,9 @@ class ProfileViewModel extends BaseViewModel {
     _hasMoreImages = true;
     _hasMoreVideos = true;
 
-    notifyListeners();
+    if (!isDisposed) notifyListeners();
 
     try {
-      final festivalProvider = Provider.of<FestivalProvider>(context, listen: false);
-      final allFestivals = festivalProvider.allFestivals;
-      final festivalCollectionNames = allFestivals
-          .map((festival) => FirestoreService.getFestivalCollectionName(
-                festival.id,
-                festival.title,
-              ))
-          .toList();
-
       // Reload images
       try {
         final imagesResult = await _firestoreService.getUserImagesPaginated(
@@ -760,6 +806,7 @@ class ProfileViewModel extends BaseViewModel {
           limit: 20,
           useCache: false, // Force fresh data
         );
+        if (isDisposed) return;
         _userImages = List<String>.from(imagesResult['images'] as List);
         _imagePostInfos = imagesResult['postInfos'] != null
             ? List<Map<String, dynamic>>.from(imagesResult['postInfos'] as List)
@@ -768,12 +815,10 @@ class ProfileViewModel extends BaseViewModel {
         _hasMoreImages = imagesResult['hasMore'] as bool? ?? false;
 
         if (kDebugMode) {
-          print('✅ Refreshed images: ${_userImages.length}');
+          print('✅ Refreshed images: ${_userImages.length} (hasMore: $_hasMoreImages)');
         }
       } catch (e) {
-        if (kDebugMode) {
-          print('⚠️ Could not refresh images: $e');
-        }
+        if (kDebugMode) print('⚠️ Could not refresh images: $e');
       }
 
       // Reload videos
@@ -784,6 +829,7 @@ class ProfileViewModel extends BaseViewModel {
           limit: 20,
           useCache: false, // Force fresh data
         );
+        if (isDisposed) return;
         _userVideos = List<String>.from(videosResult['videos'] as List);
         _videoPostInfos = videosResult['postInfos'] != null
             ? List<Map<String, dynamic>>.from(videosResult['postInfos'] as List)
@@ -792,19 +838,15 @@ class ProfileViewModel extends BaseViewModel {
         _hasMoreVideos = videosResult['hasMore'] as bool? ?? false;
 
         if (kDebugMode) {
-          print('✅ Refreshed videos: ${_userVideos.length}');
+          print('✅ Refreshed videos: ${_userVideos.length} (hasMore: $_hasMoreVideos)');
         }
       } catch (e) {
-        if (kDebugMode) {
-          print('⚠️ Could not refresh videos: $e');
-        }
+        if (kDebugMode) print('⚠️ Could not refresh videos: $e');
       }
 
-      notifyListeners();
+      if (!isDisposed) notifyListeners();
     } catch (e) {
-      if (kDebugMode) {
-        print('❌ Error refreshing posts: $e');
-      }
+      if (kDebugMode) print('❌ Error refreshing posts: $e');
     }
   }
 
@@ -921,21 +963,31 @@ class ProfileViewModel extends BaseViewModel {
       );
 
       if (fullPost != null) {
-        // Add collectionName to the post data if not present
         fullPost['collectionName'] = collectionName;
-        fullPost['postId'] = postId; // Ensure postId is set
+        fullPost['postId'] = postId;
 
-        // Store post data in service for sub-navigation (when onNavigateToSub is used)
+        // Overwrite the stale photo/name baked into the post document at
+        // creation time with the latest values from the profile cache.
+        // This ensures the post detail screen always shows the current avatar.
+        final postUserId = fullPost['userId'] as String?;
+        if (postUserId != null && postUserId.isNotEmpty) {
+          final cachedPhoto = _userPhotoCacheService.getCachedPhotoUrl(postUserId);
+          final cachedName = _userPhotoCacheService.getCachedDisplayName(postUserId);
+          if (cachedPhoto != null && cachedPhoto.isNotEmpty) {
+            fullPost['userPhotoUrl'] = cachedPhoto;
+          }
+          if (cachedName != null && cachedName.isNotEmpty) {
+            fullPost['username'] = cachedName;
+          }
+        }
+
         _postDataService.setPostData([fullPost], collectionName: collectionName);
-        
-        // Also store in ViewModel for direct access
         _selectedPostData = [fullPost];
         _selectedPostCollectionName = collectionName;
         notifyListeners();
 
         if (kDebugMode) {
-          print('✅ Fetched full post details for: $postId');
-          print('   Stored post data in PostDataService for sub-navigation');
+          print('✅ Fetched full post details for: $postId (photo enriched from cache)');
         }
       } else {
         if (kDebugMode) {
@@ -1361,72 +1413,6 @@ class ProfileViewModel extends BaseViewModel {
     );
   }
 
-  /// Start listening to real-time favorite festivals changes
-  void _startFavoriteFestivalsListener(String userId) {
-    if (isDisposed) {
-      if (kDebugMode) {
-        print('⚠️ Cannot start favorite festivals listener: ViewModel is disposed');
-      }
-      return;
-    }
-
-    // Cancel existing subscription if any
-    _favoriteFestivalsSubscription?.cancel();
-    _favoriteFestivalsSubscription = null;
-
-    if (kDebugMode) {
-      print('🔄 Setting up real-time listener for favorite festivals: $userId');
-    }
-
-    try {
-      _favoriteFestivalsSubscription = FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .snapshots()
-          .listen(
-            (DocumentSnapshot snapshot) {
-              if (isDisposed) {
-                if (kDebugMode) {
-                  print('⚠️ Favorite festivals listener callback called but ViewModel is disposed');
-                }
-                return;
-              }
-
-              if (snapshot.exists) {
-                final data = snapshot.data() as Map<String, dynamic>?;
-                if (data != null) {
-                  final favoriteFestivals = data['favoriteFestivals'] as List<dynamic>?;
-                  final newCount = (favoriteFestivals?.length ?? 0).clamp(0, double.infinity).toInt();
-                  
-                  if (_favoriteFestivalsCount != newCount) {
-                    if (kDebugMode) {
-                      print('🔄 Favorite festivals count updated via listener: $_favoriteFestivalsCount -> $newCount');
-                    }
-                    _favoriteFestivalsCount = newCount;
-                    notifyListeners();
-                  }
-                }
-              }
-            },
-            onError: (error, stackTrace) {
-              if (isDisposed) return;
-              if (kDebugMode) {
-                print('❌ Error in favorite festivals stream: $error');
-              }
-            },
-            cancelOnError: false,
-          );
-
-      if (kDebugMode) {
-        print('✅ Started real-time listener for favorite festivals: $userId');
-      }
-    } catch (e, stackTrace) {
-      if (kDebugMode) {
-        print('❌ Error starting favorite festivals listener: $e');
-      }
-    }
-  }
-
   void _onProfileCacheUpdated() {
     final uid = _viewingUserId ?? _authService.currentUser?.uid;
     if (uid == null) return;
@@ -1457,10 +1443,10 @@ class ProfileViewModel extends BaseViewModel {
     _userDataSubscription?.cancel();
     _userDataSubscription = null;
 
-    // Cancel favorite festivals listener
-    _favoriteFestivalsSubscription?.cancel();
-    _favoriteFestivalsSubscription = null;
-    
+    // Remove any pending festival-race listener to prevent callbacks on dead ViewModel
+    _pendingFestivalProvider?.removeListener(_onFestivalsReady);
+    _pendingFestivalProvider = null;
+
     // Cancel search debounce timer
     _searchDebounceTimer?.cancel();
     _searchDebounceTimer = null;

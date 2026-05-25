@@ -9,6 +9,9 @@ class ChatMessageModel {
   final DateTime createdAt;
   final String? userPhotoUrl;
   final String chatRoomId;
+
+  /// Frozen label at parse time so list rows do not re-do [DateTime.now] work every build.
+  final String? _cachedTimeAgo;
   /// Optional: 'location' for shared-location messages
   final String? type;
   final double? lat;
@@ -23,11 +26,36 @@ class ChatMessageModel {
     required this.createdAt,
     this.userPhotoUrl,
     required this.chatRoomId,
+    String? cachedTimeAgo,
     this.type,
     this.lat,
     this.lng,
     this.festivalName,
-  });
+  }) : _cachedTimeAgo = cachedTimeAgo;
+
+  static String timeAgoLabel(DateTime createdAt, DateTime referenceNow) {
+    final difference = referenceNow.difference(createdAt);
+
+    if (createdAt.year == referenceNow.year &&
+        createdAt.month == referenceNow.month &&
+        createdAt.day == referenceNow.day) {
+      final hour = createdAt.hour;
+      final minute = createdAt.minute.toString().padLeft(2, '0');
+      final period = hour >= 12 ? 'PM' : 'AM';
+      final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+      return '$displayHour:$minute $period';
+    }
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} ${difference.inMinutes == 1 ? 'minute' : 'minutes'} ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} ${difference.inHours == 1 ? 'hour' : 'hours'} ago';
+    } else {
+      return '${difference.inDays} ${difference.inDays == 1 ? 'day' : 'days'} ago';
+    }
+  }
 
   bool get isLocationMessage =>
       type == 'location' && lat != null && lng != null;
@@ -35,17 +63,20 @@ class ChatMessageModel {
   /// Create ChatMessageModel from Firestore document
   factory ChatMessageModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    final createdAt = data['createdAt'] as Timestamp?;
+    final createdAtTs = data['createdAt'] as Timestamp?;
+    final createdAt = createdAtTs?.toDate() ?? DateTime.now();
     final lat = data['lat'];
     final lng = data['lng'];
+    final cached = timeAgoLabel(createdAt, DateTime.now());
     return ChatMessageModel(
       messageId: doc.id,
       userId: data['userId'] as String? ?? '',
       username: data['username'] as String? ?? 'Unknown',
       content: data['content'] as String? ?? '',
-      createdAt: createdAt?.toDate() ?? DateTime.now(),
+      createdAt: createdAt,
       userPhotoUrl: data['userPhotoUrl'] as String?,
       chatRoomId: data['chatRoomId'] as String? ?? '',
+      cachedTimeAgo: cached,
       type: data['type'] as String?,
       lat: lat is num ? lat.toDouble() : null,
       lng: lng is num ? lng.toDouble() : null,
@@ -71,32 +102,7 @@ class ChatMessageModel {
   }
 
   /// Get time ago string (e.g., "5 minutes ago", "2:30 PM")
-  String get timeAgo {
-    final now = DateTime.now();
-    final difference = now.difference(createdAt);
-    
-    // If same day, show time (e.g., "2:30 PM")
-    if (createdAt.year == now.year && 
-        createdAt.month == now.month && 
-        createdAt.day == now.day) {
-      final hour = createdAt.hour;
-      final minute = createdAt.minute.toString().padLeft(2, '0');
-      final period = hour >= 12 ? 'PM' : 'AM';
-      final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-      return '$displayHour:$minute $period';
-    }
-    
-    // If less than 1 minute, show "Just now"
-    if (difference.inMinutes < 1) {
-      return "Just now";
-    } else if (difference.inMinutes < 60) {
-      return "${difference.inMinutes} ${difference.inMinutes == 1 ? 'minute' : 'minutes'} ago";
-    } else if (difference.inHours < 24) {
-      return "${difference.inHours} ${difference.inHours == 1 ? 'hour' : 'hours'} ago";
-    } else {
-      return "${difference.inDays} ${difference.inDays == 1 ? 'day' : 'days'} ago";
-    }
-  }
+  String get timeAgo => _cachedTimeAgo ?? timeAgoLabel(createdAt, DateTime.now());
 
   /// Create a copy with updated fields
   ChatMessageModel copyWith({
@@ -107,19 +113,25 @@ class ChatMessageModel {
     DateTime? createdAt,
     String? userPhotoUrl,
     String? chatRoomId,
+    String? cachedTimeAgo,
     String? type,
     double? lat,
     double? lng,
     String? festivalName,
   }) {
+    final nextCreated = createdAt ?? this.createdAt;
     return ChatMessageModel(
       messageId: messageId ?? this.messageId,
       userId: userId ?? this.userId,
       username: username ?? this.username,
       content: content ?? this.content,
-      createdAt: createdAt ?? this.createdAt,
+      createdAt: nextCreated,
       userPhotoUrl: userPhotoUrl ?? this.userPhotoUrl,
       chatRoomId: chatRoomId ?? this.chatRoomId,
+      cachedTimeAgo: cachedTimeAgo ??
+          (createdAt != null
+              ? timeAgoLabel(nextCreated, DateTime.now())
+              : _cachedTimeAgo),
       type: type ?? this.type,
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,

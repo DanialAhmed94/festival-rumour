@@ -72,6 +72,61 @@ class GeocodingService {
     }
   }
 
+  /// Reverse-geocode to a single-line postal-style address for forms (job location, etc.).
+  /// Returns null if lookup fails or result would be unusable.
+  Future<String?> getAddressLineFromCoordinates(
+    double latitude,
+    double longitude,
+  ) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(latitude, longitude);
+      if (placemarks.isEmpty) return null;
+      final line = formatPlacemarkAsSingleLine(placemarks.first).trim();
+      if (line.isEmpty) return null;
+      return line;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error reverse geocoding coordinates: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Human-readable street / city line from platform [Placemark].
+  String formatPlacemarkAsSingleLine(Placemark p) {
+    String? z(String? s) {
+      final t = s?.trim();
+      if (t == null || t.isEmpty) return null;
+      return t;
+    }
+
+    final streetFromParts = '${z(p.subThoroughfare) ?? ''} ${z(p.thoroughfare) ?? ''}'.trim();
+    final streetLine = z(p.street) ??
+        (streetFromParts.isNotEmpty ? streetFromParts : null) ??
+        z(p.name);
+
+    final parts = <String>[];
+    void add(String? s) {
+      final t = z(s);
+      if (t != null && !parts.contains(t)) parts.add(t);
+    }
+
+    add(streetLine);
+
+    final city = z(p.locality) ?? z(p.subAdministrativeArea);
+    add(city);
+
+    final postal = z(p.postalCode);
+    if (postal != null) add(postal);
+
+    final region = z(p.administrativeArea);
+    if (region != null && region != city) add(region);
+
+    add(z(p.country));
+
+    return parts.join(', ');
+  }
+
   /// Clear the location cache
   void clearCache() {
     _locationCache.clear();

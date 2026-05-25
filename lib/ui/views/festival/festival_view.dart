@@ -1,18 +1,17 @@
+import 'dart:async';
+
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
 import 'package:festival_rumour/ui/views/festival/widgets/festivalcard.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/base_view.dart';
-import '../../../core/providers/festival_provider.dart';
 import '../../../core/router/app_router.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/responsive_widget.dart';
@@ -574,7 +573,7 @@ class FestivalView extends BaseView<FestivalViewModel> {
                       onTap: () {
                         viewModel.unfocusSearch();
                         viewModel.clearSearch();
-                        viewModel.navigateToHome(context, festival);
+                        unawaited(viewModel.navigateToHome(context, festival));
                       },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -697,35 +696,43 @@ class FestivalView extends BaseView<FestivalViewModel> {
       );
     }
 
-    return PageView.builder(
-      controller: pageController,
-      padEnds: true,
-      onPageChanged: (page) {
-        viewModel.setPage(page);
-      },
-      itemBuilder: (context, index) {
-        final festival = festivalsToShow[index % festivalsToShow.length];
-        return SizedBox(
-          width: double.infinity,
-          child: ResponsivePadding(
-            mobilePadding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.paddingS,
+    return AbsorbPointer(
+      absorbing: viewModel.navbarGateBusy,
+      child: PageView.builder(
+        controller: pageController,
+        padEnds: true,
+        onPageChanged: (page) {
+          viewModel.setPage(page);
+        },
+        itemBuilder: (context, index) {
+          final festival = festivalsToShow[index % festivalsToShow.length];
+          final swipeHintEligible = index == viewModel.currentPage;
+          return SizedBox(
+            width: double.infinity,
+            key: ValueKey<int>(index),
+            child: ResponsivePadding(
+              mobilePadding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingS,
+              ),
+              tabletPadding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingM,
+              ),
+              desktopPadding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingL,
+              ),
+              child: FestivalCard(
+                festival: festival,
+                swipeHintEligible: swipeHintEligible,
+                onBack: viewModel.goBack,
+                onTap: () {
+                  unawaited(viewModel.navigateToHome(context, festival));
+                },
+                onNext: viewModel.goToNextSlide,
+              ),
             ),
-            tabletPadding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.paddingM,
-            ),
-            desktopPadding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.paddingL,
-            ),
-            child: FestivalCard(
-              festival: festival,
-              onBack: viewModel.goBack,
-              onTap: () => viewModel.navigateToHome(context, festival),
-              onNext: viewModel.goToNextSlide,
-            ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -906,50 +913,9 @@ class FestivalView extends BaseView<FestivalViewModel> {
     return _ScrollableLogosWidget(viewModel: viewModel);
   }
 
-
-  Widget _buildLogoContainer(
-    BuildContext context,
-    String assetPath, {
-    VoidCallback? onTap,
-  }) {
-    final logoSize =
-        context.isSmallScreen
-            ? 50.0
-            : context.isMediumScreen
-            ? 60.0
-            : 70.0;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: logoSize,
-        height: logoSize,
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Image.asset(
-          assetPath,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) {
-            return Center(
-              child: Icon(
-                Icons.image_not_supported,
-                color: AppColors.grey600,
-                size: logoSize * 0.5,
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
   Widget _buildViewAllButton(BuildContext context) {
     return SizedBox(
-      height: 24,
+      height: 28,
       width: double.infinity,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingM),
@@ -966,11 +932,12 @@ class FestivalView extends BaseView<FestivalViewModel> {
                 padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingS),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const ResponsiveTextWidget(
+              child: ResponsiveTextWidget(
                 AppStrings.viewAll,
                 textType: TextType.body,
                 color: AppColors.black,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.bold,
+                fontSize: AppDimensions.textM + 1,
               ),
             ),
           ],
@@ -995,11 +962,15 @@ class FestivalView extends BaseView<FestivalViewModel> {
         onTap: () => viewModel.navigateToGlobalFeed(context),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-          child: Image.asset(
-            AppAssets.festivalChatBanner,
-            width: double.infinity,
-            fit: BoxFit.fitWidth,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          child: Semantics(
+            button: true,
+            label: '${AppStrings.lunaFest2025}, ${AppStrings.open}',
+            child: Image.asset(
+              AppAssets.festivalsGlobalFeedBanner,
+              width: double.infinity,
+              fit: BoxFit.fitWidth,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
           ),
         ),
       ),
@@ -1012,39 +983,46 @@ class FestivalView extends BaseView<FestivalViewModel> {
     FestivalViewModel viewModel,
   ) {
     final selectedIndex = viewModel.selectedFilterTab;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
-      decoration: BoxDecoration(
-        color: AppColors.black,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
-      ),
-      child: Row(
-        children: [
-          _buildFilterTab(
-            context,
-            viewModel,
-            index: 0,
-            label: AppStrings.live,
-            icon: Icons.live_tv,
-            isSelected: selectedIndex == 0,
-          ),
-          _buildFilterTab(
-            context,
-            viewModel,
-            index: 1,
-            label: AppStrings.upcoming,
-            icon: Icons.schedule,
-            isSelected: selectedIndex == 1,
-          ),
-          _buildFilterTab(
-            context,
-            viewModel,
-            index: 2,
-            label: AppStrings.past,
-            icon: Icons.history,
-            isSelected: selectedIndex == 2,
-          ),
-        ],
+    final horizontalPadding = context.isSmallScreen
+        ? AppDimensions.paddingS
+        : context.isMediumScreen
+            ? AppDimensions.paddingM
+            : AppDimensions.paddingL;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.black,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusXXL),
+        ),
+        child: Row(
+          children: [
+            _buildFilterTab(
+              context,
+              viewModel,
+              index: 0,
+              label: AppStrings.live,
+              icon: Icons.live_tv,
+              isSelected: selectedIndex == 0,
+            ),
+            _buildFilterTab(
+              context,
+              viewModel,
+              index: 1,
+              label: AppStrings.upcoming,
+              icon: Icons.schedule,
+              isSelected: selectedIndex == 1,
+            ),
+            _buildFilterTab(
+              context,
+              viewModel,
+              index: 2,
+              label: AppStrings.past,
+              icon: Icons.history,
+              isSelected: selectedIndex == 2,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1118,38 +1096,67 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
   @override
   Widget build(BuildContext context) {
     final itemSpacing = context.isSmallScreen ? 10.0 : 14.0;
+    final minWideLayoutWidth = (_cardWidth * 3) + 16;
+
+    final cards = <Widget>[
+      _buildLogoCard(
+        context,
+        logoAsset: AppAssets.crapAdviserLogo,
+        label: 'Festival Toilet',
+        onTap: () => widget.viewModel.openPartnerAppStore(
+              context,
+              iosAppStoreUrl: crapAdviserAppStoreUrl,
+              androidPlayStoreUrl: crapAdviserPlayStoreUrl,
+            ),
+      ),
+      _buildLogoCard(
+        context,
+        logoAsset: AppAssets.organiserLogo,
+        label: 'Festival Organiser',
+        onTap: () => widget.viewModel.openPartnerAppStore(
+              context,
+              iosAppStoreUrl: caAppStoreUrl,
+              androidPlayStoreUrl: festivalOrganiserPlayStoreUrl,
+            ),
+      ),
+      _buildLogoCard(
+        context,
+        logoAsset: AppAssets.festieFoodieLogo,
+        label: 'Festival Foodie',
+        onTap: () => widget.viewModel.openPartnerAppStore(
+              context,
+              iosAppStoreUrl: festieFoodieAppStoreUrl,
+              androidPlayStoreUrl: festieFoodiePlayStoreUrl,
+            ),
+      ),
+    ];
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
           height: _cardHeight,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: itemSpacing),
-            children: [
-              _buildLogoCard(
-                context,
-                logoAsset: AppAssets.crapAdviserLogo,
-                label: 'Festival Toilet',
-                logoPadding: EdgeInsets.zero,
-                onTap: () => widget.viewModel.openAppStoreIOS(crapAdviserAppStoreUrl),
-              ),
-              SizedBox(width: itemSpacing),
-              _buildLogoCard(
-                context,
-                logoAsset: AppAssets.organiserLogo,
-                label: 'Festival Organiser',
-                onTap: () => widget.viewModel.openAppStoreIOS(caAppStoreUrl),
-              ),
-              SizedBox(width: itemSpacing),
-              _buildLogoCard(
-                context,
-                logoAsset: AppAssets.festieFoodieLogo,
-                label: 'Festival Foodie',
-                onTap: () => widget.viewModel.openAppStoreIOS(festieFoodieAppStoreUrl),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < minWideLayoutWidth) {
+                return ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: EdgeInsets.symmetric(horizontal: itemSpacing),
+                  children: [
+                    cards[0],
+                    SizedBox(width: itemSpacing),
+                    cards[1],
+                    SizedBox(width: itemSpacing),
+                    cards[2],
+                  ],
+                );
+              }
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: cards,
+              );
+            },
           ),
         ),
         const SizedBox(height: 12),
@@ -1197,13 +1204,16 @@ class _ScrollableLogosWidgetState extends State<_ScrollableLogosWidget> {
               clipBehavior: Clip.antiAlias,
               child: Padding(
                 padding: logoPadding,
-                child: Image.asset(
-                  logoAsset,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Icon(
-                    Icons.apps,
-                    color: const Color(0xFFFC2E95),
-                    size: _logoSize * 0.5,
+                child: SizedBox.expand(
+                  child: Image.asset(
+                    logoAsset,
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
+                    errorBuilder: (_, __, ___) => Icon(
+                      Icons.apps,
+                      color: const Color(0xFFFC2E95),
+                      size: _logoSize * 0.5,
+                    ),
                   ),
                 ),
               ),

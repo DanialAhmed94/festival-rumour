@@ -1,11 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:festival_rumour/firebase_options.dart';
-import 'package:festival_rumour/services/notification_service.dart';
 import 'package:festival_rumour/util/firebase_notification_service.dart';
 import 'package:festival_rumour/util/notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_assets.dart';
@@ -18,14 +18,12 @@ import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'core/di/locator.dart';
 import 'core/services/navigation_service.dart';
-import 'core/services/error_handler_service.dart';
+import 'core/services/notification_storage_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/providers/festival_provider.dart';
 
 const String _kChatBadgeStorageKey = 'chat_room_badge_counts';
-const String _kNotificationListKey = 'notification_list';
 const String _kNotificationsEnabledKey = 'notifications_enabled';
-const int _kMaxNotifications = 30;
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -57,23 +55,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 
   try {
-    final listJson = prefs.getString(_kNotificationListKey) ?? '[]';
-    final list = (jsonDecode(listJson) as List<dynamic>).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    final id = message.messageId ?? '${DateTime.now().millisecondsSinceEpoch}';
-    if (list.any((e) => e['id'] == id)) return;
-    final notif = message.notification;
-    list.insert(0, {
-      'id': id,
-      'title': notif?.title ?? 'Notification',
-      'message': notif?.body ?? '',
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'chatRoomId': chatRoomId,
-      'type': chatRoomId != null ? 'chat' : 'general',
-    });
-    if (list.length > _kMaxNotifications) {
-      list.removeRange(_kMaxNotifications, list.length);
-    }
-    await prefs.setString(_kNotificationListKey, jsonEncode(list));
+    await NotificationStorageService.persistFromRemoteMessage(message);
   } catch (e) {
     print('[NOTIF] Device: background notification list error: $e');
   }
@@ -81,7 +63,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 const String _kLogTag = '[APP]';
 
+/// Debug-only: avoids string work and I/O on every frame in release builds.
 void _log(String where, [String? detail]) {
+  if (!kDebugMode) return;
   if (detail != null) {
     debugPrint('$_kLogTag $where $detail');
   } else {
@@ -89,9 +73,49 @@ void _log(String where, [String? detail]) {
   }
 }
 
+/// Set once at startup. Do not assign from [MaterialApp.builder] (rebuild churn).
+void _configureGlobalErrorWidget() {
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    final message = details.exception.toString();
+    if (message.contains('404') ||
+        message.contains('HttpException') ||
+        message.contains('Invalid statusCode: 404')) {
+      return const SizedBox.shrink();
+    }
+    return ErrorWidget(details.exception);
+  };
+}
+
+/// Shared by bootstrap shell + splash [MaterialApp]s (same look, one allocation).
+final ThemeData _kShellMaterialTheme = ThemeData(
+  brightness: Brightness.light,
+  scaffoldBackgroundColor: Colors.white,
+  useMaterial3: true,
+);
+
 /// Main entry point of the Festival Rumour application
-void main() async {
+void main() {
+  // runZonedGuarded catches any uncaught async error that escapes Flutter's
+  // framework error handler (FlutterError.onError).  Without this wrapper,
+  // an unhandled Future/Stream error kills the root isolate and the OS
+  // restarts the app from the splash screen.
+  runZonedGuarded(_appMain, (error, stack) {
+    // Always log fatal async escapes; keep release signal (Crashlytics can hook here later).
+    debugPrint('[CRASH] Uncaught zone error: $error\n$stack');
+    // Log but do NOT rethrow — prevents cascade crash-to-splash.
+  });
+}
+
+Future<void> _appMain() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _configureGlobalErrorWidget();
+
+  // Catch synchronous Flutter framework errors (layout overflows, etc.)
+  // and log them instead of crashing in release builds.
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.dumpErrorToConsole(details);
+    // In debug mode Flutter already prints; in release, just log and continue.
+  };
 
   await Firebase.initializeApp();
 
@@ -107,20 +131,73 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  runApp(const _AppRoot());
+  String? notificationLaunchRoute;
+  final pendingLaunch =
+      FirebaseNotificationService.peekPendingNotificationData();
+  if (pendingLaunch != null) {
+    final user = FirebaseAuth.instance.currentUser;
+    final isLoggedIn = await locator<StorageService>().isLoggedIn();
+    if (isLoggedIn && user != null) {
+      final target = FirebaseNotificationService.parseLaunchTargetFromData(
+        pendingLaunch,
+      );
+      if (target != null) {
+        notificationLaunchRoute = AppRoutes.notificationLaunch;
+        AppLaunchInitialRouteArgs.value = target;
+      }
+      FirebaseNotificationService.consumePendingNotificationData();
+    }
+  }
+
+  runApp(_AppRoot(notificationLaunchRoute: notificationLaunchRoute));
 }
 
-/// Root widget: shows a simple splash (no theme, no router) for 3s, then the main app.
+/// Root widget: optional video splash, then the main app.
+/// Cold start from a notification + logged-in user: branded launch screen then chat deep link.
 class _AppRoot extends StatefulWidget {
-  const _AppRoot();
+  const _AppRoot({this.notificationLaunchRoute});
+
+  final String? notificationLaunchRoute;
 
   @override
   State<_AppRoot> createState() => _AppRootState();
 }
 
 class _AppRootState extends State<_AppRoot> {
+  /// False until we know whether to show video splash (skipped for notification cold start).
+  bool _bootstrapComplete = false;
   bool _showSplash = true;
   String _initialRoute = AppRoutes.welcome;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.notificationLaunchRoute != null) {
+      _log(
+        '_AppRoot.initState',
+        'notification cold start → initialRoute=${widget.notificationLaunchRoute}',
+      );
+      _bootstrapComplete = true;
+      _showSplash = false;
+      _initialRoute = widget.notificationLaunchRoute!;
+      return;
+    }
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final pendingLaunch =
+        FirebaseNotificationService.peekPendingNotificationData();
+    if (pendingLaunch == null) {
+      if (mounted) setState(() => _bootstrapComplete = true);
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Pending tap but user not logged in (main() did not consume). Show splash as usual.
+    setState(() => _bootstrapComplete = true);
+  }
 
   void _onSplashDone() async {
     _log('_AppRoot._onSplashDone()', 'start');
@@ -161,15 +238,21 @@ class _AppRootState extends State<_AppRoot> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_bootstrapComplete) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: _kShellMaterialTheme,
+        home: const Scaffold(
+          backgroundColor: Colors.white,
+          body: SizedBox.expand(),
+        ),
+      );
+    }
     if (_showSplash) {
       _log('_AppRoot.build()', 'showing splash');
       return MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: Brightness.light,
-          scaffoldBackgroundColor: Colors.white,
-          useMaterial3: true,
-        ),
+        theme: _kShellMaterialTheme,
         home: _SimpleSplashScreen(onDone: _onSplashDone),
       );
     }
@@ -344,7 +427,11 @@ class FestivalRumourApp extends StatelessWidget {
       builder: (context, child) {
         return MultiProvider(
           providers: [
-            ChangeNotifierProvider(create: (_) => FestivalProvider()),
+            // Use the locator singleton so FestivalViewModel can call
+            // setAllFestivals() without a BuildContext (Bug 1 fix).
+            ChangeNotifierProvider<FestivalProvider>.value(
+              value: locator<FestivalProvider>(),
+            ),
           ],
           child: MaterialApp(
             title: AppStrings.appName,
@@ -353,6 +440,9 @@ class FestivalRumourApp extends StatelessWidget {
             onGenerateInitialRoutes: onGenerateInitialRoutes,
             onGenerateRoute: onGenerateRoute,
             navigatorKey: locator<NavigationService>().navigatorKey,
+            navigatorObservers: <NavigatorObserver>[
+              locator<NavigationService>().routeObserver,
+            ],
             scaffoldMessengerKey:
                 locator<NavigationService>().scaffoldMessengerKey,
             builder: (context, widget) {
@@ -360,16 +450,6 @@ class FestivalRumourApp extends StatelessWidget {
                 'FestivalRumourApp.MaterialApp.builder()',
                 'widget=${widget?.runtimeType ?? "null"}',
               );
-              ErrorWidget.builder = (FlutterErrorDetails details) {
-                if (details.exception.toString().contains('404') ||
-                    details.exception.toString().contains('HttpException') ||
-                    details.exception.toString().contains(
-                      'Invalid statusCode: 404',
-                    )) {
-                  return const SizedBox.shrink();
-                }
-                return ErrorWidget(details.exception);
-              };
               final child = widget ?? const SizedBox.shrink();
               return MediaQuery(
                 data: MediaQuery.of(context).copyWith(

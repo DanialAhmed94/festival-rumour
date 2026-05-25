@@ -1,10 +1,15 @@
-import 'package:festival_rumour/ui/views/username/username_view.dart';
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../util/firebase_notification_service.dart';
+import '../di/locator.dart';
+import '../navigation/apply_festival_navbar_gate_outcome.dart';
+import '../services/profile_readiness_service.dart';
 import 'package:provider/provider.dart';
 import 'package:festival_rumour/core/providers/festival_provider.dart';
-import 'package:festival_rumour/ui/views/festival/festival_model.dart';
 import '../../ui/views/forgot_password/forgot_password_view.dart';
+import '../../ui/views/interest/interests_view.dart';
 import '../../ui/views/jobdetail/festivals_job_view.dart';
 import '../../ui/views/jobpost/festivals_job_post_view.dart';
 import '../../ui/views/jobpost/my_jobs_view.dart';
@@ -13,19 +18,19 @@ import '../../ui/views/jobpost/job_detail_view.dart';
 import '../../ui/views/signup/signupphone/signup_view.dart';
 import '../../ui/views/username/username_view.dart';
 import '../../ui/views/viewall/viewall_view.dart';
-import '../constants/app_strings.dart';
 import '../../ui/views/Profile/profile_view.dart';
 import '../../ui/views/Profile/profilelist/profile_list_view.dart';
 import '../../ui/views/Splash/SplashView.dart';
 import '../../ui/views/chat/chat_view.dart';
 import '../../ui/views/comment/comment_view.dart';
+import '../../ui/views/comment/comment_deep_link_view.dart';
 import '../../ui/views/detail/detail_view.dart';
 import '../../ui/views/discover/discover_view.dart';
 import '../../ui/views/event/event_view.dart';
 import '../../ui/views/festival/festival_view.dart';
 import '../../ui/views/festival/view_all_festivals_view.dart';
 import '../../ui/views/homeview/home_view.dart';
-import '../../ui/views/interest/interests_view.dart';
+import '../../ui/views/launch/notification_launch_view.dart';
 import '../../ui/views/name/name_view.dart';
 import '../../ui/views/navbar/navbaar.dart';
 import '../../ui/views/news/news_view.dart';
@@ -64,6 +69,7 @@ class AppRoutes {
   static const String name = '/name';
   static const String otp = '/otp';
   static const String splash = '/splash';
+  static const String notificationLaunch = '/notification_launch';
   static const String interest = '/interest';
   static const String home = '/home';
   static const String navbaar = '/navbaar';
@@ -78,6 +84,7 @@ class AppRoutes {
   static const String editAccount = '/edit_account';
   static const String leaderboard = '/leaderboard';
   static const String comments = '/comments';
+  static const String commentDeepLink = '/comment_deep_link';
   static const String profileList = '/profileList';
   static const String username = '/username';
   static const String profile = '/profile';
@@ -109,12 +116,51 @@ class AppRoutes {
   static const String jobDetail = '/job_detail';
 }
 
+/// One-shot [RouteSettings.arguments] for [MaterialApp.onGenerateInitialRoutes]
+/// (e.g. cold start from a notification). Cleared when the initial route is built.
+class AppLaunchInitialRouteArgs {
+  static Object? value;
+}
+
 /// Push only the given initial route (no "/" then "/welcome" chain). Fixes empty stack after splash.
 /// Signature matches InitialRouteListFactory: List<Route> Function(String initialRoute).
+///
+/// Cold start from notification ([AppRoutes.notificationLaunch]):
+///   Returns [navbaar, chatScreen] so the back-stack is correct from the very first frame.
+///   Back from chat → navbaar (no black screen).  navbaar is rendered at position 0 but
+///   never visible until the user pops the chat — zero performance cost.
 List<Route<dynamic>> onGenerateInitialRoutes(String initialRoute) {
   debugPrint('[APP] onGenerateInitialRoutes() initialRoute=$initialRoute');
-  final route = onGenerateRoute(RouteSettings(name: initialRoute));
-  return [route];
+
+  if (initialRoute == AppRoutes.notificationLaunch) {
+    final target = AppLaunchInitialRouteArgs.value as NotificationLaunchTarget?;
+    AppLaunchInitialRouteArgs.value = null;
+
+    if (target != null) {
+      debugPrint(
+        '[APP] onGenerateInitialRoutes() notification cold start → '
+        '[festivals, ${target.routeName}]',
+      );
+      return [
+        // Base of the back-stack: festival selection screen.
+        // Back from the deep-link screen always returns here, not to home/navbaar.
+        onGenerateRoute(const RouteSettings(name: AppRoutes.festivals)),
+        // Deep-link destination on top: user sees this immediately.
+        onGenerateRoute(
+          RouteSettings(name: target.routeName, arguments: target.arguments),
+        ),
+      ];
+    }
+
+    // No valid deep-link target (edge case) → land on festivals as a safe fallback.
+    debugPrint('[APP] onGenerateInitialRoutes() notification cold start, no target → festivals');
+    return [onGenerateRoute(const RouteSettings(name: AppRoutes.festivals))];
+  }
+
+  // All other initial routes (normal launch, post-splash, etc.) — unchanged.
+  final args = AppLaunchInitialRouteArgs.value;
+  AppLaunchInitialRouteArgs.value = null;
+  return [onGenerateRoute(RouteSettings(name: initialRoute, arguments: args))];
 }
 
 Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -133,6 +179,15 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
     case AppRoutes.splash:
       debugPrint('[APP] onGenerateRoute() building SplashView');
       return MaterialPageRoute(builder: (_) => const SplashView());
+
+    case AppRoutes.notificationLaunch:
+      return MaterialPageRoute(
+        builder: (_) => const NotificationLaunchView(),
+        settings: RouteSettings(
+          name: AppRoutes.notificationLaunch,
+          arguments: settings.arguments,
+        ),
+      );
 
     case AppRoutes.signup:
       final fromFestival = settings.arguments as bool? ?? false;
@@ -206,20 +261,35 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
       dynamic args = settings.arguments;
       PostModel? post;
       String? collectionName;
+      String? focusCommentId;
 
       if (args is Map) {
         post = args['post'] as PostModel?;
         collectionName = args['collectionName'] as String?;
+        focusCommentId = args['focusCommentId'] as String?;
       } else {
         post = args as PostModel?;
       }
 
       return SmoothPageRoute(
-        page: CommentView(post: post, collectionName: collectionName),
+        page: CommentView(
+          post: post,
+          collectionName: collectionName,
+          focusCommentId: focusCommentId,
+        ),
         settings: RouteSettings(
           name: AppRoutes.comments,
           arguments:
               collectionName, // Pass collection name for CommentViewModel
+        ),
+      );
+
+    case AppRoutes.commentDeepLink:
+      return MaterialPageRoute(
+        builder: (_) => const CommentDeepLinkView(),
+        settings: RouteSettings(
+          name: AppRoutes.commentDeepLink,
+          arguments: settings.arguments,
         ),
       );
 
@@ -307,18 +377,37 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
           builder: (context) {
             OnFestivalSelected? onFestivalSelected;
             if (isFestivalTab) {
-              onFestivalSelected = (ctx, festival) {
+              onFestivalSelected = (ctx, festival) async {
                 if (kDebugMode) {
                   print('🔙 [ProfileList→Discover] Setting selected festival: ${festival.title} (id=${festival.id})');
                 }
                 Provider.of<FestivalProvider>(ctx, listen: false).setSelectedFestival(festival);
                 if (!ctx.mounted) return;
+
+                final gateOutcome =
+                    await locator<ProfileReadinessService>().evaluateFestivalNavbarGate();
+                if (!ctx.mounted) return;
+
                 if (kDebugMode) {
-                  print('🔙 [ProfileList→Discover] Pushing NavBar with arguments: fromProfileList=true (back should return to profile list)');
+                  print(
+                    '🧭 [profileList/onFestivalSelected] Gate outcome=${gateOutcome.name}',
+                  );
                 }
-                Navigator.of(ctx).pushNamed(
-                  AppRoutes.navbaar,
-                  arguments: {'fromProfileList': true},
+
+                await applyFestivalNavbarGateOutcome(
+                  ctx,
+                  gateOutcome,
+                  onAuthenticatedNavigate: () {
+                    if (kDebugMode) {
+                      print(
+                        '🔙 [ProfileList→Discover] Pushing NavBar with arguments: fromProfileList=true (back should return to profile list)',
+                      );
+                    }
+                    Navigator.of(ctx).pushNamed(
+                      AppRoutes.navbaar,
+                      arguments: {'fromProfileList': true},
+                    );
+                  },
                 );
               };
             }

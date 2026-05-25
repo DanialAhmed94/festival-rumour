@@ -15,6 +15,7 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/shimmer_avatar.dart';
+import '../../../shared/widgets/chat_message_appear_animation.dart';
 import 'chat_view_model.dart';
 import 'chat_message_model.dart';
 
@@ -906,7 +907,10 @@ class ChatView extends BaseView<ChatViewModel> {
     // Check if message is from current user
     final isCurrentUser = viewModel.isMessageFromCurrentUser(message);
 
-    return GestureDetector(
+    final playEntry =
+        viewModel.shouldAnimateMessageEntry(message.messageId);
+
+    final bubble = GestureDetector(
       onLongPress: () {
         _showDeleteOptions(context, viewModel, message, isCurrentUser);
       },
@@ -994,6 +998,12 @@ class ChatView extends BaseView<ChatViewModel> {
           ],
         ),
       ),
+    );
+
+    if (!playEntry) return bubble;
+    return ChatMessageAppearAnimation(
+      alignEnd: isCurrentUser,
+      child: bubble,
     );
   }
 
@@ -1294,30 +1304,39 @@ class ChatView extends BaseView<ChatViewModel> {
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       child: Column(
         children: [
-          // Input field row
+          // Input field row — multiline composer; send only via send icon
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
                 child: Container(
-                  height: AppDimensions.imageS,
+                  constraints: const BoxConstraints(
+                    minHeight: AppDimensions.imageS,
+                  ),
                   padding: EdgeInsets.symmetric(
                     horizontal: AppDimensions.spaceM,
+                    vertical: AppDimensions.paddingS,
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.white,
                     borderRadius: BorderRadius.circular(AppDimensions.radiusL),
                   ),
+                  alignment: Alignment.centerLeft,
                   child: TextField(
                     controller: viewModel.messageController,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    minLines: 1,
+                    maxLines: 8,
                     cursorColor: AppColors.black,
                     decoration: const InputDecoration(
                       hintText: AppStrings.typeSomething,
                       hintStyle: TextStyle(color: AppColors.grey600),
                       border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
                     ),
                     style: const TextStyle(color: AppColors.black),
                     enabled: !viewModel.isSendingMessage,
-                    onSubmitted: (_) => _handleSendMessage(context, viewModel),
                   ),
                 ),
               ),

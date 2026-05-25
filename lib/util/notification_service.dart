@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'firebase_notification_service.dart';
 
@@ -7,7 +8,8 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static Future<void> init() async {
-    const androidInit = AndroidInitializationSettings('@drawable/background');
+    // Small slot: white silhouette (drawable). Tray: full-color launcher mipmaps.
+    const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
 
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -54,13 +56,18 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
+    final androidDetails = AndroidNotificationDetails(
       'default_channel',
       'General Notifications',
       channelDescription: 'General notifications',
       importance: Importance.max,
       priority: Priority.high,
-      icon: '@mipmap/launcher_icon',
+      icon: '@drawable/ic_notification',
+      color: const Color(0xFFFC2E95),
+      // largeIcon removed — it caused a second app icon to appear on the right
+      // side of foreground notifications. Terminated-state FCM notifications
+      // never set a largeIcon, so this keeps both paths visually consistent.
+      // largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
     );
 
     const iosDetails = DarwinNotificationDetails(
@@ -73,7 +80,7 @@ class NotificationService {
       id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title: title,
       body: body,
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
       ),
@@ -90,7 +97,12 @@ class NotificationService {
       final data = Map<String, dynamic>.from(
         jsonDecode(payload) as Map,
       );
-      FirebaseNotificationService.navigateFromNotificationData(data);
+      // App was in foreground when this notification was tapped — preserve the
+      // current navigation stack so back returns the user to where they were.
+      FirebaseNotificationService.navigateFromNotificationData(
+        data,
+        preserveStack: true,
+      );
     } catch (e) {
       print('[NOTIF] Local: failed to parse payload: $e');
     }

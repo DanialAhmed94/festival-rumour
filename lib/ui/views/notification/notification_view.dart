@@ -3,13 +3,14 @@ import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../core/utils/snackbar_util.dart';
 import 'notification_view_model.dart';
 
 class NotificationView extends BaseView<NotificationViewModel> {
+  static const Color _headerPink = Color(0xFFFC2E95);
+
   final VoidCallback? onBack;
   const NotificationView({super.key, this.onBack});
 
@@ -23,28 +24,21 @@ class NotificationView extends BaseView<NotificationViewModel> {
       body: SafeArea(
         child: Column(
           children: [
-
-            /// Pink AppBar Like HomeView
             Container(
               width: double.infinity,
-              color: const Color(0xFFFC2E95), // Same pink as HomeView
+              color: _headerPink,
               padding: const EdgeInsets.symmetric(
                 horizontal: AppDimensions.paddingM,
                 vertical: AppDimensions.paddingM,
               ),
               child: _buildHeader(context, viewModel),
             ),
-
-            /// Notification List
-            Expanded(
-              child: _buildNotificationsList(context, viewModel),
-            ),
+            Expanded(child: _buildNotificationsList(context, viewModel)),
           ],
         ),
       ),
     );
   }
-
 
   Widget _buildHeader(BuildContext context, NotificationViewModel viewModel) {
     return Row(
@@ -58,40 +52,45 @@ class NotificationView extends BaseView<NotificationViewModel> {
             }
           },
         ),
-        const SizedBox(width: 8),
-        const ResponsiveTextWidget(
-          AppStrings.notifications,
-          textType: TextType.body,
-          color: Colors.white,
-          fontSize: AppDimensions.textM,
-          fontWeight: FontWeight.bold,
+        const SizedBox(width: AppDimensions.spaceS),
+        const Expanded(
+          child: ResponsiveTextWidget(
+            AppStrings.notifications,
+            textType: TextType.body,
+            color: Colors.white,
+            fontSize: AppDimensions.textL,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        const Spacer(),
         if (viewModel.unreadCount > 0)
-          GestureDetector(
-            onTap: () {
+          TextButton(
+            onPressed: () {
               viewModel.markAllAsRead();
               SnackbarUtil.showSuccessSnackBar(
                 context,
                 'All notifications marked as read',
               );
             },
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 6,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.white,
+              backgroundColor: AppColors.white.withValues(alpha: 0.16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
+                side: BorderSide(
+                  color: AppColors.white.withValues(alpha: 0.42),
+                  width: 1,
+                ),
               ),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
-              ),
-              child: const ResponsiveTextWidget(
-                AppStrings.markAllRead,
-                textType: TextType.body,
-                color: Colors.black,
-                fontSize: AppDimensions.textS,
-                fontWeight: FontWeight.bold,
-              ),
+            ),
+            child: const ResponsiveTextWidget(
+              AppStrings.markAllRead,
+              textType: TextType.body,
+              color: Colors.white,
+              fontSize: AppDimensions.textS,
+              fontWeight: FontWeight.w600,
             ),
           ),
       ],
@@ -99,17 +98,34 @@ class NotificationView extends BaseView<NotificationViewModel> {
   }
 
   Widget _buildNotificationsList(
-      BuildContext context,
-      NotificationViewModel viewModel,
-      ) {
+    BuildContext context,
+    NotificationViewModel viewModel,
+  ) {
     if (viewModel.notifications.isEmpty) {
-      return const Center(
-        child: ResponsiveTextWidget(
-          AppStrings.noNotifications,
-          textType: TextType.body,
-          color: Colors.black,
-          fontSize: AppDimensions.textM,
-          fontWeight: FontWeight.w500,
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.paddingXL,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.notifications_none_rounded,
+                size: 56,
+                color: AppColors.grey400.withValues(alpha: 0.85),
+              ),
+              const SizedBox(height: AppDimensions.paddingM),
+              const ResponsiveTextWidget(
+                AppStrings.noNotifications,
+                textType: TextType.body,
+                color: AppColors.grey700,
+                fontSize: AppDimensions.textM,
+                fontWeight: FontWeight.w500,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -119,7 +135,12 @@ class NotificationView extends BaseView<NotificationViewModel> {
     final itemCount = displayed.length + (hasMore ? 1 : 0);
 
     return ListView.builder(
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
+      padding: const EdgeInsets.fromLTRB(
+        AppDimensions.paddingM,
+        AppDimensions.paddingM,
+        AppDimensions.paddingM,
+        AppDimensions.paddingL,
+      ),
       itemCount: itemCount,
       itemBuilder: (context, index) {
         if (hasMore && index == displayed.length) {
@@ -131,16 +152,31 @@ class NotificationView extends BaseView<NotificationViewModel> {
     );
   }
 
-  Widget _buildLoadMoreButton(BuildContext context, NotificationViewModel viewModel) {
+  Widget _buildLoadMoreButton(
+    BuildContext context,
+    NotificationViewModel viewModel,
+  ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingM),
+      padding: const EdgeInsets.only(top: AppDimensions.paddingS),
       child: Center(
-        child: TextButton(
+        child: TextButton.icon(
           onPressed: viewModel.hasMoreNotifications ? viewModel.loadMore : null,
-          child: ResponsiveTextWidget(
+          icon: Icon(
+            Icons.expand_more_rounded,
+            size: 22,
+            color: AppColors.grey700.withValues(alpha: 0.9),
+          ),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.grey700,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.paddingM,
+              vertical: AppDimensions.paddingS,
+            ),
+          ),
+          label: const ResponsiveTextWidget(
             'Load more',
             textType: TextType.body,
-            color: AppColors.accent,
+            color: AppColors.grey700,
             fontSize: AppDimensions.textM,
             fontWeight: FontWeight.w600,
           ),
@@ -150,107 +186,113 @@ class NotificationView extends BaseView<NotificationViewModel> {
   }
 
   Widget _buildNotificationCard(
-      BuildContext context,
-      NotificationItem notification,
-      NotificationViewModel viewModel,
-      ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppDimensions.spaceM),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade200, // Grey card background
-        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    BuildContext context,
+    NotificationItem notification,
+    NotificationViewModel viewModel,
+  ) {
+    final iconBg = Color(notification.iconColor).withValues(alpha: 0.12);
+    final unread = !notification.isRead;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppDimensions.spaceM),
       child: Material(
-        color: Colors.transparent,
+        color: AppColors.surface,
+        elevation: 1,
+        shadowColor: AppColors.shadow.withValues(alpha: 0.07),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+          side: BorderSide(color: AppColors.outline.withValues(alpha: 0.12)),
+        ),
         child: InkWell(
           borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-          onTap: () {
-            viewModel.markAsRead(notification.id);
-            SnackbarUtil.showInfoSnackBar(
-              context,
-              'Notification marked as read',
-            );
-          },
+          onTap: () => viewModel.openNotification(context, notification),
           child: Padding(
             padding: const EdgeInsets.all(AppDimensions.paddingM),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
-                /// Icon Container
-                Container(
-                  width: AppDimensions.imageM,
-                  height: AppDimensions.imageM,
+                if (unread) ...[
+                  Container(
+                    width: 4,
+                    height: 52,
+                    margin: const EdgeInsets.only(
+                      top: AppDimensions.paddingXS,
+                      right: AppDimensions.spaceM,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _headerPink,
+                      borderRadius: BorderRadius.circular(
+                        AppDimensions.radiusXS,
+                      ),
+                    ),
+                  ),
+                ],
+                DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Color(notification.iconColor).withOpacity(0.15),
+                    color: iconBg,
                     borderRadius: BorderRadius.circular(AppDimensions.radiusM),
                   ),
-                  child: Icon(
-                    notification.icon,
-                    color: Color(notification.iconColor),
-                    size: 20,
+                  child: SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: Icon(
+                      notification.icon,
+                      color: Color(notification.iconColor),
+                      size: 22,
+                    ),
                   ),
                 ),
-
                 const SizedBox(width: AppDimensions.spaceM),
-
-                /// Content
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
-                      /// Title
-                      ResponsiveTextWidget(
-                        notification.title,
-                        textType: TextType.body,
-                        color: Colors.black,
-                        fontSize: AppDimensions.textM,
-                        fontWeight: notification.isRead
-                            ? FontWeight.w500
-                            : FontWeight.bold,
-                      ),
-
-                      const SizedBox(height: AppDimensions.spaceXS),
-
-                      /// Message
-                      ResponsiveTextWidget(
-                        notification.message,
-                        textType: TextType.body,
-                        color: Colors.black87,
-                        fontSize: AppDimensions.textS,
-                      ),
-
-                      const SizedBox(height: AppDimensions.spaceS),
-
-                      /// Time + Unread Dot
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          ResponsiveTextWidget(
-                            notification.time,
-                            textType: TextType.body,
-                            color: Colors.grey,
-                            fontSize: AppDimensions.textS,
+                          Expanded(
+                            child: ResponsiveTextWidget(
+                              notification.title,
+                              textType: TextType.body,
+                              color: AppColors.onSurface,
+                              fontSize: AppDimensions.textM,
+                              fontWeight:
+                                  unread ? FontWeight.w600 : FontWeight.w500,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
                           ),
-
-                          if (!notification.isRead)
+                          if (unread) ...[
+                            const SizedBox(width: AppDimensions.paddingS),
                             Container(
                               width: 8,
                               height: 8,
+                              margin: const EdgeInsets.only(top: 4),
                               decoration: const BoxDecoration(
                                 color: AppColors.accent,
                                 shape: BoxShape.circle,
                               ),
                             ),
+                          ],
                         ],
+                      ),
+                      const SizedBox(height: AppDimensions.spaceXS),
+                      ResponsiveTextWidget(
+                        notification.message,
+                        textType: TextType.body,
+                        color: AppColors.onSurfaceVariant,
+                        fontSize: AppDimensions.textS,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: AppDimensions.spaceS),
+                      ResponsiveTextWidget(
+                        notification.time,
+                        textType: TextType.caption,
+                        color: AppColors.mutedText,
+                        fontSize: AppDimensions.textS,
+                        fontWeight: FontWeight.w500,
                       ),
                     ],
                   ),
@@ -262,7 +304,4 @@ class NotificationView extends BaseView<NotificationViewModel> {
       ),
     );
   }
-
 }
-
-

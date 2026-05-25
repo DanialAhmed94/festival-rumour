@@ -5,6 +5,10 @@ class NavigationService {
   final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
+  /// Observes route transitions for [RouteAware] widgets (e.g. pause feed media when covered).
+  final RouteObserver<ModalRoute<void>> routeObserver =
+      RouteObserver<ModalRoute<void>>();
+
   /// Navigate to a new screen
   Future<T?> navigateTo<T extends Object?>(String routeName, {Object? arguments}) async {
     try {

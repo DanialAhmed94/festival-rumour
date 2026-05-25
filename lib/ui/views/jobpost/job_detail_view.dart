@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
-import '../../../core/utils/base_view.dart';
+import '../../../core/utils/job_url_utils.dart';
+import '../../../core/utils/launch_job_url.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/extensions/context_extensions.dart';
@@ -188,6 +189,13 @@ class JobDetailView extends StatelessWidget {
                   'Festival Date',
                   jobData['festivalDate'] as String,
                 ),
+              ...() {
+                final jobUrl = JobUrlUtils.readFromJobMap(jobData);
+                if (jobUrl == null || jobUrl.isEmpty) {
+                  return <Widget>[];
+                }
+                return [_buildJobUrlLaunchRow(context, jobUrl)];
+              }(),
             ],
           ),
           
@@ -293,6 +301,81 @@ class JobDetailView extends StatelessWidget {
             : AppDimensions.paddingM),
         ...children,
       ],
+    );
+  }
+
+  Widget _buildJobUrlLaunchRow(BuildContext context, String url) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: context.isSmallScreen
+            ? AppDimensions.paddingS
+            : AppDimensions.paddingM,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => tryLaunchJobUrl(context, url),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: EdgeInsets.all(context.isSmallScreen ? 6 : 8),
+                decoration: BoxDecoration(
+                  color: AppColors.black.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusS),
+                ),
+                child: Icon(
+                  Icons.link,
+                  color: AppColors.black,
+                  size: context.isSmallScreen ? 18 : 20,
+                ),
+              ),
+              SizedBox(
+                width: context.isSmallScreen
+                    ? AppDimensions.paddingS
+                    : AppDimensions.paddingM,
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ResponsiveTextWidget(
+                      'Job link',
+                      textType: TextType.caption,
+                      fontSize: context.isSmallScreen
+                          ? AppDimensions.textS
+                          : AppDimensions.textM,
+                      color: AppColors.black.withOpacity(0.6),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    SizedBox(
+                      height: context.isSmallScreen
+                          ? AppDimensions.spaceXS
+                          : AppDimensions.spaceS,
+                    ),
+                    ResponsiveTextWidget(
+                      url,
+                      textType: TextType.body,
+                      fontSize: context.isSmallScreen
+                          ? AppDimensions.textM
+                          : AppDimensions.textL,
+                      color: AppColors.black.withOpacity(0.85),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.open_in_new,
+                color: AppColors.black.withOpacity(0.5),
+                size: context.isSmallScreen ? 18 : 20,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

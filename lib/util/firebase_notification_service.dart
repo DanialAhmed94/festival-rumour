@@ -9,8 +9,17 @@ import 'package:festival_rumour/core/services/notification_storage_service.dart'
 import 'package:festival_rumour/core/services/storage_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/widgets.dart';
 import 'notification_service.dart';
+
+class NotificationLaunchTarget {
+  final String routeName;
+  final Object? arguments;
+
+  const NotificationLaunchTarget({
+    required this.routeName,
+    this.arguments,
+  });
+}
 
 class FirebaseNotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -25,6 +34,11 @@ class FirebaseNotificationService {
     _pendingNotificationData = null;
     return data;
   }
+
+  /// Pending data from a terminated-state notification tap (cold start).
+  /// Does not clear; use [consumePendingNotificationData] after the navigator is ready.
+  static Map<String, dynamic>? peekPendingNotificationData() =>
+      _pendingNotificationData;
 
   static Future<void> init() async {
     await _getAndSaveToken();
@@ -124,18 +138,22 @@ class FirebaseNotificationService {
       return;
     }
 
-    final dataChatRoomId = message.data['chatRoomId'] as String?;
-    String? currentRoom;
+    final dataChatRoomId =
+        CurrentChatRoomService.normalizeChatRoomId(message.data['chatRoomId']);
+
+    bool viewingThisRoom = false;
     try {
       if (locator.isRegistered<CurrentChatRoomService>()) {
-        currentRoom = locator<CurrentChatRoomService>().currentChatRoomId;
+        viewingThisRoom = locator<CurrentChatRoomService>().isViewingChatRoom(
+          message.data['chatRoomId'],
+        );
       }
     } catch (_) {}
 
-    print('[NOTIF] Device: dataChatRoomId=$dataChatRoomId currentRoom=$currentRoom match=${dataChatRoomId != null && currentRoom != null && dataChatRoomId == currentRoom}');
+    print('[NOTIF] Device: dataChatRoomId=$dataChatRoomId viewingThisRoom=$viewingThisRoom');
 
-    if (dataChatRoomId != null && dataChatRoomId.isNotEmpty && currentRoom != null && currentRoom == dataChatRoomId) {
-      print('[NOTIF] Device: suppress - user is viewing this room (chatRoomId=$dataChatRoomId)');
+    if (viewingThisRoom) {
+      print('[NOTIF] Device: suppress - user is open on this chat (no tray; use in-thread UI)');
       return;
     }
 
@@ -166,19 +184,11 @@ class FirebaseNotificationService {
 
   static void _addToNotificationList(RemoteMessage message) {
     try {
-      if (!locator.isRegistered<NotificationStorageService>()) return;
-      final notif = message.notification;
-      final title = notif?.title ?? 'Notification';
-      final body = notif?.body ?? '';
-      final id = message.messageId ?? '${DateTime.now().millisecondsSinceEpoch}';
-      final chatRoomId = message.data['chatRoomId'] as String?;
-      locator<NotificationStorageService>().addNotification(
-        id: id,
-        title: title,
-        message: body,
-        chatRoomId: chatRoomId,
-        type: chatRoomId != null ? 'chat' : 'general',
-      );
+      NotificationStorageService.persistFromRemoteMessage(message).then((_) async {
+        if (locator.isRegistered<NotificationStorageService>()) {
+          await locator<NotificationStorageService>().reloadAfterExternalPersist();
+        }
+      });
     } catch (_) {}
   }
 
@@ -193,12 +203,99 @@ class FirebaseNotificationService {
     navigateFromNotificationData(Map<String, dynamic>.from(message.data));
   }
 
-  /// Navigate to the correct chat screen based on FCM data payload.
-  /// Called from FCM tap handler (background) and local notification tap handler.
-  static void navigateFromNotificationData(Map<String, dynamic> data) {
+  /// Maps FCM data to an initial route (cold start). No auth check.
+  static NotificationLaunchTarget? parseLaunchTargetFromData(
+    Map<String, dynamic> data,
+  ) {
+    final type = data['type'] as String?;
+    if (type == 'post_comment' || type == 'comment_reply') {
+      final postId = data['postId'] as String?;
+      final collectionName = data['collectionName'] as String?;
+      if (postId != null &&
+          postId.isNotEmpty &&
+          collectionName != null &&
+          collectionName.isNotEmpty) {
+        final parentCommentId = data['parentCommentId'] as String?;
+        return NotificationLaunchTarget(
+          routeName: AppRoutes.commentDeepLink,
+          arguments: <String, dynamic>{
+            'postId': postId,
+            'collectionName': collectionName,
+            if (type == 'comment_reply' &&
+                parentCommentId != null &&
+                parentCommentId.isNotEmpty)
+              'focusCommentId': parentCommentId,
+          },
+        );
+      }
+    }
+
     final chatRoomId = data['chatRoomId'] as String?;
-    if (chatRoomId == null || chatRoomId.isEmpty) {
-      print('[NOTIF] Nav: no chatRoomId in data, skip navigation');
+    if (chatRoomId == null || chatRoomId.isEmpty) return null;
+
+    final festivalId = data['festivalId'] as String?;
+    final hasFestival = festivalId != null && festivalId.isNotEmpty;
+
+    if (hasFestival) {
+      return NotificationLaunchTarget(
+        routeName: AppRoutes.chatRoom,
+        arguments: chatRoomId,
+      );
+    }
+    return NotificationLaunchTarget(
+      routeName: AppRoutes.directChat,
+      arguments: {'chatRoomId': chatRoomId},
+    );
+  }
+
+  static void _navigateLaunchTarget(NotificationLaunchTarget target) {
+    if (!locator.isRegistered<NavigationService>()) {
+      print('[NOTIF] Nav: NavigationService not registered, skip');
+      return;
+    }
+    final navService = locator<NavigationService>();
+    print('[NOTIF] Nav: pushing ${target.routeName}');
+    navService.navigateTo(target.routeName, arguments: target.arguments);
+  }
+
+  /// Deep-link route names that receive singleton stack management.
+  /// Covers both chat screens and comment screens so neither can stack.
+  /// Kept as a plain (non-const) set because class-static const strings are
+  /// not considered compile-time constants for Set literals in Dart.
+  static final Set<String> _deepLinkRouteNames = {
+    // Chat
+    AppRoutes.chatRoom,
+    AppRoutes.directChat,
+    AppRoutes.chatRoomDetail,
+    // Comments (CommentDeepLinkView replaces itself with the actual CommentView)
+    AppRoutes.commentDeepLink,
+    AppRoutes.comments,
+  };
+
+  /// Chat-only routes — used to scope the CurrentChatRoomService guard.
+  static final Set<String> _chatRouteNames = {
+    AppRoutes.chatRoom,
+    AppRoutes.directChat,
+  };
+
+  /// Navigate to the correct screen based on FCM data payload.
+  ///
+  /// [preserveStack] controls back-navigation behaviour:
+  ///   • false (default) — background/system-notification tap: pop down to the
+  ///     festival screen first, then push the target.  Back = festivals.
+  ///   • true — foreground/in-app tap: push the target on top of whatever the
+  ///     user is currently looking at.  Back = wherever the user already was.
+  ///
+  /// Singleton rules (apply in both modes):
+  ///   • Already on this exact chat room → no-op.
+  ///   • Stale deep-link screens → popped before pushing.
+  static void navigateFromNotificationData(
+    Map<String, dynamic> data, {
+    bool preserveStack = false,
+  }) {
+    final target = parseLaunchTargetFromData(data);
+    if (target == null) {
+      print('[NOTIF] Nav: no recognized deep link in data, skip navigation');
       return;
     }
 
@@ -207,11 +304,6 @@ class FirebaseNotificationService {
       print('[NOTIF] Nav: user not logged in, skip navigation');
       return;
     }
-
-    final festivalId = data['festivalId'] as String?;
-    final hasFestival = festivalId != null && festivalId.isNotEmpty;
-
-    print('[NOTIF] Nav: chatRoomId=$chatRoomId, festivalId=$festivalId, hasFestival=$hasFestival');
 
     try {
       if (!locator.isRegistered<NavigationService>()) {
@@ -227,19 +319,50 @@ class FirebaseNotificationService {
         return;
       }
 
-      if (hasFestival) {
-        print('[NOTIF] Nav: navigating to chatRoom (private chatroom)');
-        navService.navigateTo(
-          AppRoutes.chatRoom,
-          arguments: chatRoomId,
-        );
-      } else {
-        print('[NOTIF] Nav: navigating to directChat (DM)');
-        navService.navigateTo(
-          AppRoutes.directChat,
-          arguments: {'chatRoomId': chatRoomId},
-        );
+      final isDeepLinkRoute = _deepLinkRouteNames.contains(target.routeName);
+
+      if (isDeepLinkRoute) {
+        // Guard 1 (chat only): user is already viewing the exact same room — nothing to do.
+        // Comment screens don't have an equivalent tracking service; re-pushing
+        // a comment screen is acceptable (refreshes to latest data).
+        if (_chatRouteNames.contains(target.routeName)) {
+          final targetRoomId = CurrentChatRoomService.normalizeChatRoomId(
+            data['chatRoomId'],
+          );
+          if (targetRoomId != null) {
+            try {
+              if (locator.isRegistered<CurrentChatRoomService>() &&
+                  locator<CurrentChatRoomService>().isViewingChatRoom(targetRoomId)) {
+                print('[NOTIF] Nav: already viewing room $targetRoomId — skip push');
+                return;
+              }
+            } catch (_) {}
+          }
+        }
+
+        if (preserveStack) {
+          // Foreground / in-app tap: the user was actively using the app.
+          // Only remove stale deep-link screens (prevents stacking); keep
+          // everything else so back returns them to where they were.
+          navigator.popUntil(
+            (route) =>
+                route.isFirst ||
+                !_deepLinkRouteNames.contains(route.settings.name),
+          );
+          print('[NOTIF] Nav: foreground tap — popped stale deep-link routes, preserving stack');
+        } else {
+          // Background / system-notification tap: rebuild the back-stack so
+          // pressing back always goes to the festival screen, not home/navbaar.
+          navigator.popUntil(
+            (route) =>
+                route.isFirst ||
+                route.settings.name == AppRoutes.festivals,
+          );
+          print('[NOTIF] Nav: background tap — popped to festivals → pushing ${target.routeName}');
+        }
       }
+
+      _navigateLaunchTarget(target);
     } catch (e) {
       print('[NOTIF] Nav: error during navigation: $e');
     }

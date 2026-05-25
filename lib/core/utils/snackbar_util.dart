@@ -121,4 +121,42 @@ class SnackbarUtil {
       behavior: SnackBarBehavior.floating,
     );
   }
+
+  /// When only [ScaffoldMessengerState] is available (no [BuildContext]).
+  static void showSnackBarMessenger(
+    ScaffoldMessengerState? messenger,
+    String message, {
+    Duration duration = const Duration(seconds: 4),
+    Color? backgroundColor,
+    Color? contentColor,
+  }) {
+    if (messenger == null) return;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style:
+              contentColor != null ? TextStyle(color: contentColor) : null,
+        ),
+        duration: duration,
+        backgroundColor: backgroundColor,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  static void showErrorSnackBarMessenger(
+    ScaffoldMessengerState? messenger,
+    String message, {
+    Duration duration = const Duration(seconds: 5),
+  }) {
+    showSnackBarMessenger(
+      messenger,
+      message,
+      duration: duration,
+      backgroundColor: Colors.red,
+      contentColor: Colors.white,
+    );
+  }
 }
