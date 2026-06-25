@@ -133,6 +133,17 @@ class SettingsView extends BaseView<SettingsViewModel> {
                       onTap: viewModel.openLeaderboard,
                     ),
                     _buildTile(
+                      icon: Icons.card_giftcard_outlined,
+                      iconColor: AppColors.pink,
+                      title: AppStrings.inviteFriends,
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios,
+                        size: AppDimensions.iconS,
+                        color: AppColors.grey600,
+                      ),
+                      onTap: viewModel.openInvite,
+                    ),
+                    _buildTile(
                       icon: Icons.work_outline,
                       iconColor: AppColors.blue,
                       title: 'My Jobs',

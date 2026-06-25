@@ -100,6 +100,8 @@ class InterestsView extends BaseView<InterestsViewModel> {
                   const SizedBox(height: AppDimensions.spaceM),
                   Expanded(child: _buildInterestsGrid(context, viewModel)),
                   const SizedBox(height: AppDimensions.spaceM),
+                        _buildReferralField(context, viewModel),
+                        const SizedBox(height: AppDimensions.spaceM),
                         _buildActionButtons(context, viewModel),
                       ],
                     ),
@@ -158,6 +160,72 @@ class InterestsView extends BaseView<InterestsViewModel> {
           color: selected ? AppColors.onPrimary : AppColors.black,
           width: selected ? 2 : 1,
         ),
+      ),
+    );
+  }
+
+  Widget _buildReferralField(
+    BuildContext context,
+    InterestsViewModel viewModel,
+  ) {
+    // Brand pink (same as the screen title) — makes the optional referral
+    // section stand out instead of fading into the bottom of the screen.
+    const Color brandPink = Color(0xFFFC2E95);
+    return Container(
+      padding: const EdgeInsets.all(AppDimensions.paddingM),
+      decoration: BoxDecoration(
+        color: brandPink.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        border: Border.all(color: brandPink, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.card_giftcard_rounded,
+                color: brandPink,
+                size: 24,
+              ),
+              const SizedBox(width: AppDimensions.spaceS),
+              const Expanded(
+                child: ResponsiveTextWidget(
+                  AppStrings.haveReferralCode,
+                  textType: TextType.subtitle,
+                  color: brandPink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppDimensions.spaceS),
+          TextField(
+            textCapitalization: TextCapitalization.characters,
+            onChanged: viewModel.setReferralCode,
+            decoration: InputDecoration(
+              hintText: AppStrings.referralCodeHint,
+              isDense: true,
+              filled: true,
+              fillColor: AppColors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.paddingM,
+                vertical: AppDimensions.paddingS,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                borderSide: BorderSide(color: brandPink.withOpacity(0.4)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                borderSide: const BorderSide(color: brandPink, width: 1.5),
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

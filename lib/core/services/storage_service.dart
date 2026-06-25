@@ -19,6 +19,48 @@ class StorageService {
   static const String _keyFcmToken = 'fcm_token';
   static const String _keyNotificationsEnabled = 'notifications_enabled';
 
+  /// One-time intro splash video (plays once on the very first app launch).
+  static const String _keyIntroVideoShown = 'intro_video_shown';
+
+  /// True once the intro splash video has played (first launch done).
+  Future<bool> hasShownIntroVideo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_keyIntroVideoShown) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Mark the intro splash video as played so it never shows again.
+  Future<void> setIntroVideoShown() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyIntroVideoShown, true);
+    } catch (_) {}
+  }
+
+  /// One-time Invite-Friends promo popup (shown once on first home visit).
+  static const String _keyInvitePromoShown = 'invite_promo_shown';
+
+  /// True once the one-time Invite promo popup has been shown.
+  Future<bool> hasShownInvitePromo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_keyInvitePromoShown) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Mark the one-time Invite promo popup as shown so it never appears again.
+  Future<void> setInvitePromoShown() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyInvitePromoShown, true);
+    } catch (_) {}
+  }
+
   /// Local gate: persisted phone parity for festival → NavBar (see ProfileReadinessService).
   static const String _keyGatePhoneProfileSchemaVersion =
       'gate_phone_profile_schema_version';

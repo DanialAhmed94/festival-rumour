@@ -9,6 +9,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/signup_data_service.dart';
+import '../../../core/services/welcome_email_service.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/services/user_photo_cache_service.dart';
 import '../../../shared/extensions/context_extensions.dart';
@@ -75,6 +76,10 @@ class WelcomeViewModel extends BaseViewModel {
 
       final uid = user.uid;
       print("🔵 Google Logged In → UID = $uid");
+
+      // Greeting email on every Google sign-in (new + returning). Best-effort,
+      // fire-and-forget so it never blocks login.
+      WelcomeEmailService.sendWelcomeEmail(displayName: displayName);
 
       // ---------------------------------------------------------
       // ⭐ 4️⃣ NEW user → update Auth with Google data & start signup
@@ -198,6 +203,10 @@ class WelcomeViewModel extends BaseViewModel {
 
       final uid = user.uid;
       print("🍎 Apple User UID: $uid");
+
+      // Greeting email on every Apple sign-in (new + returning). Best-effort,
+      // fire-and-forget so it never blocks login.
+      WelcomeEmailService.sendWelcomeEmail(displayName: displayName);
 
       // 3️⃣ Check if the UID exists in Firestore
       final exists = await _firestoreService.checkUserExistsByUid(uid);

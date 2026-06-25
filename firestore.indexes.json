@@ -9,6 +9,14 @@
       ]
     },
     {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pioneerBadge.active", "order": "ASCENDING" },
+        { "fieldPath": "pioneerBadge.expiresAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "chats",
       "queryScope": "COLLECTION",
       "fields": [

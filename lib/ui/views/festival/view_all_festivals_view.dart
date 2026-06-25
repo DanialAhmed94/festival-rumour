@@ -12,6 +12,7 @@ import '../../../core/utils/base_view.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import 'festival_model.dart';
 import 'view_all_festivals_view_model.dart';
+import 'festival_listing_invite_view.dart';
 
 class ViewAllFestivalsView extends BaseView<ViewAllFestivalsViewModel> {
   const ViewAllFestivalsView({super.key});
@@ -418,6 +419,33 @@ class ViewAllFestivalsView extends BaseView<ViewAllFestivalsViewModel> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppDimensions.spaceL),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(
+                builder: (_) => FestivalListingInviteView(
+                  festivalName: viewModel.searchQuery,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.mail_outline,
+                size: 18, color: AppColors.white),
+            label: ResponsiveTextWidget(
+              AppStrings.festivalNotFoundInviteButton,
+              textType: TextType.body,
+              color: AppColors.white,
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: _pinkAppBar,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceL,
+                vertical: AppDimensions.spaceS,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceS),
           OutlinedButton(
             onPressed: () {
               viewModel.clearSearch();

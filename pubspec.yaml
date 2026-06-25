@@ -4,7 +4,7 @@ description: "A new Flutter project."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 
-version: 1.0.0+4
+version: 1.0.3+8
 
 environment:
   sdk: ^3.7.2
@@ -78,6 +78,10 @@ dependencies:
   # Video Player
   video_player: ^2.8.2
   chewie: ^1.7.5
+
+  # Audio: playback (chat voice messages) + recording (chat voice notes)
+  just_audio: ^0.9.40
+  record: ^6.0.0
 
   # URL Launcher
   url_launcher: ^6.2.4

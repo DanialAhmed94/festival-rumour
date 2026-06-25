@@ -12,6 +12,7 @@ import '../../../core/di/locator.dart';
 import '../../../core/services/navigation_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/organiser_invite_service.dart';
 import '../../../core/router/app_router.dart';
 import '../homeview/post_model.dart';
 import '../../../core/services/user_photo_cache_service.dart';
@@ -24,6 +25,9 @@ class CreatePostViewModel extends BaseViewModel {
   final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
   final TextEditingController postTextController = TextEditingController();
   final TextEditingController postUrlController = TextEditingController();
+  // Optional: email of a festival organiser to invite when the post is submitted.
+  final TextEditingController festivalOrganiserEmailController =
+      TextEditingController();
 
   CreatePostViewModel() {
     postTextController.addListener(_onControllerChanged);
@@ -46,7 +50,11 @@ class CreatePostViewModel extends BaseViewModel {
   int get currentUploadIndex => _currentUploadIndex;
   int get totalUploadItems => _totalUploadItems;
   String get uploadStatus => _uploadStatus;
-  
+
+  // True while the standalone "Send invite" (no post) request is in flight.
+  bool _sendingInvite = false;
+  bool get sendingInvite => _sendingInvite;
+
   String? get collectionName => _collectionName;
   
   /// Initialize with collection name (called when navigating from rumors)
@@ -72,6 +80,7 @@ class CreatePostViewModel extends BaseViewModel {
     postUrlController.removeListener(_onControllerChanged);
     postTextController.dispose();
     postUrlController.dispose();
+    festivalOrganiserEmailController.dispose();
     super.dispose();
   }
 
@@ -262,6 +271,36 @@ class CreatePostViewModel extends BaseViewModel {
   }
 
   /// Upload post and return the created post
+  /// Sends the festival-organiser invite immediately, WITHOUT creating a post.
+  /// Uses the email currently in [festivalOrganiserEmailController]. Returns true
+  /// if the backend reports the invite was sent; empty email → false (no-op).
+  Future<bool> sendOrganiserInviteNow() async {
+    final email = festivalOrganiserEmailController.text.trim();
+    if (email.isEmpty) return false;
+
+    _sendingInvite = true;
+    notifyListeners();
+    try {
+      final currentUser = _authService.currentUser;
+      String? name;
+      if (currentUser != null) {
+        name = await _userPhotoCacheService.getDisplayName(currentUser.uid);
+      }
+      name ??= _authService.userDisplayName ?? currentUser?.email?.split('@').first;
+
+      final ok = await OrganiserInviteService.sendOrganiserInvite(
+        organiserEmail: email,
+        inviterName: name,
+      );
+      // Clear the field on success so the same invite isn't sent twice.
+      if (ok) festivalOrganiserEmailController.clear();
+      return ok;
+    } finally {
+      _sendingInvite = false;
+      if (!isDisposed) notifyListeners();
+    }
+  }
+
   Future<void> uploadPost() async {
     if (!canPost) return;
 
@@ -465,6 +504,24 @@ class CreatePostViewModel extends BaseViewModel {
         print('✅ Post saved with ID: $postId');
       }
 
+      // If the user tagged a festival organiser, invite them by email.
+      // Rule: empty field → post only; filled → post + invite email.
+      // Fire-and-forget & best-effort: a failed/slow email must never block the
+      // post or the screen pop, so we don't await it (locals captured first).
+      final organiserEmail = festivalOrganiserEmailController.text.trim();
+      if (organiserEmail.isNotEmpty) {
+        OrganiserInviteService.sendOrganiserInvite(
+          organiserEmail: organiserEmail,
+          inviterName: username,
+        ).then((sent) {
+          if (kDebugMode) {
+            print(sent
+                ? '✉️ Organiser invite sent to $organiserEmail'
+                : '⚠️ Organiser invite could not be sent to $organiserEmail');
+          }
+        });
+      }
+
       // Create PostModel with the created post data
       final newPost = PostModel(
         postId: postId,
@@ -489,6 +546,7 @@ class CreatePostViewModel extends BaseViewModel {
       // Clear form after successful upload
       postTextController.clear();
       postUrlController.clear();
+      festivalOrganiserEmailController.clear();
       clearAllMedia();
       
       // Reset upload progress

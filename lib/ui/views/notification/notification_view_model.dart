@@ -81,6 +81,10 @@ class NotificationViewModel extends BaseViewModel {
         return Icons.chat_bubble;
       case 'comment':
         return Icons.mode_comment_outlined;
+      case 'referral_joined':
+        return Icons.group_add;
+      case 'badge_earned':
+        return Icons.workspace_premium;
       default:
         return Icons.notifications;
     }
@@ -92,6 +96,10 @@ class NotificationViewModel extends BaseViewModel {
         return 0xFF00BCD4;
       case 'comment':
         return 0xFF7C4DFF;
+      case 'referral_joined':
+        return 0xFFFC2E95;
+      case 'badge_earned':
+        return 0xFFFFC107;
       default:
         return 0xFF607D8B;
     }
@@ -185,6 +193,9 @@ class NotificationItem {
   /// Payload for [FirebaseNotificationService.navigateFromNotificationData].
   Map<String, dynamic>? toNavigationData() {
     final t = fcmType;
+    if (t == 'referral_joined' || t == 'badge_earned') {
+      return <String, dynamic>{'type': t};
+    }
     if (t == 'post_comment' || t == 'comment_reply') {
       final pid = postId;
       final col = collectionName;

@@ -211,7 +211,7 @@ class AppStrings {
   static const String live = "Live";
   static const String upcoming = "Upcoming";
   static const String past = "Past";
-  static const String toilets = "Toilets";
+  static const String toilets = "Got To Go";
   static const String news = "News";
   static const String Performance = "Performance";
   static const String event = "Event";
@@ -240,27 +240,36 @@ class AppStrings {
   static const String date = "Date";
   static const String festivalRumourPlayStoreUrl =
       'https://play.google.com/store/apps/details?id=com.festival_rumour';
+  static const String festivalRumourAppStoreUrl =
+      'https://apps.apple.com/us/app/the-festival-app/id6753773348';
+
+  /// Store link for The Festival App, chosen by the user's device OS.
+  /// iOS devices get the App Store link; everyone else gets Google Play.
+  static String festivalAppStoreUrl({required bool isIOS}) =>
+      isIOS ? festivalRumourAppStoreUrl : festivalRumourPlayStoreUrl;
+
   /// Marketing name in share / invite text (not necessarily [appName]).
   static const String shareAppProductName = 'The Festival App';
   static const String shareDownloadNow = 'Download now';
   /// Body text for in-app “share the app” flows (Discover fallback, Settings).
-  static const String shareMessage =
+  /// Pass [isIOS] so the embedded download link matches the sharer's device OS.
+  static String shareMessage({required bool isIOS}) =>
       '$shareAppProductName helps you discover festivals, see lineups and updates, '
       'follow community rumours, and chat with other attendees.\n\n'
       '$shareDownloadNow:\n'
-      '$festivalRumourPlayStoreUrl';
+      '${festivalAppStoreUrl(isIOS: isIOS)}';
   static const String shareSubject =
       '$shareAppProductName — discover festivals, rumours, and chat';
 
   /// Discover “Invite your festie bestie” — includes [festivalName] when set.
   /// When null/empty, falls back to [shareMessage] / [shareSubject].
-  static String shareDiscoverInviteMessage(String? festivalName) {
+  static String shareDiscoverInviteMessage(String? festivalName, {required bool isIOS}) {
     final name = festivalName?.trim();
-    if (name == null || name.isEmpty) return shareMessage;
+    if (name == null || name.isEmpty) return shareMessage(isIOS: isIOS);
     return 'If $name is on your list, $shareAppProductName is handy for lineups, '
         'live buzz, and messaging other festival-goers.\n\n'
         '$shareDownloadNow:\n'
-        '$festivalRumourPlayStoreUrl';
+        '${festivalAppStoreUrl(isIOS: isIOS)}';
   }
 
   static String shareDiscoverInviteSubject(String? festivalName) {
@@ -268,6 +277,48 @@ class AppStrings {
     if (name == null || name.isEmpty) return shareSubject;
     return '$shareAppProductName — $name';
   }
+
+  // ─── Referral Reward System ───
+  /// Base URL for invite links. Must match the backend INVITE_BASE_URL and the
+  /// /invite/<CODE> page hosted on thefestivalapps.com (Hostinger).
+  static const String inviteDomainBaseUrl = 'https://thefestivalapps.com/invite/';
+  static const String inviteFriends = 'Invite Friends';
+  static const String inviteFriendsTitle = 'Invite Friends';
+  static const String inviteHeadline = 'Invite friends, earn your Pioneer Badge';
+  static const String inviteSubtitle =
+      'Share your code. When 25 friends join, you unlock the 1-Year Pioneer Badge — and premium features.';
+  static const String yourInviteCode = 'Your invite code';
+  static const String yourInviteLink = 'Your invite link';
+  static const String copyLink = 'Copy link';
+  static const String copyCode = 'Copy code';
+  static const String linkCopied = 'Invite link copied';
+  static const String codeCopied = 'Invite code copied';
+  static const String shareViaWhatsApp = 'WhatsApp';
+  static const String shareViaMessenger = 'Messenger';
+  static const String shareViaMore = 'More';
+  static const String haveReferralCode = 'Have a referral code? (optional)';
+  static const String referralCodeHint = 'Enter referral code';
+  static const String pioneerBadgeName = 'Pioneer';
+  static const String pioneerBadgeFull = '1-Year Pioneer Badge';
+  static const String pioneerBadgeEarned = '🏆 You are a 1-Year Pioneer!';
+  static const String pioneerBadgeTooltip =
+      'Pioneer — premium features unlocked';
+  static const String pioneerPremiumUnlocked =
+      'Premium features unlocked';
+  static const String pioneerPremiumTeaser =
+      'Refer 25 friends to unlock premium features';
+  static const String referralProgressLabel = 'Friends Invited';
+
+  /// "{count} / {goal} Friends Invited"
+  static String friendsInvited(int count, int goal) =>
+      '$count / $goal $referralProgressLabel';
+
+  /// Default share/invite text including the user's invite link.
+  static String inviteShareMessage(String link) =>
+      "Join me on $shareAppProductName! Discover festivals, follow the rumours, "
+      "and chat with other attendees. Tap my invite link to get started:\n\n$link";
+  static const String inviteShareSubject =
+      'Join me on The Festival App 🎉';
 
   static const String shareLocation = "Share Location";
   static const String shareMyLocation = "Share My Location";
@@ -505,7 +556,7 @@ class AppStrings {
       'Count me in, catch ya at Luna Fest';
   static const String inviteYourFestieBestie = 'Invite your festie bestie';
   static const String chatRooms = 'CHAT ROOMS';
-  static const String detail = 'DETAIL';
+  static const String detail = 'Stage Times & Running Orders';
   static const String addedToFavorites = '❤️ Added to favorites!';
   static const String removedFromFavorites = '💔 Removed from favorites';
 
@@ -595,6 +646,30 @@ class AppStrings {
   static const String post = 'POST';
   static const String createPost = 'Create Post';
   static const String whatsOnYourMind = "What's on your mind?";
+  // Tag Festival Organiser — optional invite-by-email on the Create Post form.
+  static const String tagFestivalOrganiser = 'Tag Festival Organiser';
+  static const String tagFestivalOrganiserOptional = 'Optional';
+  static const String tagFestivalOrganiserHeadline =
+      "Know a festival organiser? Add their email and we'll send them an invite to join us on The Festival App.";
+  static const String tagFestivalOrganiserHint = 'organiser@email.com';
+  // "Send invite" button inside the Tag Festival Organiser card (invite without posting).
+  static const String enterOrganiserEmailFirst =
+      'Enter the festival organiser email first.';
+  static const String organiserInviteSent =
+      'Invite sent to the festival organiser. 🎉';
+  static const String organiserInviteFailed =
+      "Couldn't send the invite. Please try again.";
+  // Festival search → not found → invite the organiser to list the festival.
+  static const String festivalNotFoundTitle = 'Festival not found';
+  static const String festivalNotFoundMessage =
+      "We couldn't find this festival. You can send an invite to the festival organiser to list this festival in The Festival App.";
+  static const String festivalNotFoundInviteButton = 'Invite the organiser';
+  static const String festivalNotFoundEmailLabel = 'Festival Organiser Email';
+  static const String sendInvite = 'Send Invite';
+  static const String festivalListingInviteSent =
+      'Invite sent — thanks for helping grow The Festival App! 🎉';
+  static const String festivalListingInviteFailed =
+      "Couldn't send the invite. Please try again.";
   static const String pickImages = 'Pick Images';
   static const String pickVideos = 'Pick Videos';
   static const String uploadPost = 'Upload Post';

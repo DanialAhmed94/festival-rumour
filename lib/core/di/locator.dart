@@ -17,6 +17,9 @@ import '../services/current_chat_list_service.dart';
 import '../services/chat_badge_service.dart';
 import '../services/notification_storage_service.dart';
 import '../services/user_photo_cache_service.dart';
+import '../services/user_badge_cache_service.dart';
+import '../services/referral_service.dart';
+import '../services/media_upload_service.dart';
 import '../services/profile_readiness_service.dart';
 import '../api/api_config.dart';
 import '../api/festival_api_service.dart';
@@ -51,6 +54,9 @@ Future<void> setupLocator() async {
   locator.registerLazySingleton<ChatBadgeService>(() => ChatBadgeService());
   locator.registerLazySingleton<NotificationStorageService>(() => NotificationStorageService());
   locator.registerLazySingleton<UserPhotoCacheService>(() => UserPhotoCacheService());
+  locator.registerLazySingleton<UserBadgeCacheService>(() => UserBadgeCacheService());
+  locator.registerLazySingleton<ReferralService>(() => ReferralService());
+  locator.registerLazySingleton<MediaUploadService>(() => MediaUploadService());
 
   locator.registerLazySingleton<SignupDataService>(() => SignupDataService());
 

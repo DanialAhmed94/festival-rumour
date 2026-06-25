@@ -70,6 +70,10 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                     _buildUrlInputCard(context, viewModel),
                     const SizedBox(height: 16),
 
+                    // Tag Festival Organiser (optional invite-by-email)
+                    _buildOrganiserEmailCard(context, viewModel),
+                    const SizedBox(height: 16),
+
                     // Media Preview Card
                     if (viewModel.hasMedia) ...[
                       _buildMediaPreviewCard(context, viewModel),
@@ -206,6 +210,136 @@ class CreatePostView extends BaseView<CreatePostViewModel> {
                   fontSize: 16,
                 ),
                 cursorColor: Colors.black,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Optional email field: tag a festival organiser to invite them by email
+  /// when the post is submitted. Empty = post only; filled = post + invite.
+  Widget _buildOrganiserEmailCard(
+      BuildContext context, CreatePostViewModel viewModel) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.business_center_outlined,
+                  color: AppColors.onSurfaceVariant,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    AppStrings.tagFestivalOrganiser,
+                    style: TextStyle(
+                      color: AppColors.onSurface,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Text(
+                  AppStrings.tagFestivalOrganiserOptional,
+                  style: TextStyle(
+                    color: AppColors.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              AppStrings.tagFestivalOrganiserHeadline,
+              style: TextStyle(
+                color: AppColors.onSurfaceVariant,
+                fontSize: 12.5,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(
+                  Icons.mail_outline,
+                  color: AppColors.onSurfaceVariant,
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: viewModel.festivalOrganiserEmailController,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.done,
+                    decoration: InputDecoration(
+                      hintText: AppStrings.tagFestivalOrganiserHint,
+                      hintStyle: TextStyle(
+                        color: AppColors.onSurfaceVariant,
+                        fontSize: 16,
+                      ),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                      isDense: true,
+                    ),
+                    style: const TextStyle(
+                      color: AppColors.onSurface,
+                      fontSize: 16,
+                    ),
+                    cursorColor: Colors.black,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: viewModel.sendingInvite
+                    ? null
+                    : () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final email = viewModel
+                            .festivalOrganiserEmailController.text
+                            .trim();
+                        if (email.isEmpty) {
+                          messenger.showSnackBar(const SnackBar(
+                            content:
+                                Text(AppStrings.enterOrganiserEmailFirst),
+                          ));
+                          return;
+                        }
+                        FocusScope.of(context).unfocus();
+                        final ok = await viewModel.sendOrganiserInviteNow();
+                        messenger.showSnackBar(SnackBar(
+                          content: Text(ok
+                              ? AppStrings.organiserInviteSent
+                              : AppStrings.organiserInviteFailed),
+                        ));
+                      },
+                icon: viewModel.sendingInvite
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_rounded, size: 18),
+                label: const Text(AppStrings.sendInvite),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.performanceGreen,
+                ),
               ),
             ),
           ],

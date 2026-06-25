@@ -186,17 +186,32 @@ class _AppRootState extends State<_AppRoot> {
   }
 
   Future<void> _bootstrap() async {
-    final pendingLaunch =
-        FirebaseNotificationService.peekPendingNotificationData();
-    if (pendingLaunch == null) {
-      if (mounted) setState(() => _bootstrapComplete = true);
+    // Intro splash video plays ONLY on the very first launch. Returning users
+    // skip it and go straight to their initial route.
+    final storage = locator<StorageService>();
+    final introShown = await storage.hasShownIntroVideo();
+    if (!mounted) return;
+
+    if (introShown) {
+      _log('_AppRoot._bootstrap()', 'intro already shown → skip splash video');
+      final isLoggedIn = await storage.isLoggedIn();
+      final user = FirebaseAuth.instance.currentUser;
+      if (!mounted) return;
+      setState(() {
+        _showSplash = false;
+        _bootstrapComplete = true;
+        _initialRoute = (isLoggedIn && user != null)
+            ? AppRoutes.festivals
+            : AppRoutes.welcome;
+      });
+      _handlePendingNotification(isLoggedIn && user != null);
       return;
     }
 
-    if (!mounted) return;
-
-    // Pending tap but user not logged in (main() did not consume). Show splash as usual.
-    setState(() => _bootstrapComplete = true);
+    // First launch — mark as shown so the video never plays again, then show it.
+    _log('_AppRoot._bootstrap()', 'first launch → play intro splash video');
+    await storage.setIntroVideoShown();
+    if (mounted) setState(() => _bootstrapComplete = true);
   }
 
   void _onSplashDone() async {
@@ -222,45 +237,87 @@ class _AppRootState extends State<_AppRoot> {
       '_AppRoot._onSplashDone()',
       'setState done, initialRoute=$_initialRoute',
     );
+    _handlePendingNotification(isLoggedIn && user != null);
+  }
 
-    // If the app was launched by tapping a notification (terminated state),
-    // process the pending deep link after the navigator is ready.
-    if (isLoggedIn && user != null) {
-      final pendingData = FirebaseNotificationService.consumePendingNotificationData();
-      if (pendingData != null) {
-        _log('_AppRoot._onSplashDone()', 'pending notification data found: $pendingData');
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          FirebaseNotificationService.navigateFromNotificationData(pendingData);
-        });
-      }
+  /// If the app was launched by tapping a notification (terminated state),
+  /// process the pending deep link after the navigator is ready.
+  void _handlePendingNotification(bool loggedInUser) {
+    if (!loggedInUser) return;
+    final pendingData =
+        FirebaseNotificationService.consumePendingNotificationData();
+    if (pendingData != null) {
+      _log('_AppRoot', 'pending notification data found: $pendingData');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        FirebaseNotificationService.navigateFromNotificationData(pendingData);
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    Widget child;
     if (!_bootstrapComplete) {
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: _kShellMaterialTheme,
-        home: const Scaffold(
-          backgroundColor: Colors.white,
-          body: SizedBox.expand(),
+      child = KeyedSubtree(
+        key: const ValueKey('boot'),
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: _kShellMaterialTheme,
+          home: const _BrandedLoading(),
         ),
       );
-    }
-    if (_showSplash) {
+    } else if (_showSplash) {
       _log('_AppRoot.build()', 'showing splash');
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: _kShellMaterialTheme,
-        home: _SimpleSplashScreen(onDone: _onSplashDone),
+      child = KeyedSubtree(
+        key: const ValueKey('splash'),
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: _kShellMaterialTheme,
+          home: _SimpleSplashScreen(onDone: _onSplashDone),
+        ),
+      );
+    } else {
+      _log(
+        '_AppRoot.build()',
+        'showing FestivalRumourApp(initialRoute=$_initialRoute)',
+      );
+      child = KeyedSubtree(
+        key: const ValueKey('app'),
+        child: FestivalRumourApp(initialRoute: _initialRoute),
       );
     }
-    _log(
-      '_AppRoot.build()',
-      'showing FestivalRumourApp(initialRoute=$_initialRoute)',
+
+    // Cross-fade between boot → (splash) → app so there's no hard white cut,
+    // especially for returning users who skip the splash video.
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: child,
+      ),
     );
-    return FestivalRumourApp(initialRoute: _initialRoute);
+  }
+}
+
+/// Branded loading placeholder (cream background + logo) shown for the brief
+/// moment before we know whether to play the splash video. Avoids a white flash.
+class _BrandedLoading extends StatelessWidget {
+  const _BrandedLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFFDFFD2),
+      body: Center(
+        child: Image.asset(
+          AppAssets.splashLogo,
+          width: 160,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        ),
+      ),
+    );
   }
 }
 

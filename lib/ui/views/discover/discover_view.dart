@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:festival_rumour/core/router/app_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:festival_rumour/shared/extensions/context_extensions.dart';
@@ -330,7 +331,8 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
         GridOption(
           title: AppStrings.detail,
           icon: AppAssets.detailIconSvg,
-          onNavigateToSub: widget.onNavigateToSub,
+          // Use an explicit nav key so the display title can be renamed freely.
+          onTap: () => widget.onNavigateToSub?.call('detail'),
         ),
         GridOption(
           title: AppStrings.innerMap,
@@ -531,7 +533,7 @@ class _DiscoverViewContentState extends State<_DiscoverViewContent> with Automat
     final festival =
         Provider.of<FestivalProvider>(context, listen: false).selectedFestival;
     final body =
-        AppStrings.shareDiscoverInviteMessage(festival?.title);
+        AppStrings.shareDiscoverInviteMessage(festival?.title, isIOS: Platform.isIOS);
     final subject =
         AppStrings.shareDiscoverInviteSubject(festival?.title);
     await Share.share(

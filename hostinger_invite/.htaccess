@@ -1,0 +1,8 @@
+# Serve the invite landing page for any /invite/<CODE> path.
+# Place this file (and index.html) inside  public_html/invite/  on Hostinger.
+RewriteEngine On
+RewriteBase /invite/
+# If the request isn't a real file or directory, serve index.html.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]

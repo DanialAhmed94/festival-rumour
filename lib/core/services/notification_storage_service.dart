@@ -21,9 +21,14 @@ class NotificationStorageService extends ChangeNotifier {
     final dataType = _stringData(data['type']);
     final isComment =
         dataType == 'post_comment' || dataType == 'comment_reply';
+    final isReferral =
+        dataType == 'referral_joined' || dataType == 'badge_earned';
     final chatRoomId = _stringData(data['chatRoomId']);
-    final listType =
-        isComment ? 'comment' : (chatRoomId != null ? 'chat' : 'general');
+    final listType = isReferral
+        ? dataType!
+        : isComment
+            ? 'comment'
+            : (chatRoomId != null ? 'chat' : 'general');
 
     return <String, dynamic>{
       'id': id,

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="theme-color" content="#FC2E95" />
+  <title>Join me on Festival App</title>
+
+  <!-- Link preview -->
+  <meta property="og:title" content="You've been invited to Festival App 🎉" />
+  <meta property="og:description" content="Discover festivals, see lineups, follow the rumours and chat with other attendees. Use my invite code to join!" />
+  <meta property="og:type" content="website" />
+
+  <style>
+    :root { --brand: #FC2E95; --bg: #0e0e12; --card: #1a1a22; --text: #ffffff; --muted: #b9b9c6; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 50% -10%, #2a1430 0%, var(--bg) 60%);
+      color: var(--text); display: flex; align-items: center; justify-content: center;
+      min-height: 100%; padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 420px; background: var(--card); border-radius: 20px;
+      padding: 32px 24px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    p.sub { color: var(--muted); margin: 0 0 24px; font-size: 15px; line-height: 1.4; }
+    .code-label { color: var(--muted); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+    .code-box {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      background: #0e0e14; border: 1px dashed #3a3a48; border-radius: 14px;
+      padding: 16px; margin-bottom: 10px;
+    }
+    .code { font-size: 30px; font-weight: 800; letter-spacing: .18em; color: var(--brand); }
+    button {
+      cursor: pointer; border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
+      padding: 14px 18px; width: 100%; margin-top: 12px; color: #fff; background: var(--brand);
+      transition: transform .05s ease, opacity .2s ease;
+    }
+    button:active { transform: scale(.98); }
+    button.secondary { background: #2a2a35; }
+    .copy-btn { width: auto; margin: 0; padding: 10px 14px; font-size: 14px; background: #2a2a35; }
+    .copied { color: #8effc1; font-size: 13px; height: 18px; margin-bottom: 8px; }
+    .footnote { color: var(--muted); font-size: 12px; margin-top: 18px; line-height: 1.5; }
+    a { color: var(--brand); text-decoration: none; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎉 You're invited to Festival App</h1>
+    <p class="sub">Discover festivals, follow the rumours, and chat with other attendees. Enter this code when you sign up to credit your friend.</p>
+
+    <div class="code-label">Your invite code</div>
+    <div class="code-box">
+      <span class="code" id="code">------</span>
+      <button class="copy-btn" id="copyBtn" type="button">Copy</button>
+    </div>
+    <div class="copied" id="copied"></div>
+
+    <button id="openBtn" type="button">Get the app</button>
+    <button id="altBtn" class="secondary hidden" type="button"></button>
+
+    <p class="footnote" id="manualNote"></p>
+  </div>
+
+  <script>
+    (function () {
+      // Code charset/length must match the backend (functions/index.js).
+      var ALPHABET = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;
+      var IOS_URL = "https://apps.apple.com/app/id6753773348";
+      var ANDROID_URL = "https://play.google.com/store/apps/details?id=com.festival_rumour";
+
+      // Parse CODE from /invite/<CODE> (fallback to ?code= or #code=).
+      var path = window.location.pathname || "";
+      var m = path.match(/\/invite\/([^\/?#]+)/i);
+      var code = m && m[1] ? decodeURIComponent(m[1]) : "";
+      if (!code) {
+        var qs = new URLSearchParams(window.location.search);
+        code = qs.get("code") || (window.location.hash || "").replace(/^#/, "") || "";
+      }
+      code = (code || "").trim().toUpperCase();
+
+      var codeEl = document.getElementById("code");
+      var copyBtn = document.getElementById("copyBtn");
+      var copied = document.getElementById("copied");
+      var openBtn = document.getElementById("openBtn");
+      var altBtn = document.getElementById("altBtn");
+      var manualNote = document.getElementById("manualNote");
+
+      var valid = ALPHABET.test(code);
+      if (valid) {
+        codeEl.textContent = code;
+        manualNote.innerHTML = "After installing, open the app and paste this code in <b>“Have a referral code?”</b> during sign up.";
+      } else {
+        // Malformed/missing code: still let people get the app.
+        codeEl.textContent = "—";
+        copyBtn.classList.add("hidden");
+        manualNote.textContent = "Get the app and join the festival community.";
+      }
+
+      var ua = navigator.userAgent || "";
+      var isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      var isAndroid = /Android/.test(ua);
+
+      function go(url) { window.location.href = url; }
+
+      if (isIOS) {
+        openBtn.textContent = "Download on the App Store";
+        openBtn.onclick = function () { go(IOS_URL); };
+      } else if (isAndroid) {
+        openBtn.textContent = "Get it on Google Play";
+        openBtn.onclick = function () { go(ANDROID_URL); };
+      } else {
+        openBtn.textContent = "Download on the App Store";
+        openBtn.onclick = function () { go(IOS_URL); };
+        altBtn.textContent = "Get it on Google Play";
+        altBtn.classList.remove("hidden");
+        altBtn.onclick = function () { go(ANDROID_URL); };
+      }
+
+      copyBtn.onclick = function () {
+        var done = function () {
+          copied.textContent = "Copied! ✓";
+          setTimeout(function () { copied.textContent = ""; }, 2000);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(done).catch(function () {});
+        } else {
+          var t = document.createElement("textarea");
+          t.value = code; document.body.appendChild(t); t.select();
+          try { document.execCommand("copy"); done(); } catch (e) {}
+          document.body.removeChild(t);
+        }
+      };
+    })();
+  </script>
+</body>
+</html>

@@ -15,9 +15,13 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/shimmer_avatar.dart';
+import '../../../shared/widgets/pioneer_badge.dart';
 import '../../../shared/widgets/chat_message_appear_animation.dart';
 import 'chat_view_model.dart';
 import 'chat_message_model.dart';
+import 'widgets/chat_media_grid.dart';
+import 'widgets/chat_audio_bubble.dart';
+import 'widgets/chat_composer.dart';
 
 class ChatView extends BaseView<ChatViewModel> {
   final VoidCallback? onBack;
@@ -125,7 +129,7 @@ class ChatView extends BaseView<ChatViewModel> {
         children: [
           _buildChatRoomAppBar(context, viewModel),
           Expanded(child: _buildChatContent(context, viewModel)),
-          _buildInputSection(context, viewModel),
+          ChatComposer(viewModel: viewModel),
         ],
       ),
     );
@@ -863,13 +867,16 @@ class ChatView extends BaseView<ChatViewModel> {
     return ListView.builder(
       controller: viewModel.scrollController,
       cacheExtent: 320,
+      reverse: true,
       padding: const EdgeInsets.symmetric(
         horizontal: AppDimensions.paddingM,
         vertical: AppDimensions.paddingS,
       ),
       itemCount: count + (loadingOlder ? 1 : 0),
       itemBuilder: (context, index) {
-        if (loadingOlder && index == 0) {
+        // reverse: true -> index 0 is the newest (visual bottom).
+        // The older-page spinner belongs at the visual top, i.e. the last index.
+        if (loadingOlder && index == count) {
           return const RepaintBoundary(
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: AppDimensions.paddingM),
@@ -886,7 +893,7 @@ class ChatView extends BaseView<ChatViewModel> {
             ),
           );
         }
-        final messageIndex = loadingOlder ? index - 1 : index;
+        final messageIndex = count - 1 - index;
         final message = viewModel.messages[messageIndex];
         return RepaintBoundary(
           key: ValueKey<String>(
@@ -945,20 +952,39 @@ class ChatView extends BaseView<ChatViewModel> {
                         padding: const EdgeInsets.only(
                           bottom: AppDimensions.spaceXS,
                         ),
-                        child: ResponsiveTextWidget(
-                          viewModel.getUserDisplayName(message.userId) ?? message.username,
-                          textType: TextType.caption,
-                          fontSize: 12,
-                          color: Colors.black,
-                          fontWeight: FontWeight.w600,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: ResponsiveTextWidget(
+                                viewModel.getUserDisplayName(message.userId) ?? message.username,
+                                textType: TextType.caption,
+                                fontSize: 12,
+                                color: Colors.black,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (viewModel.isUserPioneer(message.userId)) ...[
+                              const SizedBox(width: 4),
+                              const PioneerBadge(compact: true, size: 14),
+                            ],
+                          ],
                         ),
                       ),
-                    ResponsiveTextWidget(
-                      message.content,
-                      textType: TextType.body,
-                      fontSize: 14,
-                      color: AppColors.black,
-                    ),
+                    if (message.isMediaMessage)
+                      ChatMediaGrid(message: message)
+                    else if (message.isAudioMessage)
+                      ChatAudioBubble(
+                        url: message.mediaUrls!.first,
+                        durationMs: message.audioDurationMs,
+                      )
+                    else
+                      ResponsiveTextWidget(
+                        message.content,
+                        textType: TextType.body,
+                        fontSize: 14,
+                        color: AppColors.black,
+                      ),
                     if (message.isLocationMessage && message.lat != null && message.lng != null) ...[
                       const SizedBox(height: AppDimensions.spaceXS),
                       GestureDetector(
@@ -1071,6 +1097,55 @@ class ChatView extends BaseView<ChatViewModel> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
+
+              // Share media externally (images/videos/audio)
+              if (message.isMediaMessage || message.isAudioMessage)
+                ListTile(
+                  leading: const Icon(Icons.share, color: AppColors.black),
+                  title: const ResponsiveTextWidget(
+                    'Share',
+                    textType: TextType.body,
+                    color: AppColors.black,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final messenger = ScaffoldMessenger.of(context);
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Preparing to share…')),
+                    );
+                    final ok = await viewModel.shareChatMedia(message);
+                    if (!ok) {
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Could not share media')),
+                      );
+                    }
+                  },
+                ),
+
+              // Post to Global Feed (own image/video messages only)
+              if (message.isMediaMessage && isCurrentUser)
+                ListTile(
+                  leading: const Icon(Icons.public, color: AppColors.black),
+                  title: const ResponsiveTextWidget(
+                    'Post to Global Feed',
+                    textType: TextType.body,
+                    color: AppColors.black,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final messenger = ScaffoldMessenger.of(context);
+                    final ok = await viewModel.postChatMediaToGlobalFeed(message);
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(ok
+                            ? 'Posted to Global Feed'
+                            : 'Failed to post to Global Feed'),
+                      ),
+                    );
+                  },
+                ),
 
               // Delete for me option (always available)
               ListTile(
@@ -1273,110 +1348,6 @@ class ChatView extends BaseView<ChatViewModel> {
           ],
         );
       },
-    );
-  }
-
-  Future<void> _handleSendMessage(
-      BuildContext context, ChatViewModel viewModel) async {
-    final success = await viewModel.sendMessage();
-    if (!context.mounted) return;
-    if (!success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Couldn\'t send. Please check your connection and try again.',
-            style: TextStyle(color: AppColors.black),
-          ),
-          backgroundColor: Colors.red.shade200,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        ),
-      );
-    }
-  }
-
-  Widget _buildInputSection(BuildContext context, ChatViewModel viewModel) {
-    return Container(
-      color: Colors.transparent,
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
-      child: Column(
-        children: [
-          // Input field row — multiline composer; send only via send icon
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minHeight: AppDimensions.imageS,
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    horizontal: AppDimensions.spaceM,
-                    vertical: AppDimensions.paddingS,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-                  ),
-                  alignment: Alignment.centerLeft,
-                  child: TextField(
-                    controller: viewModel.messageController,
-                    keyboardType: TextInputType.multiline,
-                    textInputAction: TextInputAction.newline,
-                    minLines: 1,
-                    maxLines: 8,
-                    cursorColor: AppColors.black,
-                    decoration: const InputDecoration(
-                      hintText: AppStrings.typeSomething,
-                      hintStyle: TextStyle(color: AppColors.grey600),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    style: const TextStyle(color: AppColors.black),
-                    enabled: !viewModel.isSendingMessage,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppDimensions.paddingS),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: viewModel.isSendingMessage
-                      ? null
-                      : () => _handleSendMessage(context, viewModel),
-                  borderRadius: BorderRadius.circular(28),
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: AppColors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: viewModel.isSendingMessage
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Color(0xFFFC2E95),
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.send,
-                            color: Color(0xFFFC2E95),
-                            size: 28,
-                          ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

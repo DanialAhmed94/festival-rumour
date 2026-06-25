@@ -4,6 +4,7 @@ import '../../../core/utils/base_view.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/router/app_router.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/extensions/context_extensions.dart';
@@ -111,6 +112,35 @@ class ChatRoomDetailView extends BaseView<ChatRoomDetailViewModel> {
                           color: AppColors.grey600,
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Invite Friends — grow the community from inside the room.
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, AppRoutes.invite),
+                      icon: const Icon(
+                        Icons.card_giftcard,
+                        color: Color(0xFFFC2E95),
+                      ),
+                      label: const ResponsiveTextWidget(
+                        AppStrings.inviteFriends,
+                        textType: TextType.body,
+                        color: Color(0xFFFC2E95),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(
+                          color: Color(0xFFFC2E95),
+                          width: 1.5,
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),

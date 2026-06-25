@@ -13,9 +13,13 @@ import '../../../core/constants/app_sizes.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/di/locator.dart';
+import '../../../core/services/storage_service.dart';
+import '../invite/invite_promo_dialog.dart';
 import '../../../shared/widgets/responsive_text_widget.dart';
 import '../../../shared/widgets/responsive_widget.dart';
 import 'festival_view_model.dart';
+import 'festival_listing_invite_view.dart';
 
 class FestivalView extends BaseView<FestivalViewModel> {
   const FestivalView({super.key});
@@ -43,6 +47,23 @@ class FestivalView extends BaseView<FestivalViewModel> {
     }
   }
 
+  /// Guard so the one-time promo is scheduled at most once per app process.
+  static bool _promoScheduled = false;
+
+  /// Shows the Invite-Friends promo once ever (first home visit), then never again.
+  void _maybeShowInvitePromo(BuildContext context) {
+    if (_promoScheduled) return;
+    _promoScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final storage = locator<StorageService>();
+      if (await storage.hasShownInvitePromo()) return;
+      if (!context.mounted) return;
+      await storage.setInvitePromoShown();
+      if (!context.mounted) return;
+      await showInvitePromoDialog(context);
+    });
+  }
+
   @override
   Widget buildView(BuildContext context, FestivalViewModel viewModel) {
     if (kDebugMode) {
@@ -50,6 +71,9 @@ class FestivalView extends BaseView<FestivalViewModel> {
       print('🎪 [FestivalView] buildView: isLoading=${viewModel.isLoading}, festivals.length=${viewModel.festivals.length}, allFestivals.length=${viewModel.allFestivals.length}, searchQuery="${viewModel.searchQuery}", filteredFestivals.length=${viewModel.filteredFestivals.length}');
     }
     final pageController = viewModel.pageController;
+
+    // One-time Invite-Friends promo: shows once on first home (festival) visit.
+    _maybeShowInvitePromo(context);
 
     return PopScope(
       canPop: false, // Prevent default back button behavior
@@ -506,6 +530,33 @@ class FestivalView extends BaseView<FestivalViewModel> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppDimensions.spaceL),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(
+                builder: (_) => FestivalListingInviteView(
+                  festivalName: viewModel.searchQuery,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.mail_outline,
+                size: 18, color: AppColors.white),
+            label: const ResponsiveTextWidget(
+              AppStrings.festivalNotFoundInviteButton,
+              textType: TextType.body,
+              color: AppColors.white,
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFFC2E95),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceL,
+                vertical: AppDimensions.spaceS,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceS),
           OutlinedButton(
             onPressed: () {
               viewModel.clearSearch();

@@ -1,8 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:record/record.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:dio/dio.dart';
+import '../../../core/services/media_upload_service.dart';
 import '../../../core/viewmodels/base_view_model.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/constants/app_strings.dart';
@@ -19,14 +26,22 @@ import '../../../core/exceptions/exception_mapper.dart';
 import '../../../services/notification_service.dart';
 import 'chat_message_model.dart';
 import '../../../core/services/user_photo_cache_service.dart';
+import '../../../core/services/user_badge_cache_service.dart';
 
 class ChatViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final FirestoreService _firestoreService = locator<FirestoreService>();
   final AuthService _authService = locator<AuthService>();
   final UserPhotoCacheService _userPhotoCacheService = locator<UserPhotoCacheService>();
+  final UserBadgeCacheService _userBadgeCacheService = locator<UserBadgeCacheService>();
 
   bool openedViaDeepLink = false;
+
+  /// True if [userId] is a currently-valid Pioneer (cached; expiry checked live).
+  bool isUserPioneer(String? userId) {
+    if (userId == null || userId.isEmpty) return false;
+    return _userBadgeCacheService.getCachedPioneer(userId) ?? false;
+  }
 
   /// Don't use post-image URLs as profile photos (they often 404). Return null for those.
   static String? _sanitizeProfilePhotoUrl(String? url) {
@@ -140,9 +155,12 @@ class ChatViewModel extends BaseViewModel {
         .toSet()
         .toList();
     if (userIds.isEmpty) return;
-    final didFetch = await _userPhotoCacheService.batchFetchPhotosIfNeeded(userIds);
+    final results = await Future.wait([
+      _userPhotoCacheService.batchFetchPhotosIfNeeded(userIds),
+      _userBadgeCacheService.batchFetchPioneerIfNeeded(userIds),
+    ]);
     if (isDisposed) return;
-    if (didFetch) {
+    if (results.any((didFetch) => didFetch)) {
       _photoCacheEpoch++;
       _scheduleConversationUiNotify();
     }
@@ -207,6 +225,34 @@ class ChatViewModel extends BaseViewModel {
 
   bool _isSendingMessage = false;
   bool get isSendingMessage => _isSendingMessage;
+
+  // ── Media messaging ──
+  final ImagePicker _picker = ImagePicker();
+  final MediaUploadService _mediaUpload = locator<MediaUploadService>();
+  final AudioRecorder _recorder = AudioRecorder();
+  final Dio _shareDio = Dio();
+
+  bool _isUploadingMedia = false;
+  double _mediaUploadProgress = 0.0;
+  DateTime? _lastProgressNotify; // throttles upload-progress rebuilds
+  bool _isRecording = false;
+  DateTime? _recordStart;
+  String? _recordPath;
+
+  bool get isUploadingMedia => _isUploadingMedia;
+  double get mediaUploadProgress => _mediaUploadProgress;
+  bool get isRecording => _isRecording;
+
+  static bool isVideoPath(String path) {
+    final p = path.toLowerCase();
+    return p.endsWith('.mp4') ||
+        p.endsWith('.mov') ||
+        p.endsWith('.avi') ||
+        p.endsWith('.mkv') ||
+        p.endsWith('.webm') ||
+        p.endsWith('.m4v') ||
+        p.endsWith('.3gp');
+  }
 
   bool get isLoadingOlderMessages => _isLoadingOlderMessages;
 
@@ -986,6 +1032,14 @@ class ChatViewModel extends BaseViewModel {
         lat: lat is num ? lat.toDouble() : null,
         lng: lng is num ? lng.toDouble() : null,
         festivalName: messageData['festivalName'] as String?,
+        mediaUrls: (messageData['mediaUrls'] is List)
+            ? (messageData['mediaUrls'] as List).map((e) => e.toString()).toList()
+            : null,
+        isVideoList: (messageData['isVideoList'] is List)
+            ? (messageData['isVideoList'] as List).map((e) => e == true).toList()
+            : null,
+        audioDurationMs: (messageData['audioDurationMs'] as num?)?.toInt(),
+        thumbnailUrl: messageData['thumbnailUrl'] as String?,
       );
     } catch (e) {
       if (kDebugMode) {
@@ -1028,9 +1082,10 @@ class ChatViewModel extends BaseViewModel {
   void _evaluateChatScrollMetrics() {
     if (!scrollController.hasClients || _chatRoomId == null) return;
     final pos = scrollController.position;
+    // reverse: true -> visual top (older) is near maxScrollExtent; visual bottom (newest) is near 0.
     const topThreshold = 100.0;
     final cursor = _olderPaginationCursor ?? _liveTailOldestSnapshot;
-    if (pos.pixels <= topThreshold &&
+    if (pos.pixels >= pos.maxScrollExtent - topThreshold &&
         _hasMoreOlderMessages &&
         !_isLoadingOlderMessages &&
         cursor != null) {
@@ -1045,7 +1100,7 @@ class ChatViewModel extends BaseViewModel {
     }
 
     const bottomSnap = 80.0;
-    _stickToBottom = pos.pixels >= pos.maxScrollExtent - bottomSnap;
+    _stickToBottom = pos.pixels <= bottomSnap;
   }
 
   /// Loads the next 40 older messages when the user scrolls near the top.
@@ -1060,13 +1115,6 @@ class ChatViewModel extends BaseViewModel {
 
     _isLoadingOlderMessages = true;
     notifyListeners();
-
-    final prevMax =
-        scrollController.hasClients
-            ? scrollController.position.maxScrollExtent
-            : 0.0;
-    final prevPixels =
-        scrollController.hasClients ? scrollController.position.pixels : 0.0;
 
     try {
       final page = await _firestoreService.fetchOlderChatMessagesPage(
@@ -1108,11 +1156,8 @@ class ChatViewModel extends BaseViewModel {
     } finally {
       _isLoadingOlderMessages = false;
       notifyListeners();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (isDisposed || !scrollController.hasClients) return;
-        final newMax = scrollController.position.maxScrollExtent;
-        scrollController.jumpTo(prevPixels + (newMax - prevMax));
-      });
+      // reverse: true keeps the viewport anchored to the bottom (offset 0) when
+      // older messages are prepended, so no manual scroll compensation is needed.
     }
   }
 
@@ -1278,7 +1323,7 @@ class ChatViewModel extends BaseViewModel {
       Future.delayed(const Duration(milliseconds: 100), () {
         if (isDisposed || !scrollController.hasClients) return;
         scrollController.animateTo(
-          scrollController.position.maxScrollExtent,
+          0.0,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -1607,6 +1652,310 @@ class ChatViewModel extends BaseViewModel {
     print(AppStrings.invitingFriendsToChatRoom);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Media messaging: pick / upload+send images & videos, record & send audio,
+  // share externally, repost to Global Feed.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Pick multiple images/videos from the gallery (mixed). Returns [] on cancel.
+  Future<List<XFile>> pickMedia() async {
+    try {
+      return await _picker.pickMultipleMedia();
+    } catch (e) {
+      if (kDebugMode) print('pickMedia error: $e');
+      return [];
+    }
+  }
+
+  /// Capture a single photo with the camera. Returns null on cancel.
+  Future<XFile?> capturePhoto() async {
+    try {
+      return await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+    } catch (e) {
+      if (kDebugMode) print('capturePhoto error: $e');
+      return null;
+    }
+  }
+
+  /// Record a single video with the camera. Returns null on cancel.
+  Future<XFile?> recordVideo() async {
+    try {
+      return await _picker.pickVideo(
+        source: ImageSource.camera,
+        maxDuration: const Duration(minutes: 3),
+      );
+    } catch (e) {
+      if (kDebugMode) print('recordVideo error: $e');
+      return null;
+    }
+  }
+
+  /// Upload the picked [files] to Storage and send a single album message.
+  Future<bool> sendMediaFiles(List<XFile> files) async {
+    if (_chatRoomId == null || files.isEmpty) return false;
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return false;
+
+    _isUploadingMedia = true;
+    _mediaUploadProgress = 0.0;
+    _lastProgressNotify = null;
+    notifyListeners();
+
+    try {
+      final urls = <String>[];
+      final vids = <bool>[];
+      for (var i = 0; i < files.length; i++) {
+        final isVid = isVideoPath(files[i].path);
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final rand = DateTime.now().microsecondsSinceEpoch % 10000;
+        final url = await _mediaUpload.uploadFile(
+          file: File(files[i].path),
+          folder: 'chat_media/$_chatRoomId/${isVid ? 'videos' : 'images'}',
+          fileName: '${currentUser.uid}_${ts}_$rand.${isVid ? 'mp4' : 'jpg'}',
+          contentType: isVid ? 'video/mp4' : 'image/jpeg',
+          uploadedBy: currentUser.uid,
+          onProgress: (p) {
+            _mediaUploadProgress = (i + p) / files.length;
+            // Throttle to ~10fps so we don't rebuild the whole screen per byte.
+            final now = DateTime.now();
+            if (_lastProgressNotify == null ||
+                now.difference(_lastProgressNotify!).inMilliseconds > 100) {
+              _lastProgressNotify = now;
+              notifyListeners();
+            }
+          },
+        );
+        if (url != null) {
+          urls.add(url);
+          vids.add(isVid);
+        }
+      }
+
+      if (urls.isEmpty) {
+        _isUploadingMedia = false;
+        notifyListeners();
+        return false;
+      }
+
+      final preview = urls.length > 1
+          ? '📷 ${urls.length} media'
+          : (vids.first ? '🎥 Video' : '📷 Photo');
+
+      await _firestoreService.sendChatMediaMessage(
+        chatRoomId: _chatRoomId!,
+        userId: currentUser.uid,
+        username: _currentUsername ?? 'User',
+        userPhotoUrl: _sanitizeProfilePhotoUrl(_currentUserPhotoUrl),
+        type: 'media',
+        mediaUrls: urls,
+        isVideoList: vids,
+        previewText: preview,
+      );
+
+      _stickToBottom = true;
+      _isUploadingMedia = false;
+      _mediaUploadProgress = 0.0;
+      notifyListeners();
+      _triggerPushForMedia(preview);
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('sendMediaFiles error: $e');
+      _isUploadingMedia = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Start recording a voice note. Returns false if mic permission denied.
+  Future<bool> startRecording() async {
+    try {
+      if (!await _recorder.hasPermission()) return false;
+      final dir = await getTemporaryDirectory();
+      final path =
+          '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _recorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path,
+      );
+      _recordPath = path;
+      _recordStart = DateTime.now();
+      _isRecording = true;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('startRecording error: $e');
+      _isRecording = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Cancel and discard the current recording.
+  Future<void> cancelRecording() async {
+    try {
+      await _recorder.stop();
+    } catch (_) {}
+    _isRecording = false;
+    _recordStart = null;
+    _recordPath = null;
+    notifyListeners();
+  }
+
+  /// Stop recording, upload, and send the voice note.
+  Future<bool> stopAndSendRecording() async {
+    if (!_isRecording) return false;
+    String? path;
+    try {
+      path = await _recorder.stop();
+    } catch (_) {}
+    final durMs = _recordStart != null
+        ? DateTime.now().difference(_recordStart!).inMilliseconds
+        : 0;
+    _isRecording = false;
+    _recordStart = null;
+    notifyListeners();
+    final p = path ?? _recordPath;
+    _recordPath = null;
+    if (p == null) return false;
+    // Ignore ultra-short taps (<700ms).
+    if (durMs < 700) {
+      try {
+        await File(p).delete();
+      } catch (_) {}
+      return false;
+    }
+    return _uploadAndSendAudio(File(p), durMs);
+  }
+
+  Future<bool> _uploadAndSendAudio(File file, int durMs) async {
+    if (_chatRoomId == null) return false;
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return false;
+    _isUploadingMedia = true;
+    notifyListeners();
+    try {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final url = await _mediaUpload.uploadFile(
+        file: file,
+        folder: 'chat_media/$_chatRoomId/audio',
+        fileName: '${currentUser.uid}_$ts.m4a',
+        contentType: 'audio/mp4',
+        uploadedBy: currentUser.uid,
+      );
+      if (url == null) {
+        _isUploadingMedia = false;
+        notifyListeners();
+        return false;
+      }
+      const preview = '🎤 Voice message';
+      await _firestoreService.sendChatMediaMessage(
+        chatRoomId: _chatRoomId!,
+        userId: currentUser.uid,
+        username: _currentUsername ?? 'User',
+        userPhotoUrl: _sanitizeProfilePhotoUrl(_currentUserPhotoUrl),
+        type: 'audio',
+        mediaUrls: [url],
+        audioDurationMs: durMs,
+        previewText: preview,
+      );
+      _stickToBottom = true;
+      _isUploadingMedia = false;
+      notifyListeners();
+      _triggerPushForMedia(preview);
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('_uploadAndSendAudio error: $e');
+      _isUploadingMedia = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Resolve room members from Firestore and push to everyone but the sender.
+  Future<void> _triggerPushForMedia(String previewText) async {
+    final uid = _currentUserId;
+    final roomId = _chatRoomId;
+    if (uid == null || roomId == null) return;
+    try {
+      final fresh = await _firestoreService.getChatRoomDocument(roomId);
+      final members = (fresh?['members'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .where((id) => id != uid)
+          .toList();
+      if (members.isNotEmpty) {
+        _sendPushNotificationToMembers(
+          otherMemberIds: members,
+          content: previewText,
+        );
+      }
+    } catch (_) {}
+  }
+
+  /// Repost a media message's images/videos to the Global Feed (own media only).
+  /// Reuses the already-uploaded Storage URLs — no re-upload.
+  Future<bool> postChatMediaToGlobalFeed(ChatMessageModel msg) async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return false;
+    if (!msg.isMediaMessage) return false;
+    if (msg.userId != currentUser.uid) return false; // own media only
+    try {
+      final urls = msg.mediaUrls!;
+      final vids = msg.isVideoList ?? List.filled(urls.length, false);
+      await _firestoreService.savePost({
+        'username': _currentUsername ?? msg.username,
+        'content': '',
+        'imagePath': urls.first,
+        'mediaPaths': urls,
+        'isVideoList': vids,
+        'isVideo': vids.isNotEmpty && vids.first,
+        'likes': 0,
+        'comments': 0,
+        'status': AppStrings.live,
+        'createdAt': DateTime.now(),
+        'userPhotoUrl': _sanitizeProfilePhotoUrl(_currentUserPhotoUrl),
+        'userId': currentUser.uid,
+      }, mediaCount: 1);
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('postChatMediaToGlobalFeed error: $e');
+      return false;
+    }
+  }
+
+  /// Download a media message's files to temp and open the device share sheet.
+  Future<bool> shareChatMedia(ChatMessageModel msg) async {
+    final urls = msg.mediaUrls;
+    if (urls == null || urls.isEmpty) return false;
+    try {
+      final dir = await getTemporaryDirectory();
+      final xfiles = <XFile>[];
+      for (var i = 0; i < urls.length; i++) {
+        final ext = msg.isAudioMessage
+            ? 'm4a'
+            : (msg.isVideoAtIndex(i) ? 'mp4' : 'jpg');
+        final path =
+            '${dir.path}/share_${DateTime.now().millisecondsSinceEpoch}_$i.$ext';
+        await _shareDio.download(urls[i], path);
+        xfiles.add(XFile(path));
+      }
+      if (xfiles.isEmpty) return false;
+      await Share.shareXFiles(xfiles);
+      // The share target has consumed the files by now; clean up temp copies.
+      for (final xf in xfiles) {
+        try {
+          await File(xf.path).delete();
+        } catch (_) {}
+      }
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('shareChatMedia error: $e');
+      return false;
+    }
+  }
+
   // Navigation methods
   void navigateBack(BuildContext context) {
     Navigator.pop(context);
@@ -1637,6 +1986,7 @@ class ChatViewModel extends BaseViewModel {
     _privateChatsSubscription = null;
     messageController.dispose();
     scrollController.dispose();
+    _recorder.dispose();
     super.onDispose();
   }
 }

@@ -11,8 +11,6 @@ import '../../../core/services/navigation_service.dart';
 import '../../../core/services/geocoding_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/providers/festival_provider.dart';
-import '../../../core/navigation/apply_festival_navbar_gate_outcome.dart';
-import '../../../core/services/profile_readiness_service.dart';
 import 'festival_model.dart';
 
 class ViewAllFestivalsViewModel extends BaseViewModel {
@@ -150,29 +148,9 @@ class ViewAllFestivalsViewModel extends BaseViewModel {
     festivalProvider.setSelectedFestival(festival);
     festivalProvider.setAllFestivals(_combinedFestivalsForProvider());
 
-    _navbarGateBusy = true;
-    notifyListeners();
-    try {
-      final outcome =
-          await locator<ProfileReadinessService>().evaluateFestivalNavbarGate();
-      if (!context.mounted) return;
-
-      if (kDebugMode) {
-        print(
-          '🧭 [ViewAllFestivals.navigateToHome] Gate outcome=${outcome.name}',
-        );
-      }
-
-      await applyFestivalNavbarGateOutcome(
-        context,
-        outcome,
-        onAuthenticatedNavigate:
-            () => _navigationService.navigateTo(AppRoutes.navbaar),
-      );
-    } finally {
-      _navbarGateBusy = false;
-      if (!isDisposed) notifyListeners();
-    }
+    // Tapping a festival always opens its detail/home (Location & map, Stage
+    // Times, Inner Map, Chat Rooms). This is NOT gated by phone verification.
+    _navigationService.navigateTo(AppRoutes.navbaar);
   }
 
   void setSearchQuery(String query) {

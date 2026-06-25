@@ -16,22 +16,21 @@ import '../../../core/constants/app_durations.dart';
 import '../../../core/api/festival_api_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/profile_readiness_service.dart';
-import '../../../core/navigation/apply_festival_navbar_gate_outcome.dart';
 import '../../../core/services/user_photo_cache_service.dart';
 import '../../../util/firebase_notification_service.dart';
 import 'festival_model.dart';
 
 /// Festival Organiser — App Store
 const String caAppStoreUrl =
-    'https://apps.apple.com/us/app/organiser-toolkit/id6686404949';
+    'https://apps.apple.com/us/app/festival-organiser/id6686404949';
 
-/// Festival Toilet App (store slug "crap-adviser")
+/// Festival Toilet App — App Store
 const String crapAdviserAppStoreUrl =
-    'https://apps.apple.com/us/app/crap-adviser/id6738211790';
+    'https://apps.apple.com/us/app/festival-toilet-app/id6738211790';
 
+/// Festival Foodie — App Store
 const String festieFoodieAppStoreUrl =
-    'https://apps.apple.com/us/app/festiefoodie/id6744639737';
+    'https://apps.apple.com/us/app/festival-foodie/id6744639737';
 
 /// Play Store (Android) — same three apps as above
 const String crapAdviserPlayStoreUrl =
@@ -421,28 +420,9 @@ class FestivalViewModel extends BaseViewModel {
       print('🎪 Saved ${allFestivals.length} festivals to provider');
     }
 
-    _navbarGateBusy = true;
-    notifyListeners();
-    try {
-      final outcome =
-          await locator<ProfileReadinessService>().evaluateFestivalNavbarGate();
-      if (!context.mounted) return;
-
-      if (kDebugMode) {
-        print('🧭 [FestivalViewModel.navigateToHome] Gate outcome=${outcome.name}');
-      }
-
-      await applyFestivalNavbarGateOutcome(
-        context,
-        outcome,
-        onAuthenticatedNavigate: () {
-          _navigationService.navigateTo(AppRoutes.navbaar);
-        },
-      );
-    } finally {
-      _navbarGateBusy = false;
-      if (!isDisposed) notifyListeners();
-    }
+    // Tapping a festival always opens its detail/home (Location & map, Stage
+    // Times, Inner Map, Chat Rooms). This is NOT gated by phone verification.
+    _navigationService.navigateTo(AppRoutes.navbaar);
   }
 
   void goBack() {

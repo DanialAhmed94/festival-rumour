@@ -15,6 +15,7 @@ import '../../../core/services/post_data_service.dart';
 import '../../../core/providers/festival_provider.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/services/user_photo_cache_service.dart';
+import '../../../core/services/referral_service.dart';
 
 class ProfileViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
@@ -67,6 +68,13 @@ class ProfileViewModel extends BaseViewModel {
 
   // Attended festivals count (default 0)
   int _attendedFestivalsCount = 0;
+
+  // Referral / Pioneer badge state (server-owned fields; read-only here)
+  int _referralCount = 0;
+  bool _isPioneer = false;
+  int get referralCount => _referralCount;
+  int get referralGoal => kReferralGoal;
+  bool get isPioneer => _isPioneer;
   
   // User search functionality
   String _userSearchQuery = '';
@@ -380,7 +388,13 @@ class ProfileViewModel extends BaseViewModel {
 
           // Load attended festivals count (ensured to be non-negative)
           _attendedFestivalsCount = (await _firestoreService.getAttendedFestivalsCount(targetUserId)).clamp(0, 0x7fffffff);
-          
+
+          // Referral count + Pioneer badge (server-owned; on-read expiry check)
+          _referralCount = (userData?['referralCount'] as num?)?.toInt() ?? 0;
+          _isPioneer = ReferralService.isPioneerBadgeValid(
+            (userData?['pioneerBadge'] as Map?)?.cast<String, dynamic>(),
+          );
+
           // Load display name and photo URL
           if (_viewingUserId != null) {
             // Viewing another user: get from Firestore

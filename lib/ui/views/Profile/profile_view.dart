@@ -17,6 +17,8 @@ import '../../../core/router/app_router.dart';
 import '../../../core/utils/backbutton.dart';
 import '../../../core/utils/base_view.dart';
 import '../../../core/providers/festival_provider.dart';
+import '../../../shared/widgets/pioneer_badge.dart';
+import '../../../shared/widgets/referral_progress_bar.dart';
 import 'profile_viewmodel.dart';
 
 class ProfileView extends BaseView<ProfileViewModel> {
@@ -370,12 +372,28 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Username
-                            ResponsiveTextWidget(
-                              userDisplayName ?? 'User',
-                              color: AppColors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: AppDimensions.textL,
+                            // Username + Pioneer badge
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: ResponsiveTextWidget(
+                                    userDisplayName ?? 'User',
+                                    color: AppColors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: AppDimensions.textL,
+                                  ),
+                                ),
+                                Selector<ProfileViewModel, bool>(
+                                  selector: (_, vm) => vm.isPioneer,
+                                  builder: (_, isPioneer, __) => isPioneer
+                                      ? const Padding(
+                                          padding: EdgeInsets.only(left: 6),
+                                          child:
+                                              PioneerBadge(compact: true, size: 18),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
                             ),
                             SizedBox(height: AppDimensions.spaceS),
                             // Stats in horizontal ListView to avoid overflow
@@ -512,6 +530,53 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
                       );
                     },
                   ),
+                  // Invite Friends + compact referral progress (own profile only)
+                  if (widget.userId == null)
+                    Selector<ProfileViewModel, (int, int)>(
+                      selector: (_, vm) => (vm.referralCount, vm.referralGoal),
+                      builder: (context, data, child) {
+                        return Padding(
+                          padding: const EdgeInsets.only(
+                            top: AppDimensions.spaceM,
+                          ),
+                          child: GestureDetector(
+                            onTap: () =>
+                                Navigator.pushNamed(context, AppRoutes.invite),
+                            behavior: HitTestBehavior.opaque,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: const [
+                                    Icon(Icons.card_giftcard,
+                                        size: 18, color: Color(0xFFFC2E95)),
+                                    SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        AppStrings.inviteFriends,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFFC2E95),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                    Icon(Icons.chevron_right,
+                                        size: 18, color: Color(0xFFFC2E95)),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                ReferralProgressBar(
+                                  count: data.$1,
+                                  goal: data.$2,
+                                  compact: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                 ],
               ),
             );
@@ -596,6 +661,23 @@ class _ProfileViewContentState extends State<_ProfileViewContent> with Automatic
           Row(
             mainAxisSize: MainAxisSize.max,
             children: [
+              if (widget.userId == null)
+                IconButton(
+                  onPressed: () =>
+                      Navigator.pushNamed(context, AppRoutes.invite),
+                  icon: Icon(
+                    Icons.card_giftcard,
+                    color: AppColors.white,
+                    size: AppDimensions.iconL,
+                  ),
+                  padding: context.responsivePadding,
+                  constraints: BoxConstraints(
+                    minWidth: context.getConditionalIconSize(),
+                    minHeight: context.getConditionalIconSize(),
+                  ),
+                  tooltip: AppStrings.inviteFriends,
+                ),
+              if (widget.userId == null) SizedBox(width: context.getConditionalSpacing()),
               if (widget.userId == null)
                 IconButton(
                   onPressed: () async {

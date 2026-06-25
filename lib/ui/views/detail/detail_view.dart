@@ -77,7 +77,7 @@ class DetailView extends BaseView<DetailViewModel> {
           SizedBox(width: context.getConditionalSpacing()),
           Expanded(
             child: ResponsiveTextWidget(
-              'Detail',
+              'Stage Times & Running Orders',
               textType: TextType.title,
               fontSize: context.getConditionalMainFont(),
               color: AppColors.white,
@@ -111,8 +111,9 @@ class DetailView extends BaseView<DetailViewModel> {
               Expanded(
                 child: _buildCard(
                   context,
-                  'TOILET',
+                  'Got To Go',
                   AppAssets.toilet,
+                  icon: Icons.wc,
                   onTap: () {
                     final festivalId = Provider.of<FestivalProvider>(context, listen: false).selectedFestival?.id;
                     Navigator.pushNamed(context, AppRoutes.toilets, arguments: festivalId);
@@ -126,7 +127,7 @@ class DetailView extends BaseView<DetailViewModel> {
           // Bottom row - two full-width cards
           _buildCard(
             context,
-            'WHERE THE BEATS DROP',
+            "What's On",
             AppAssets.post1,
             isFullWidth: true,
             onTap: () {
@@ -157,6 +158,7 @@ class DetailView extends BaseView<DetailViewModel> {
       String imagePath, {
         bool isFullWidth = false,
         VoidCallback? onTap,
+        IconData? icon,
       }) {
     return GestureDetector(
       onTap: onTap,
@@ -203,12 +205,28 @@ class DetailView extends BaseView<DetailViewModel> {
                 left: 0,
                 right: 0,
                 child: Center(
-                  child: ResponsiveTextWidget(
-                    title,
-                    textType: TextType.title,
-                    color: AppColors.white,
-                    fontWeight: FontWeight.bold,
-                    textAlign: TextAlign.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (icon != null) ...[
+                        Icon(
+                          icon,
+                          color: AppColors.white,
+                          size: AppDimensions.iconM,
+                        ),
+                        const SizedBox(width: AppDimensions.spaceS),
+                      ],
+                      Flexible(
+                        child: ResponsiveTextWidget(
+                          title,
+                          textType: TextType.title,
+                          color: AppColors.white,
+                          fontWeight: FontWeight.bold,
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

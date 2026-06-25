@@ -58,6 +58,7 @@ import '../../ui/views/create_post/create_post_view.dart';
 import '../../ui/views/edit_post/edit_post_view.dart';
 import '../../ui/views/search_users/search_users_view.dart';
 import '../../ui/views/Profile/view_user_profile_view.dart';
+import '../../ui/views/invite/invite_view.dart';
 import '../../ui/views/homeview/post_model.dart';
 import '../utils/transition.dart';
 
@@ -114,6 +115,7 @@ class AppRoutes {
   static const String myJobs = '/my_jobs';
   static const String allJobs = '/all_jobs';
   static const String jobDetail = '/job_detail';
+  static const String invite = '/invite';
 }
 
 /// One-shot [RouteSettings.arguments] for [MaterialApp.onGenerateInitialRoutes]
@@ -559,6 +561,9 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
         return SmoothPageRoute(page: const AllJobsView());
       }
       return SmoothPageRoute(page: JobDetailView(jobData: jobData));
+
+    case AppRoutes.invite:
+      return SmoothPageRoute(page: const InviteView());
 
     default:
       final name = settings.name?.toLowerCase() ?? "";

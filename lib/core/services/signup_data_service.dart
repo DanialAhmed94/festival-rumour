@@ -16,6 +16,7 @@ class SignupDataService {
   List<String>? _photoUrls;
   dynamic _profileImage; // Store profile image file (File or XFile)
   Map<String, dynamic>? _additionalData;
+  String? _referralCode; // Optional referral code entered during onboarding
 
   // Google/Apple OAuth credentials storage
   AuthCredential? _googleCredential;
@@ -103,6 +104,19 @@ class SignupDataService {
   void setAdditionalData(Map<String, dynamic> data) {
     _additionalData = data;
   }
+
+  /// Store an optional referral code captured during onboarding.
+  void setReferralCode(String? code) {
+    final trimmed = code?.trim();
+    _referralCode = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+
+    if (kDebugMode) {
+      print('Referral code stored: ${_referralCode ?? '(none)'}');
+    }
+  }
+
+  /// Get stored referral code (null if none).
+  String? get referralCode => _referralCode;
 
   /// Get stored email
   String? get email => _email;
@@ -245,6 +259,7 @@ class SignupDataService {
     _photoUrls = null;
     _profileImage = null;
     _additionalData = null;
+    _referralCode = null;
 
     if (kDebugMode) {
       print('All signup data cleared');

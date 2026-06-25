@@ -208,6 +208,9 @@ class FirebaseNotificationService {
     Map<String, dynamic> data,
   ) {
     final type = data['type'] as String?;
+    if (type == 'referral_joined' || type == 'badge_earned') {
+      return const NotificationLaunchTarget(routeName: AppRoutes.invite);
+    }
     if (type == 'post_comment' || type == 'comment_reply') {
       final postId = data['postId'] as String?;
       final collectionName = data['collectionName'] as String?;

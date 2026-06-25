@@ -109,6 +109,22 @@ class ChatListView extends BaseView<ChatViewModel> {
           else ...[
             IconButton(
               onPressed: () {
+                Navigator.pushNamed(context, AppRoutes.invite);
+              },
+              icon: const Icon(
+                Icons.card_giftcard,
+                color: AppColors.white,
+                size: AppDimensions.iconL,
+              ),
+              padding: context.responsivePadding,
+              constraints: BoxConstraints(
+                minWidth: context.getConditionalIconSize(),
+                minHeight: context.getConditionalIconSize(),
+              ),
+              tooltip: AppStrings.inviteFriends,
+            ),
+            IconButton(
+              onPressed: () {
                 Navigator.pushNamed(context, AppRoutes.searchUsers);
               },
               icon: const Icon(

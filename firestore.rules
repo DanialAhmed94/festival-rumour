@@ -1,11 +1,61 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Configure your rules in Firebase Console or here.
-    // This file exists so "firebase deploy --only firestore:indexes" can run.
-    // To deploy rules: firebase deploy --only firestore:rules
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    // ── Referral bookkeeping: written ONLY by Cloud Functions (Admin SDK bypasses rules) ──
+    // Clients can never write these; a user may read their own referral record.
+    match /referrals/{referredUid} {
+      allow read: if request.auth != null && request.auth.uid == referredUid;
+      allow write: if false;
+    }
+    match /referralCodes/{code} {
+      allow read, write: if false;   // code resolution happens server-side
+    }
+    match /referralDevices/{deviceId} {
+      allow read, write: if false;   // server-only fraud bookkeeping
+    }
+
+    // ── users: clients may read all profiles and edit their OWN, but NOT reward fields ──
+    // referralCount / referredBy / pioneerBadge / referralCode are server-owned.
+    match /users/{uid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null
+        && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['referralCount', 'referredBy', 'pioneerBadge', 'referralCode']);
+      allow delete: if request.auth != null;
+
+      // user subcollections (attendedFestivals, favoriteFestivals, locationShares, ...)
+      match /{document=**} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // ── Everything else: the app's dynamically-named collections (festivalrumorglobalfeed,
+    //    <festivalId>_<name>_rumour, jobs_<category>, shared_posts, chatRooms, chats, ...) and
+    //    their subcollections (messages, comments, reactions) stay open to authenticated users.
+    //    The identity/reward paths above are excluded by name via the {collection} variable. ──
+    match /{collection}/{docId} {
+      allow read: if request.auth != null
+        && collection != 'referrals'
+        && collection != 'referralCodes'
+        && collection != 'referralDevices';
+      allow write: if request.auth != null
+        && collection != 'users'
+        && collection != 'referrals'
+        && collection != 'referralCodes'
+        && collection != 'referralDevices';
+
+      match /{document=**} {
+        allow read: if request.auth != null
+          && collection != 'referrals'
+          && collection != 'referralCodes'
+          && collection != 'referralDevices';
+        allow write: if request.auth != null
+          && collection != 'referrals'
+          && collection != 'referralCodes'
+          && collection != 'referralDevices';
+      }
     }
   }
 }

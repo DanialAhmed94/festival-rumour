@@ -1,0 +1,48 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pbRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE79C"/>
+      <stop offset="0.55" stop-color="#F2B23A"/>
+      <stop offset="1" stop-color="#A9670A"/>
+    </linearGradient>
+    <radialGradient id="pbFace" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#FFF7DD"/>
+      <stop offset="0.65" stop-color="#F6C249"/>
+      <stop offset="1" stop-color="#E2982A"/>
+    </radialGradient>
+    <linearGradient id="pbStar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFDF2"/>
+      <stop offset="1" stop-color="#E59B16"/>
+    </linearGradient>
+  </defs>
+
+  <!-- outer rim -->
+  <circle cx="50" cy="50" r="48" fill="url(#pbRim)"/>
+
+  <!-- coin notches -->
+  <g fill="#7E4D06" opacity="0.4">
+    <circle cx="93.5" cy="50" r="1.6"/>
+    <circle cx="87.67" cy="71.75" r="1.6"/>
+    <circle cx="71.75" cy="87.67" r="1.6"/>
+    <circle cx="50" cy="93.5" r="1.6"/>
+    <circle cx="28.25" cy="87.67" r="1.6"/>
+    <circle cx="12.33" cy="71.75" r="1.6"/>
+    <circle cx="6.5" cy="50" r="1.6"/>
+    <circle cx="12.33" cy="28.25" r="1.6"/>
+    <circle cx="28.25" cy="12.33" r="1.6"/>
+    <circle cx="50" cy="6.5" r="1.6"/>
+    <circle cx="71.75" cy="12.33" r="1.6"/>
+    <circle cx="87.67" cy="28.25" r="1.6"/>
+  </g>
+
+  <!-- inner face -->
+  <circle cx="50" cy="50" r="39" fill="url(#pbFace)"/>
+  <circle cx="50" cy="50" r="39" fill="none" stroke="#A9670A" stroke-width="1.4" opacity="0.5"/>
+
+  <!-- star -->
+  <path d="M50,27 L55.6,42.3 L71.9,42.9 L59,52.9 L63.5,68.6 L50,59.5 L36.5,68.6 L41,52.9 L28.1,42.9 L44.4,42.3 Z"
+        fill="url(#pbStar)" stroke="#B8770E" stroke-width="1.2" stroke-linejoin="round"/>
+
+  <!-- shine -->
+  <ellipse cx="38" cy="33" rx="20" ry="12" fill="#FFFFFF" opacity="0.18" transform="rotate(-30 38 33)"/>
+</svg>

@@ -399,6 +399,10 @@ class SettingsViewModel extends BaseViewModel {
     _navigationService.navigateTo(AppRoutes.myJobs);
   }
 
+  void openInvite() {
+    _navigationService.navigateTo(AppRoutes.invite);
+  }
+
   void openCreateJob() {
     _navigationService.navigateTo(AppRoutes.jobpost);
   }
@@ -414,8 +418,8 @@ class SettingsViewModel extends BaseViewModel {
         // Android Play Store URL
         url = 'https://play.google.com/store/apps/details?id=$packageName';
       } else if (Platform.isIOS) {
-        // Same listing as Android until a dedicated App Store URL is configured.
-        url = AppStrings.festivalRumourPlayStoreUrl;
+        // Apple App Store listing for The Festival App.
+        url = AppStrings.festivalRumourAppStoreUrl;
       } else {
         if (kDebugMode) {
           print('⚠️ Rate app not supported on this platform');
@@ -442,7 +446,7 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> shareApp() async {
     try {
       await Share.share(
-        AppStrings.shareMessage,
+        AppStrings.shareMessage(isIOS: Platform.isIOS),
         subject: AppStrings.shareSubject,
       );
     } catch (e) {

@@ -14,6 +14,8 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/signup_data_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../core/services/referral_service.dart';
+import '../../../core/services/welcome_email_service.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/services/profile_readiness_service.dart';
@@ -53,6 +55,11 @@ class InterestsViewModel extends BaseViewModel {
   }
 
   bool get hasSelection => _selected.isNotEmpty;
+
+  /// Capture an optional referral code typed during onboarding.
+  void setReferralCode(String value) {
+    _signupDataService.setReferralCode(value);
+  }
 
   /// Save interests and create Firebase user with all collected data
   Future<void> saveInterests() async {
@@ -423,6 +430,28 @@ class InterestsViewModel extends BaseViewModel {
       interests: interests,
       photoUrl: photoUrl,
     );
+
+    // ⭐ Greeting email for a NEW email/password signup. Google/Apple users are
+    // already greeted at sign-in (welcome_view_model), so skip OAuth here to
+    // avoid a duplicate. Best-effort, fire-and-forget — never blocks signup.
+    if (!isOAuthFlow) {
+      WelcomeEmailService.sendWelcomeEmail(displayName: finalName);
+    }
+
+    // ⭐ Referral attribution — credit the referrer if a code was entered.
+    // Runs after the user doc exists. MUST never break signup: a bad / expired /
+    // duplicate code is logged and swallowed inside redeemReferralCode.
+    final referralCode = _signupDataService.referralCode;
+    if (referralCode != null && referralCode.isNotEmpty) {
+      try {
+        await locator<ReferralService>().redeemReferralCode(
+          code: referralCode,
+          newUserUid: user.uid,
+        );
+      } catch (e) {
+        if (kDebugMode) print('Referral redeem failed (ignored): $e');
+      }
+    }
 
     final pn = phoneNumber?.trim();
     if (pn != null && pn.isNotEmpty) {

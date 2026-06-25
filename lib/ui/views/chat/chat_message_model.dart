@@ -12,11 +12,25 @@ class ChatMessageModel {
 
   /// Frozen label at parse time so list rows do not re-do [DateTime.now] work every build.
   final String? _cachedTimeAgo;
-  /// Optional: 'location' for shared-location messages
+  /// Optional message type: 'location' (shared location), 'media' (images/videos
+  /// album), or 'audio' (voice note). null = plain text.
   final String? type;
   final double? lat;
   final double? lng;
   final String? festivalName;
+
+  /// Media payload (Storage download URLs). For 'media' this is the image/video
+  /// album; for 'audio' it holds the single voice-note URL.
+  final List<String>? mediaUrls;
+
+  /// Parallel to [mediaUrls]; true = video, false = image. Only meaningful for 'media'.
+  final List<bool>? isVideoList;
+
+  /// Voice-note length in milliseconds (audio only).
+  final int? audioDurationMs;
+
+  /// Optional poster-frame URL for the first video (nullable).
+  final String? thumbnailUrl;
 
   ChatMessageModel({
     this.messageId,
@@ -31,6 +45,10 @@ class ChatMessageModel {
     this.lat,
     this.lng,
     this.festivalName,
+    this.mediaUrls,
+    this.isVideoList,
+    this.audioDurationMs,
+    this.thumbnailUrl,
   }) : _cachedTimeAgo = cachedTimeAgo;
 
   static String timeAgoLabel(DateTime createdAt, DateTime referenceNow) {
@@ -60,6 +78,17 @@ class ChatMessageModel {
   bool get isLocationMessage =>
       type == 'location' && lat != null && lng != null;
 
+  /// Album of images/videos.
+  bool get isMediaMessage =>
+      type == 'media' && (mediaUrls?.isNotEmpty ?? false);
+
+  /// Single voice note.
+  bool get isAudioMessage =>
+      type == 'audio' && (mediaUrls?.isNotEmpty ?? false);
+
+  bool isVideoAtIndex(int i) =>
+      (isVideoList != null && i < isVideoList!.length) ? isVideoList![i] : false;
+
   /// Create ChatMessageModel from Firestore document
   factory ChatMessageModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -81,8 +110,18 @@ class ChatMessageModel {
       lat: lat is num ? lat.toDouble() : null,
       lng: lng is num ? lng.toDouble() : null,
       festivalName: data['festivalName'] as String?,
+      mediaUrls: _parseStringList(data['mediaUrls']),
+      isVideoList: _parseBoolList(data['isVideoList']),
+      audioDurationMs: (data['audioDurationMs'] as num?)?.toInt(),
+      thumbnailUrl: data['thumbnailUrl'] as String?,
     );
   }
+
+  static List<String>? _parseStringList(dynamic v) =>
+      v is List ? v.map((e) => e.toString()).toList() : null;
+
+  static List<bool>? _parseBoolList(dynamic v) =>
+      v is List ? v.map((e) => e == true).toList() : null;
 
   /// Convert ChatMessageModel to Map for Firestore
   Map<String, dynamic> toFirestore() {
@@ -98,6 +137,10 @@ class ChatMessageModel {
     if (lat != null) map['lat'] = lat;
     if (lng != null) map['lng'] = lng;
     if (festivalName != null) map['festivalName'] = festivalName;
+    if (mediaUrls != null) map['mediaUrls'] = mediaUrls;
+    if (isVideoList != null) map['isVideoList'] = isVideoList;
+    if (audioDurationMs != null) map['audioDurationMs'] = audioDurationMs;
+    if (thumbnailUrl != null) map['thumbnailUrl'] = thumbnailUrl;
     return map;
   }
 
@@ -118,6 +161,10 @@ class ChatMessageModel {
     double? lat,
     double? lng,
     String? festivalName,
+    List<String>? mediaUrls,
+    List<bool>? isVideoList,
+    int? audioDurationMs,
+    String? thumbnailUrl,
   }) {
     final nextCreated = createdAt ?? this.createdAt;
     return ChatMessageModel(
@@ -136,6 +183,10 @@ class ChatMessageModel {
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
       festivalName: festivalName ?? this.festivalName,
+      mediaUrls: mediaUrls ?? this.mediaUrls,
+      isVideoList: isVideoList ?? this.isVideoList,
+      audioDurationMs: audioDurationMs ?? this.audioDurationMs,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
     );
   }
 }

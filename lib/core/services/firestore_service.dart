@@ -4660,6 +4660,81 @@ class FirestoreService {
     }
   }
 
+  /// Send a media message (images/videos album OR a single audio voice note) to a
+  /// chat room. Mirrors [sendChatMessage] (DM auto-create + batch + lastMessage)
+  /// but writes the media fields. [type] is 'media' or 'audio'.
+  Future<String> sendChatMediaMessage({
+    required String chatRoomId,
+    required String userId,
+    required String username,
+    String? userPhotoUrl,
+    required String type, // 'media' | 'audio'
+    required List<String> mediaUrls,
+    List<bool>? isVideoList,
+    int? audioDurationMs,
+    String? thumbnailUrl,
+    required String previewText, // human-readable lastMessage / content
+  }) async {
+    try {
+      final chatRoomRef = _firestore.collection('chatRooms').doc(chatRoomId);
+      final roomDoc = await chatRoomRef.get();
+
+      if (!roomDoc.exists) {
+        final memberIds = FirestoreService.parseDmRoomMemberIds(chatRoomId);
+        if (memberIds != null &&
+            memberIds.length == 2 &&
+            memberIds.contains(userId)) {
+          await createPrivateChatRoom(
+            chatRoomName: 'Direct message',
+            creatorId: userId,
+            memberIds: memberIds,
+            fixedChatRoomId: chatRoomId,
+          );
+        } else {
+          throw Exception('Chat room does not exist');
+        }
+      }
+
+      final batch = _firestore.batch();
+      final messageRef = chatRoomRef.collection('messages').doc();
+      final messageData = <String, dynamic>{
+        'chatRoomId': chatRoomId,
+        'userId': userId,
+        'username': username,
+        'content': previewText,
+        'userPhotoUrl': userPhotoUrl,
+        'createdAt': FieldValue.serverTimestamp(),
+        'type': type,
+        'mediaUrls': mediaUrls,
+        if (isVideoList != null) 'isVideoList': isVideoList,
+        if (audioDurationMs != null) 'audioDurationMs': audioDurationMs,
+        if (thumbnailUrl != null) 'thumbnailUrl': thumbnailUrl,
+      };
+
+      batch.set(messageRef, messageData);
+      batch.update(chatRoomRef, {
+        'lastMessage': previewText,
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      if (kDebugMode) {
+        print('✅ Sent media message ($type) to chat room: $chatRoomId');
+      }
+      return messageRef.id;
+    } catch (e, stackTrace) {
+      final exception = ExceptionMapper.mapToAppException(e, stackTrace);
+      _errorHandler.handleError(
+        exception,
+        stackTrace,
+        'FirestoreService.sendChatMediaMessage',
+      );
+      rethrow;
+    }
+  }
+
   /// Share current location with one recipient via their 1:1 DM. Creates the DM room if it doesn't exist.
   /// Sends a special message with type 'location' so the chat UI can show it with festival name and map.
   Future<void> sendLocationShareToDmRoom({
